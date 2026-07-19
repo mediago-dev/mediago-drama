@@ -151,6 +151,17 @@ func (repo *PackRepository) ListEntries() ([]domain.PackEntryModel, error) {
 	return models, nil
 }
 
+// ListEntriesByPack returns every entry stored in one pack namespace.
+func (repo *PackRepository) ListEntriesByPack(packID string) ([]domain.PackEntryModel, error) {
+	models := []domain.PackEntryModel{}
+	if err := repo.db.Where("pack_id = ?", strings.TrimSpace(packID)).
+		Order("kind asc, slug asc").
+		Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("listing entries by pack: %w", err)
+	}
+	return models, nil
+}
+
 // ListEnabledEntries returns entries from enabled packs.
 func (repo *PackRepository) ListEnabledEntries(kind string) ([]domain.PackEntryModel, error) {
 	models := []domain.PackEntryModel{}
@@ -261,6 +272,17 @@ func (repo *PackRepository) ListCategories() ([]domain.PackCategoryModel, error)
 	models := []domain.PackCategoryModel{}
 	if err := repo.db.Order("entry_order asc, id asc").Find(&models).Error; err != nil {
 		return nil, fmt.Errorf("listing pack categories: %w", err)
+	}
+	return models, nil
+}
+
+// ListCategoriesByPack returns every category stored in one pack namespace.
+func (repo *PackRepository) ListCategoriesByPack(packID string) ([]domain.PackCategoryModel, error) {
+	models := []domain.PackCategoryModel{}
+	if err := repo.db.Where("pack_id = ?", strings.TrimSpace(packID)).
+		Order("entry_order asc, id asc").
+		Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("listing categories by pack: %w", err)
 	}
 	return models, nil
 }

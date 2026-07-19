@@ -27,6 +27,114 @@ func (deniedPromptPackImporter) Import(
 	return promptpack.ProtectedImport{}, promptpack.ErrProtectedPackAccessDenied
 }
 
+func TestPromptPacksHandlerAtomicallySavesDraftContents(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	store := newPromptPackHandlerTestStore(t)
+	pack, err := store.CreatePack(t.Context(), promptpack.Pack{
+		ID: "company.handler-atomic", Name: "Handler Atomic",
+	})
+	if err != nil {
+		t.Fatalf("CreatePack() error = %v", err)
+	}
+	before, err := store.GetPackContents(t.Context(), pack.ID)
+	if err != nil {
+		t.Fatalf("GetPackContents() error = %v", err)
+	}
+	handler := NewPromptPacks(store)
+	router := gin.New()
+	router.PUT("/packs/:id/contents", handler.HandlePutPackContents)
+
+	body, err := json.Marshal(savePromptPackDraftRequest{
+		BaseRevision: before.Revision,
+		Categories:   []promptpack.Category{{ID: "story", Label: "故事", Order: 0}},
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPut, "/packs/"+pack.ID+"/contents", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"revision"`) {
+		t.Fatalf("PUT status = %d, body = %s", response.Code, response.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodPut, "/packs/"+pack.ID+"/contents", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusConflict {
+		t.Fatalf("stale PUT status = %d, body = %s, want 409", response.Code, response.Body.String())
+	}
+
+	defaultContents, err := store.GetPackContents(t.Context(), promptpack.DefaultPackID)
+	if err != nil {
+		t.Fatalf("GetPackContents(default) error = %v", err)
+	}
+	body, err = json.Marshal(savePromptPackDraftRequest{
+		BaseRevision: defaultContents.Revision,
+		Entries:      defaultContents.Entries,
+		Categories:   defaultContents.Categories,
+	})
+	if err != nil {
+		t.Fatalf("Marshal(default) error = %v", err)
+	}
+	request = httptest.NewRequest(http.MethodPut, "/packs/builtin/contents", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("default PUT status = %d, body = %s, want 403", response.Code, response.Body.String())
+	}
+}
+
+func TestPromptPacksHandlerUpdatesOnlyLocalPackMetadata(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	store := newPromptPackHandlerTestStore(t)
+	if _, err := store.CreatePack(t.Context(), promptpack.Pack{
+		ID:          "company.handler-metadata",
+		Name:        "Before",
+		Description: "Before description",
+	}); err != nil {
+		t.Fatalf("CreatePack() error = %v", err)
+	}
+	handler := NewPromptPacks(store)
+	router := gin.New()
+	router.PATCH("/packs/:id", handler.HandlePatchPack)
+
+	requestBody := []byte(`{"name":"After","description":"After description"}`)
+	request := httptest.NewRequest(http.MethodPatch, "/packs/company.handler-metadata", bytes.NewReader(requestBody))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("PATCH local status = %d, body = %s", response.Code, response.Body.String())
+	}
+	updated, err := store.GetPack(t.Context(), "company.handler-metadata")
+	if err != nil {
+		t.Fatalf("GetPack(local) error = %v", err)
+	}
+	if updated.Name != "After" || updated.Description != "After description" {
+		t.Fatalf("updated = %#v, want patched metadata", updated)
+	}
+
+	request = httptest.NewRequest(http.MethodPatch, "/packs/builtin", bytes.NewReader(requestBody))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("PATCH default status = %d, body = %s, want 403", response.Code, response.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodPatch, "/packs/company.handler-metadata", strings.NewReader(`{"name":"Incomplete"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("PATCH incomplete status = %d, body = %s, want 400", response.Code, response.Body.String())
+	}
+}
+
 func TestPromptPacksHandlerCopiesEntriesAndReturnsPackContents(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	store := newPromptPackHandlerTestStore(t)
@@ -218,7 +326,7 @@ func TestPromptPacksHandlerForksDefaultPackAndRejectsDirectExport(t *testing.T) 
 	request = httptest.NewRequest(http.MethodGet, "/packs/builtin/export", nil)
 	response = httptest.NewRecorder()
 	router.ServeHTTP(response, request)
-	if response.Code != http.StatusBadRequest {
+	if response.Code != http.StatusForbidden {
 		t.Fatalf("default export status = %d, body = %s", response.Code, response.Body.String())
 	}
 }

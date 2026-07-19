@@ -148,27 +148,26 @@ func TestAPIHandler(t *testing.T) {
 			!strings.Contains(body, `"type":"image"`) {
 			t.Fatalf("body = %s, want filtered prompt library entries", body)
 		}
+		if strings.Contains(body, `"prompt":`) {
+			t.Fatalf("body = %s, prompt list must not include detail content", body)
+		}
+
+		detail := requestJSON(t, handler, http.MethodGet, "/api/v1/prompt-presets/character-multi-view", "")
+		defer detail.Body.Close()
+		if detail.StatusCode != http.StatusOK || !strings.Contains(readBody(t, detail.Body), `"prompt":`) {
+			t.Fatalf("detail status code = %d, want prompt detail", detail.StatusCode)
+		}
 
 		update := requestJSON(t, handler, http.MethodPut, "/api/v1/prompt-presets/character-multi-view", `{"id":"character-multi-view","name":"自定义多视图","category":"extra","type":"image","prompt":"用户覆盖提示词"}`)
 		defer update.Body.Close()
-		if update.StatusCode != http.StatusOK {
-			t.Fatalf("update status code = %d, want %d: %s", update.StatusCode, http.StatusOK, readBody(t, update.Body))
-		}
-		updateBody := readBody(t, update.Body)
-		if !strings.Contains(updateBody, `"source":"user"`) || !strings.Contains(updateBody, `"builtin":true`) {
-			t.Fatalf("body = %s, want built-in prompt saved as user override", updateBody)
+		if update.StatusCode != http.StatusForbidden {
+			t.Fatalf("update status code = %d, want %d: %s", update.StatusCode, http.StatusForbidden, readBody(t, update.Body))
 		}
 
 		reset := requestJSON(t, handler, http.MethodPost, "/api/v1/prompt-presets/character-multi-view/reset", "")
 		defer reset.Body.Close()
-		if reset.StatusCode != http.StatusOK {
-			t.Fatalf("reset status code = %d, want %d: %s", reset.StatusCode, http.StatusOK, readBody(t, reset.Body))
-		}
-		resetBody := readBody(t, reset.Body)
-		if !strings.Contains(resetBody, `"source":"pack"`) ||
-			!strings.Contains(resetBody, `"name":"多视图设定图"`) ||
-			strings.Contains(resetBody, `用户覆盖提示词`) {
-			t.Fatalf("body = %s, want reset to package default", resetBody)
+		if reset.StatusCode != http.StatusForbidden {
+			t.Fatalf("reset status code = %d, want %d: %s", reset.StatusCode, http.StatusForbidden, readBody(t, reset.Body))
 		}
 	})
 

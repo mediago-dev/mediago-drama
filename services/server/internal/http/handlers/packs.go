@@ -45,7 +45,9 @@ type forkPromptPackRequest struct {
 }
 
 type updatePromptPackRequest struct {
-	Enabled *bool `json:"enabled"`
+	Enabled     *bool   `json:"enabled"`
+	Name        *string `json:"name"`
+	Description *string `json:"description"`
 }
 
 type copyPromptPackEntriesRequest struct {
@@ -82,6 +84,12 @@ type promptPackCategoryRequest struct {
 
 type deletePromptPackCategoryRequest struct {
 	ReplacementCategoryID string `json:"replacementCategoryId"`
+}
+
+type savePromptPackDraftRequest struct {
+	BaseRevision string                `json:"baseRevision"`
+	Entries      []promptpack.Entry    `json:"entries"`
+	Categories   []promptpack.Category `json:"categories"`
 }
 
 type deletePromptPackResponse struct {
@@ -130,6 +138,7 @@ func (handler PromptPacks) HandleCreatePack(context *gin.Context) {
 // @Param payload body SwaggerObject true "Fork metadata"
 // @Success 200 {object} SwaggerEnvelope
 // @Failure 400 {object} SwaggerEnvelope
+// @Failure 403 {object} SwaggerEnvelope
 // @Failure 404 {object} SwaggerEnvelope
 // @Failure 500 {object} SwaggerEnvelope
 // @Router /api/v1/packs/{id}/fork [post]
@@ -245,6 +254,43 @@ func (handler PromptPacks) HandleListPacks(context *gin.Context) {
 // @Router /api/v1/packs/{id}/contents [get]
 func (handler PromptPacks) HandleGetPackContents(context *gin.Context) {
 	contents, err := handler.store.GetPackContents(context.Request.Context(), context.Param("id"))
+	if err != nil {
+		writePromptPackError(context, err)
+		return
+	}
+	httpresponse.OK(context, contents)
+}
+
+// HandlePutPackContents godoc
+// @Summary 原子保存技能包草稿
+// @Description 使用内容 revision 校验并一次性保存本地技能包的完整草稿。
+// @Tags Skill Packs
+// @Accept json
+// @Produce json
+// @Param id path string true "Target pack ID"
+// @Param payload body SwaggerObject true "Complete draft contents"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 403 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 409 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/packs/{id}/contents [put]
+func (handler PromptPacks) HandlePutPackContents(context *gin.Context) {
+	payload, err := decodeJSON[savePromptPackDraftRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	contents, err := handler.store.SavePackDraft(
+		context.Request.Context(),
+		context.Param("id"),
+		promptpack.SavePackDraftInput{
+			BaseRevision: payload.BaseRevision,
+			Entries:      payload.Entries,
+			Categories:   payload.Categories,
+		},
+	)
 	if err != nil {
 		writePromptPackError(context, err)
 		return
@@ -551,7 +597,7 @@ func (handler PromptPacks) HandleInstallPack(context *gin.Context) {
 
 // HandlePatchPack godoc
 // @Summary 更新技能包
-// @Description 启用或禁用一个技能包。
+// @Description 启用或禁用一个技能包，或修改本地技能包的名称和描述。
 // @Tags Skill Packs
 // @Accept json
 // @Produce json
@@ -559,6 +605,7 @@ func (handler PromptPacks) HandleInstallPack(context *gin.Context) {
 // @Param payload body SwaggerObject true "Patch payload"
 // @Success 200 {object} SwaggerEnvelope
 // @Failure 400 {object} SwaggerEnvelope
+// @Failure 403 {object} SwaggerEnvelope
 // @Failure 404 {object} SwaggerEnvelope
 // @Failure 500 {object} SwaggerEnvelope
 // @Router /api/v1/packs/{id} [patch]
@@ -568,11 +615,24 @@ func (handler PromptPacks) HandlePatchPack(context *gin.Context) {
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
 		return
 	}
-	if payload.Enabled == nil {
-		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, errors.New("enabled is required"))
+	hasMetadata := payload.Name != nil || payload.Description != nil
+	if payload.Enabled != nil && hasMetadata {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, errors.New("enabled and metadata cannot be updated together"))
 		return
 	}
-	pack, err := handler.store.SetEnabled(context.Request.Context(), context.Param("id"), *payload.Enabled)
+	var pack promptpack.Pack
+	if payload.Enabled != nil {
+		pack, err = handler.store.SetEnabled(context.Request.Context(), context.Param("id"), *payload.Enabled)
+	} else if payload.Name != nil && payload.Description != nil {
+		pack, err = handler.store.UpdatePackMetadata(
+			context.Request.Context(),
+			context.Param("id"),
+			promptpack.UpdatePackMetadataInput{Name: *payload.Name, Description: *payload.Description},
+		)
+	} else {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, errors.New("enabled or complete metadata is required"))
+		return
+	}
 	if err != nil {
 		writePromptPackError(context, err)
 		return
@@ -653,6 +713,8 @@ func writePromptPackError(context *gin.Context, err error) {
 		)
 	case errors.Is(err, promptpack.ErrInvalidPack):
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+	case errors.Is(err, promptpack.ErrPackConflict):
+		httpresponse.ErrorFromStatus(context, http.StatusConflict, err)
 	case errors.Is(err, promptpack.ErrPackExists), errors.Is(err, promptpack.ErrEntryExists), errors.Is(err, promptpack.ErrCategoryExists):
 		httpresponse.ErrorFromStatus(context, http.StatusConflict, err)
 	case errors.Is(err, promptpack.ErrPackReadonly):

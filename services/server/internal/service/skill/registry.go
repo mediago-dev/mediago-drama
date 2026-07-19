@@ -70,6 +70,10 @@ type PackStore interface {
 	HideEntry(ctx context.Context, kind instructionpack.Kind, slug string) error
 }
 
+type packVisibilityStore interface {
+	ListPacks(ctx context.Context) ([]promptpack.Pack, error)
+}
+
 // Registry loads skills from the prompt pack store.
 type Registry struct {
 	store PackStore
@@ -153,6 +157,34 @@ func (registry *Registry) List(ctx context.Context) ([]SkillMeta, error) {
 	return metas, nil
 }
 
+// ListBrowsable returns the skill index shown in management UIs. Imported pack
+// skills expose only identity and ownership fields so their names can be shown
+// as disabled rows without leaking descriptions or other content metadata.
+func (registry *Registry) ListBrowsable(ctx context.Context) ([]SkillMeta, error) {
+	metas, err := registry.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	importedPackIDs, err := registry.importedPackIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	browsable := make([]SkillMeta, 0, len(metas))
+	for _, meta := range metas {
+		if _, imported := importedPackIDs[meta.PackID]; imported {
+			meta.Description = ""
+			meta.Overridden = false
+			meta.TemplateID = ""
+			meta.Hint = nil
+			meta.ReleaseID = ""
+			meta.SourcePackageID = ""
+			meta.SourceReleaseID = ""
+		}
+		browsable = append(browsable, meta)
+	}
+	return browsable, nil
+}
+
 // Get returns one skill by name, including frontmatter-free body content.
 func (registry *Registry) Get(ctx context.Context, name string) (Skill, error) {
 	if registry == nil || registry.store == nil {
@@ -173,6 +205,46 @@ func (registry *Registry) Get(ctx context.Context, name string) (Skill, error) {
 // GetRaw returns one skill by name, including the full raw Markdown file.
 func (registry *Registry) GetRaw(ctx context.Context, name string) (Skill, error) {
 	return registry.Get(ctx, name)
+}
+
+// GetBrowsable returns one skill only when its source pack is visible to the
+// management UI. Imported pack skills remain accessible to runtime callers
+// through Get and GetRaw.
+func (registry *Registry) GetBrowsable(ctx context.Context, name string) (Skill, error) {
+	item, err := registry.GetRaw(ctx, name)
+	if err != nil {
+		return Skill{}, err
+	}
+	importedPackIDs, err := registry.importedPackIDs(ctx)
+	if err != nil {
+		return Skill{}, err
+	}
+	if _, imported := importedPackIDs[item.PackID]; !imported {
+		return item, nil
+	}
+	available, listErr := registry.ListBrowsable(ctx)
+	if listErr != nil {
+		return Skill{}, listErr
+	}
+	return Skill{}, NotFoundError{Name: strings.TrimSpace(name), Available: available}
+}
+
+func (registry *Registry) importedPackIDs(ctx context.Context) (map[string]struct{}, error) {
+	store, ok := registry.store.(packVisibilityStore)
+	if !ok {
+		return nil, errors.New("skill registry store does not support pack visibility")
+	}
+	packs, err := store.ListPacks(ctx)
+	if err != nil {
+		return nil, err
+	}
+	importedPackIDs := make(map[string]struct{})
+	for _, pack := range packs {
+		if pack.Source == "imported" {
+			importedPackIDs[pack.ID] = struct{}{}
+		}
+	}
+	return importedPackIDs, nil
 }
 
 // Save validates and writes an existing skill as a user override.

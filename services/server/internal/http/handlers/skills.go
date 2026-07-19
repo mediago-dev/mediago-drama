@@ -67,7 +67,7 @@ type deleteSkillResponse struct {
 // @Failure 500 {object} SwaggerEnvelope
 // @Router /api/v1/skills [get]
 func (handler Skills) HandleListSkills(context *gin.Context) {
-	metas, err := handler.registry.List(context.Request.Context())
+	metas, err := handler.registry.ListBrowsable(context.Request.Context())
 	if err != nil {
 		httpresponse.Fail(context, http.StatusInternalServerError, "internal error", err)
 		return
@@ -86,7 +86,7 @@ func (handler Skills) HandleListSkills(context *gin.Context) {
 // @Failure 500 {object} SwaggerEnvelope
 // @Router /api/v1/skills/{name} [get]
 func (handler Skills) HandleGetSkill(context *gin.Context) {
-	item, err := handler.registry.GetRaw(context.Request.Context(), context.Param("name"))
+	item, err := handler.registry.GetBrowsable(context.Request.Context(), context.Param("name"))
 	if err != nil {
 		writeSkillError(context, err)
 		return

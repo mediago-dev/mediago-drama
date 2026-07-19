@@ -25,15 +25,21 @@ export interface PromptPreset {
 	overridden?: boolean;
 }
 
+export type PromptPresetIndex = Omit<
+	PromptPreset,
+	"prompt" | "releaseId" | "sourcePackageId" | "sourceReleaseId"
+>;
+
 export interface PromptPresetFilter {
 	category?: PromptPresetCategory;
 	type?: PromptPresetType;
 }
 
 export const promptPresetsKey = "/prompt-presets";
+export const promptPresetIndexKey = `${promptPresetsKey}#index`;
 
 interface PromptPresetsResponse {
-	prompts: PromptPreset[];
+	prompts: PromptPresetIndex[];
 }
 
 export type PromptPresetInput = Pick<PromptPreset, "id" | "name" | "category" | "prompt"> &
@@ -45,20 +51,29 @@ const promptPresetResource = createResource<
 	PromptPresetInput,
 	PromptPresetInput,
 	PromptPresetsResponse,
-	PromptPreset[]
+	PromptPresetIndex[]
 >(promptPresetsKey, {
 	key: promptPresetsKey,
 	selectList: (response) => response.prompts,
 });
 
-export const listPromptPresets = async (
+export const listPromptPresetIndex = async (
 	filter: PromptPresetFilter = {},
 	config?: AxiosRequestConfig,
-): Promise<PromptPreset[]> =>
+): Promise<PromptPresetIndex[]> =>
 	promptPresetResource.list({
 		...config,
 		params: { ...config?.params, ...filter },
 	});
+
+export const listPromptPresets = async (
+	filter: PromptPresetFilter = {},
+	config?: AxiosRequestConfig,
+): Promise<PromptPreset[]> => {
+	const index = await listPromptPresetIndex(filter, config);
+	const details = await Promise.allSettled(index.map((entry) => getPromptPreset(entry.id)));
+	return details.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+};
 
 export const getPromptPreset = promptPresetResource.get;
 export const createPromptPreset = promptPresetResource.create;

@@ -1,13 +1,11 @@
 import type React from "react";
 import { extraPromptCategory } from "@/domains/generation/lib/prompt-categories";
 import type {
-	PromptPackCategory,
 	PromptPackEntry,
 	PromptPackEntryKind,
 	UpdatePromptPackEntryInput,
 } from "@/domains/settings/api/packs";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
-import { Badge } from "@/shared/components/ui/badge";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { SettingsMarkdownEditor } from "./SettingsMarkdownEditor";
 
@@ -19,48 +17,28 @@ export interface PromptPackEntryDraft {
 }
 
 interface PromptPackEntryEditorProps {
-	categories: PromptPackCategory[];
 	draft: PromptPackEntryDraft;
 	entry: PromptPackEntry;
 	error?: string;
 	isEditing: boolean;
-	isUpdatingCategory?: boolean;
-	onCategoryChange: (categoryID: string) => void;
 	onChange: (draft: PromptPackEntryDraft) => void;
 }
 
 export const PromptPackEntryEditor: React.FC<PromptPackEntryEditorProps> = ({
-	categories,
 	draft,
 	entry,
 	error,
 	isEditing,
-	isUpdatingCategory = false,
-	onCategoryChange,
 	onChange,
 }) => {
 	const updateDraft = (update: Partial<PromptPackEntryDraft>) => onChange({ ...draft, ...update });
-	const categoryOptions =
-		entry.kind === "prompt" && !categories.some((category) => category.id === draft.category)
-			? [
-					...categories,
-					{
-						id: draft.category,
-						label: draft.category || "未分类",
-						order: categories.length,
-						packId: entry.packId,
-						source: "user" as const,
-					},
-				]
-			: categories;
 
 	return (
 		<section className="h-full overflow-y-auto">
 			<div className="mx-auto w-full max-w-4xl px-10 pb-8 pt-5 xl:px-14">
-				{entry.kind === "prompt" ? (
-					<div className="flex items-center justify-between gap-4">
-						<Badge variant="outline">提示词</Badge>
-						{isEditing ? <span className="text-xs text-muted-foreground">技能包编辑中</span> : null}
+				{entry.kind === "prompt" && isEditing ? (
+					<div className="flex justify-end">
+						<span className="text-xs text-muted-foreground">技能包编辑中</span>
 					</div>
 				) : null}
 
@@ -69,12 +47,12 @@ export const PromptPackEntryEditor: React.FC<PromptPackEntryEditorProps> = ({
 					readOnly={!isEditing}
 					value={draft.name}
 					onChange={(event) => updateDraft({ name: event.target.value })}
-					className={`${entry.kind === "prompt" ? "mt-4 " : ""}w-full border-0 bg-transparent p-0 text-3xl font-semibold text-foreground outline-none placeholder:text-muted-foreground read-only:cursor-default`}
+					className={`${entry.kind === "prompt" && isEditing ? "mt-4 " : ""}w-full border-0 bg-transparent p-0 text-3xl font-semibold text-foreground outline-none placeholder:text-muted-foreground read-only:cursor-default`}
 					placeholder={entry.kind === "skill" ? "未命名 Skill" : "未命名提示词"}
 				/>
 
 				{entry.kind === "skill" ? (
-					<div className="mt-5 pb-5">
+					<div className="mt-5">
 						<label
 							className="block text-xs font-medium text-muted-foreground"
 							htmlFor="skill-description"
@@ -83,39 +61,15 @@ export const PromptPackEntryEditor: React.FC<PromptPackEntryEditorProps> = ({
 						</label>
 						<Textarea
 							id="skill-description"
+							rows={1}
 							readOnly={!isEditing}
 							value={draft.description}
 							onChange={(event) => updateDraft({ description: event.target.value })}
-							className="mt-2 min-h-16 resize-y border-0 bg-transparent px-0 text-sm leading-6 shadow-none focus-visible:ring-0 read-only:cursor-default read-only:resize-none"
+							className="mt-2 min-h-6 resize-none overflow-hidden border-0 bg-transparent px-0 py-0 text-sm leading-6 shadow-none [field-sizing:content] focus-visible:ring-0 read-only:cursor-default"
 							placeholder="简要说明这个 Skill 的用途"
 						/>
 					</div>
-				) : (
-					<div className="mt-5 border-b border-border pb-5">
-						<label
-							className="block text-xs font-medium text-muted-foreground"
-							htmlFor={`prompt-category-${entry.id}`}
-						>
-							分类
-						</label>
-						<select
-							id={`prompt-category-${entry.id}`}
-							disabled={isUpdatingCategory}
-							value={draft.category}
-							onChange={(event) => {
-								if (isEditing) updateDraft({ category: event.target.value });
-								else onCategoryChange(event.target.value);
-							}}
-							className="mt-2 h-9 w-full max-w-xs rounded-sm border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-100"
-						>
-							{categoryOptions.map((category) => (
-								<option key={category.id || "uncategorized"} value={category.id}>
-									{category.label}
-								</option>
-							))}
-						</select>
-					</div>
-				)}
+				) : null}
 
 				{error ? (
 					<Alert variant="destructive" className="mt-5">
@@ -123,17 +77,31 @@ export const PromptPackEntryEditor: React.FC<PromptPackEntryEditorProps> = ({
 					</Alert>
 				) : null}
 
-				<SettingsMarkdownEditor
-					ariaLabel={entry.kind === "skill" ? "编辑 Skill 内容" : "编辑提示词内容"}
-					className="mt-4 min-h-[32rem]"
-					editable={isEditing}
-					editorClassName="min-h-[28rem] pb-24"
-					placeholder={entry.kind === "skill" ? "开始编写 Skill..." : "开始编写提示词..."}
-					showToolbar
-					variant="document"
-					value={draft.body}
-					onChange={(body) => updateDraft({ body })}
-				/>
+				{entry.kind === "skill" ? (
+					<div className="mt-5">
+						<p className="text-xs font-medium text-muted-foreground">Skill 正文</p>
+						<SettingsMarkdownEditor
+							ariaLabel="编辑 Skill 内容"
+							className="mt-2 min-h-[32rem]"
+							editable={isEditing}
+							editorClassName="min-h-[28rem] pb-24"
+							placeholder="开始编写 Skill..."
+							showToolbar
+							variant="document"
+							value={draft.body}
+							onChange={(body) => updateDraft({ body })}
+						/>
+					</div>
+				) : (
+					<Textarea
+						aria-label="编辑提示词内容"
+						className="mt-4 min-h-[32rem] resize-y rounded-sm border-input bg-background px-4 py-3 text-sm leading-6 shadow-none read-only:cursor-default read-only:resize-none"
+						placeholder="开始编写提示词..."
+						readOnly={!isEditing}
+						value={draft.body}
+						onChange={(event) => updateDraft({ body: event.target.value })}
+					/>
+				)}
 			</div>
 		</section>
 	);

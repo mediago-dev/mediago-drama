@@ -47,6 +47,22 @@ type InstallProvenance struct {
 
 // ExportPack encodes one installed prompt pack as a complete .mgpack file.
 func (store *Service) ExportPack(ctx context.Context, packID string) (ExportedPack, error) {
+	if err := store.ensureSeeded(ctx); err != nil {
+		return ExportedPack{}, err
+	}
+	model, err := store.repo.GetPack(strings.TrimSpace(packID))
+	if repository.IsRecordNotFound(err) {
+		return ExportedPack{}, fmt.Errorf("%w: %s", ErrPackNotFound, strings.TrimSpace(packID))
+	}
+	if err != nil {
+		return ExportedPack{}, err
+	}
+	if err := rejectImportedPackManagement(model); err != nil {
+		return ExportedPack{}, err
+	}
+	if err := rejectReadonlyPackMutation(model); err != nil {
+		return ExportedPack{}, err
+	}
 	return store.ExportPackSnapshot(ctx, packID)
 }
 
@@ -192,6 +208,23 @@ func (store *Service) installData(ctx context.Context, fileName string, data []b
 	}
 	if provenance.PackageID != "" && provenance.PackageID != bundle.Manifest.ID {
 		return Pack{}, fmt.Errorf("%w: formal package id mismatch", ErrInvalidPack)
+	}
+	if provenance.PackageID != "" {
+		existing, existingErr := store.repo.GetPack(bundle.Manifest.ID)
+		if existingErr == nil && normalizePackSource(existing.Source, existing.ID) == packSourceLocal {
+			// A reviewed release coming back to its existing authoring source is
+			// release metadata, not a third-party installation. Keep the local
+			// draft intact because it may have advanced while review was pending.
+			return store.RecordSubmittedRelease(
+				ctx,
+				bundle.Manifest.ID,
+				provenance.ReleaseID,
+				provenance.Version,
+			)
+		}
+		if existingErr != nil && !repository.IsRecordNotFound(existingErr) {
+			return Pack{}, existingErr
+		}
 	}
 	if provenance.Version != "" && provenance.Version != bundle.Manifest.Version {
 		bundle.Manifest.Version = provenance.Version

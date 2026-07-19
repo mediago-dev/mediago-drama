@@ -16,6 +16,167 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestPackContentsRevisionIsStableAndChangesWithEditableContent(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	pack, err := store.CreatePack(ctx, Pack{ID: "company.revision-pack", Name: "Revision Pack"})
+	if err != nil {
+		t.Fatalf("CreatePack() error = %v", err)
+	}
+	if _, err := store.CreatePackCategory(ctx, pack.ID, Category{ID: "style", Label: "风格", Order: 0}); err != nil {
+		t.Fatalf("CreatePackCategory() error = %v", err)
+	}
+	entry, err := store.CreatePackEntryDraft(ctx, pack.ID, instructionpack.KindPrompt, "cinematic", "style")
+	if err != nil {
+		t.Fatalf("CreatePackEntryDraft() error = %v", err)
+	}
+	entry, err = store.SavePackEntry(ctx, pack.ID, entry.ID, EntryUpdate{
+		Name: "电影感", Body: "cinematic", Metadata: map[string]any{"category": "style", "nested": map[string]any{"b": 2, "a": 1}},
+	})
+	if err != nil {
+		t.Fatalf("SavePackEntry() error = %v", err)
+	}
+
+	first, err := store.GetPackContents(ctx, pack.ID)
+	if err != nil {
+		t.Fatalf("GetPackContents() error = %v", err)
+	}
+	second, err := store.GetPackContents(ctx, pack.ID)
+	if err != nil {
+		t.Fatalf("GetPackContents() second error = %v", err)
+	}
+	if first.Revision == "" || second.Revision != first.Revision {
+		t.Fatalf("revisions first=%q second=%q, want stable non-empty revision", first.Revision, second.Revision)
+	}
+
+	if _, err := store.SavePackEntry(ctx, pack.ID, entry.ID, EntryUpdate{
+		Name: "电影感", Body: "updated cinematic", Metadata: map[string]any{"nested": map[string]any{"a": 1, "b": 2}, "category": "style"},
+	}); err != nil {
+		t.Fatalf("SavePackEntry(updated) error = %v", err)
+	}
+	updated, err := store.GetPackContents(ctx, pack.ID)
+	if err != nil {
+		t.Fatalf("GetPackContents(updated) error = %v", err)
+	}
+	if updated.Revision == first.Revision {
+		t.Fatalf("updated revision = %q, want different from %q", updated.Revision, first.Revision)
+	}
+}
+
+func TestPackContentsRevisionIgnoresSliceAndMetadataMapOrder(t *testing.T) {
+	entries := []Entry{
+		{ID: "entry-b", PackID: "company.revision-order", Kind: instructionpack.KindPrompt, Slug: "b", Name: "B", Body: "B", Metadata: map[string]any{"z": 2, "a": 1}},
+		{ID: "entry-a", PackID: "company.revision-order", Kind: instructionpack.KindSkill, Slug: "a", Name: "A", Body: "A"},
+	}
+	categories := []Category{
+		{ID: "second", PackID: "company.revision-order", Label: "Second", Order: 1, Source: entrySourceUser},
+		{ID: "first", PackID: "company.revision-order", Label: "First", Order: 0, Source: entrySourceUser},
+	}
+	first, err := revisionForPackContents(entries, categories)
+	if err != nil {
+		t.Fatalf("revisionForPackContents() error = %v", err)
+	}
+	entries[0].Metadata = map[string]any{"a": 1, "z": 2}
+	second, err := revisionForPackContents([]Entry{entries[1], entries[0]}, []Category{categories[1], categories[0]})
+	if err != nil {
+		t.Fatalf("revisionForPackContents(reordered) error = %v", err)
+	}
+	if first != second {
+		t.Fatalf("revisions first=%q second=%q, want order-independent digest", first, second)
+	}
+}
+
+func TestSavePackDraftAppliesMixedChangesAtomically(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	pack, err := store.CreatePack(ctx, Pack{ID: "company.atomic-draft", Name: "Atomic Draft"})
+	if err != nil {
+		t.Fatalf("CreatePack() error = %v", err)
+	}
+	if _, err := store.CreatePackCategory(ctx, pack.ID, Category{ID: "old", Label: "旧分组", Order: 0}); err != nil {
+		t.Fatalf("CreatePackCategory() error = %v", err)
+	}
+	old, err := store.CreatePackEntryDraft(ctx, pack.ID, instructionpack.KindPrompt, "old-prompt", "old")
+	if err != nil {
+		t.Fatalf("CreatePackEntryDraft(old) error = %v", err)
+	}
+	before, err := store.GetPackContents(ctx, pack.ID)
+	if err != nil {
+		t.Fatalf("GetPackContents() error = %v", err)
+	}
+	newEntry := Entry{
+		ID:   instructionpack.EntryID(pack.ID, instructionpack.KindSkill, "new-skill"),
+		Kind: instructionpack.KindSkill, Slug: "new-skill", Title: "新 Skill", Description: "草稿内容", Body: "body",
+	}
+	after, err := store.SavePackDraft(ctx, pack.ID, SavePackDraftInput{
+		BaseRevision: before.Revision,
+		Entries:      []Entry{newEntry},
+		Categories:   []Category{{ID: "new", Label: "新分组", Order: 0}},
+	})
+	if err != nil {
+		t.Fatalf("SavePackDraft() error = %v", err)
+	}
+	if after.Revision == before.Revision {
+		t.Fatalf("revision = %q, want change after atomic save", after.Revision)
+	}
+	if len(after.Entries) != 1 || after.Entries[0].Slug != "new-skill" || strings.TrimSpace(after.Entries[0].Body) != "body" {
+		t.Fatalf("entries = %#v, want only new-skill", after.Entries)
+	}
+	if len(after.Categories) != 1 || after.Categories[0].ID != "new" {
+		t.Fatalf("categories = %#v, want only new", after.Categories)
+	}
+	if _, err := store.getPackEntry(pack.ID, old.ID); !errors.Is(err, ErrEntryNotFound) {
+		t.Fatalf("getPackEntry(deleted) error = %v, want ErrEntryNotFound", err)
+	}
+}
+
+func TestSavePackDraftRejectsStaleRevisionWithoutPartialWrites(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	pack, err := store.CreatePack(ctx, Pack{ID: "company.conflict-draft", Name: "Conflict Draft"})
+	if err != nil {
+		t.Fatalf("CreatePack() error = %v", err)
+	}
+	before, err := store.GetPackContents(ctx, pack.ID)
+	if err != nil {
+		t.Fatalf("GetPackContents() error = %v", err)
+	}
+	if _, err := store.CreatePackCategory(ctx, pack.ID, Category{ID: "newer", Label: "服务器新内容", Order: 0}); err != nil {
+		t.Fatalf("CreatePackCategory() error = %v", err)
+	}
+	_, err = store.SavePackDraft(ctx, pack.ID, SavePackDraftInput{
+		BaseRevision: before.Revision,
+		Categories:   []Category{{ID: "stale", Label: "过期草稿", Order: 0}},
+	})
+	if !errors.Is(err, ErrPackConflict) {
+		t.Fatalf("SavePackDraft() error = %v, want ErrPackConflict", err)
+	}
+	after, err := store.GetPackContents(ctx, pack.ID)
+	if err != nil {
+		t.Fatalf("GetPackContents(after conflict) error = %v", err)
+	}
+	if len(after.Categories) != 1 || after.Categories[0].ID != "newer" {
+		t.Fatalf("categories = %#v, want newer server state unchanged", after.Categories)
+	}
+}
+
+func TestSavePackDraftRejectsReadonlyPacks(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	contents, err := store.GetPackContents(ctx, DefaultPackID)
+	if err != nil {
+		t.Fatalf("GetPackContents(default) error = %v", err)
+	}
+	_, err = store.SavePackDraft(ctx, DefaultPackID, SavePackDraftInput{
+		BaseRevision: contents.Revision,
+		Entries:      contents.Entries,
+		Categories:   contents.Categories,
+	})
+	if !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("SavePackDraft(default) error = %v, want ErrPackReadonly", err)
+	}
+}
+
 func TestServiceSeedsBuiltinPackIdempotently(t *testing.T) {
 	store := newTestService(t)
 	first, err := store.ListEntries(context.Background(), instructionpack.KindSkill)
@@ -70,6 +231,12 @@ func TestServiceCanDisableDefaultPack(t *testing.T) {
 	if len(after) != 0 {
 		t.Fatalf("entries after disabling default = %d, want none", len(after))
 	}
+	if err := store.Uninstall(ctx, DefaultPackID); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("Uninstall(default) error = %v, want ErrPackReadonly", err)
+	}
+	if _, err := store.GetPack(ctx, DefaultPackID); err != nil {
+		t.Fatalf("GetPack(default) after rejected uninstall error = %v", err)
+	}
 }
 
 func TestServiceCreatesLocalAuthoringPackAndExportsV1(t *testing.T) {
@@ -112,6 +279,95 @@ func TestServiceCreatesLocalAuthoringPackAndExportsV1(t *testing.T) {
 	}
 	if recorded.ReleaseID != "release-1" || recorded.Version != "1.0.0" {
 		t.Fatalf("recorded = %#v, want latest release provenance", recorded)
+	}
+}
+
+func TestServiceUpdatesOnlyLocalPackMetadata(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	local, err := store.CreatePack(ctx, Pack{
+		ID:          "company.metadata-pack",
+		Name:        "Before",
+		Description: "Old description",
+	})
+	if err != nil {
+		t.Fatalf("CreatePack() error = %v", err)
+	}
+	updated, err := store.UpdatePackMetadata(ctx, local.ID, UpdatePackMetadataInput{
+		Name:        " Updated name ",
+		Description: " Updated description ",
+	})
+	if err != nil {
+		t.Fatalf("UpdatePackMetadata(local) error = %v", err)
+	}
+	if updated.Name != "Updated name" || updated.Description != "Updated description" {
+		t.Fatalf("updated = %#v, want trimmed metadata", updated)
+	}
+	if _, err := store.UpdatePackMetadata(ctx, DefaultPackID, UpdatePackMetadataInput{
+		Name: "Changed default",
+	}); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("UpdatePackMetadata(default) error = %v, want ErrPackReadonly", err)
+	}
+	model, err := store.repo.GetPack(local.ID)
+	if err != nil {
+		t.Fatalf("GetPack(local) error = %v", err)
+	}
+	model.Source = packSourceImported
+	if err := store.repo.UpsertPack(model); err != nil {
+		t.Fatalf("UpsertPack(imported) error = %v", err)
+	}
+	if _, err := store.UpdatePackMetadata(ctx, local.ID, UpdatePackMetadataInput{
+		Name: "Changed imported",
+	}); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("UpdatePackMetadata(imported) error = %v, want ErrPackReadonly", err)
+	}
+}
+
+func TestServiceFormalReimportPreservesExistingLocalAuthoringPack(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	local, err := store.CreatePack(ctx, Pack{
+		ID: "com.example.test", Name: "My Test Pack", Version: "0.9.0", Description: "Local draft",
+	})
+	if err != nil {
+		t.Fatalf("CreatePack() error = %v", err)
+	}
+	draft, err := store.CreatePackEntryDraft(ctx, local.ID, instructionpack.KindSkill, "test-skill", "")
+	if err != nil {
+		t.Fatalf("CreatePackEntryDraft() error = %v", err)
+	}
+	if _, err := store.SavePackEntry(ctx, local.ID, draft.ID, EntryUpdate{
+		Name: "Local Skill", Description: "Locally authored", Body: "local working copy",
+	}); err != nil {
+		t.Fatalf("SavePackEntry() error = %v", err)
+	}
+	raw, err := os.ReadFile(writeTestMGPack(t))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	reimported, err := store.InstallDataWithProvenance(ctx, "reviewed.mgpack", raw, InstallProvenance{
+		PackageID: local.ID, ReleaseID: "release-reviewed", Version: "1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("InstallDataWithProvenance() error = %v", err)
+	}
+	if reimported.Source != packSourceLocal || reimported.Name != local.Name || reimported.Description != local.Description {
+		t.Fatalf("reimported = %#v, want existing local ownership and metadata", reimported)
+	}
+	if reimported.ReleaseID != "release-reviewed" || reimported.Version != "1.0.0" || reimported.Origin != "" {
+		t.Fatalf("reimported = %#v, want reviewed release linked without imported origin", reimported)
+	}
+	contents, err := store.GetPackContents(ctx, local.ID)
+	if err != nil {
+		t.Fatalf("GetPackContents() error = %v", err)
+	}
+	preserved, ok := findEntry(contents.Entries, "test-skill")
+	if !ok || preserved.Source != entrySourceUser || strings.TrimSpace(preserved.Body) != "local working copy" {
+		t.Fatalf("preserved entry = %#v, want untouched local working copy", preserved)
+	}
+	if _, err := store.ExportPack(ctx, local.ID); err != nil {
+		t.Fatalf("ExportPack(reimported local) error = %v", err)
 	}
 }
 
@@ -200,26 +456,16 @@ func TestServiceReturnsAndManagesPackScopedCategories(t *testing.T) {
 		t.Fatalf("pack categories leaked across packs: local=%#v default=%#v", contents.Categories, defaultContents.Categories)
 	}
 	packageCategory := defaultContents.Categories[0]
-	updatedPackageCategory, err := store.UpdatePackCategory(ctx, DefaultPackID, packageCategory.ID, Category{
+	_, err = store.UpdatePackCategory(ctx, DefaultPackID, packageCategory.ID, Category{
 		Label: packageCategory.Label + " changed",
 		Order: packageCategory.Order,
 	})
-	if err != nil {
-		t.Fatalf("UpdatePackCategory(package) error = %v", err)
-	}
-	if updatedPackageCategory.Label != packageCategory.Label+" changed" || updatedPackageCategory.Source != entrySourcePack {
-		t.Fatalf("updated package category = %#v, want editable package-backed category", updatedPackageCategory)
+	if !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("UpdatePackCategory(default) error = %v, want ErrPackReadonly", err)
 	}
 	replacementCategory := defaultContents.Categories[1]
-	if err := store.DeletePackCategory(ctx, DefaultPackID, packageCategory.ID, replacementCategory.ID); err != nil {
-		t.Fatalf("DeletePackCategory(package) error = %v", err)
-	}
-	defaultContents, err = store.GetPackContents(ctx, DefaultPackID)
-	if err != nil {
-		t.Fatalf("GetPackContents(default after delete) error = %v", err)
-	}
-	if hasCategory(defaultContents.Categories, packageCategory.ID, updatedPackageCategory.Label) {
-		t.Fatalf("categories after package delete = %#v, want %q removed", defaultContents.Categories, packageCategory.ID)
+	if err := store.DeletePackCategory(ctx, DefaultPackID, packageCategory.ID, replacementCategory.ID); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("DeletePackCategory(default) error = %v, want ErrPackReadonly", err)
 	}
 }
 
@@ -307,18 +553,15 @@ func TestServiceCreatesPackDraftEntriesBeforeContentIsWritten(t *testing.T) {
 		t.Fatalf("ExportPack(complete entries) error = %v", err)
 	}
 
-	builtinDraft, err := store.CreatePackEntryDraft(
+	_, err = store.CreatePackEntryDraft(
 		ctx,
 		DefaultPackID,
 		instructionpack.KindPrompt,
 		"builtin-user-draft",
 		"",
 	)
-	if err != nil {
-		t.Fatalf("CreatePackEntryDraft(default) error = %v", err)
-	}
-	if builtinDraft.PackID != DefaultPackID || builtinDraft.Source != entrySourceUser {
-		t.Fatalf("builtin draft = %#v, want a user overlay in the default pack", builtinDraft)
+	if !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("CreatePackEntryDraft(default) error = %v, want ErrPackReadonly", err)
 	}
 }
 
@@ -340,21 +583,12 @@ func TestServiceRemovesExactFormalPackEntryAsHiddenOverlay(t *testing.T) {
 		t.Fatal("default character-writer entry not found")
 	}
 
-	if err := store.RemoveEntry(ctx, DefaultPackID, target.ID); err != nil {
-		t.Fatalf("RemoveEntry(default) error = %v", err)
-	}
-	hiddenContents, err := store.GetPackContents(ctx, DefaultPackID)
-	if err != nil {
-		t.Fatalf("GetPackContents(hidden default) error = %v", err)
-	}
-	for _, entry := range hiddenContents.Entries {
-		if entry.ID == target.ID {
-			t.Fatalf("hidden entry %q is still visible", target.ID)
-		}
+	if err := store.RemoveEntry(ctx, DefaultPackID, target.ID); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("RemoveEntry(default) error = %v, want ErrPackReadonly", err)
 	}
 
-	if _, err := store.ResetPack(ctx, DefaultPackID); err != nil {
-		t.Fatalf("ResetPack(default) error = %v", err)
+	if _, err := store.ResetPack(ctx, DefaultPackID); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("ResetPack(default) error = %v, want ErrPackReadonly", err)
 	}
 	restoredContents, err := store.GetPackContents(ctx, DefaultPackID)
 	if err != nil {
@@ -656,9 +890,12 @@ func TestServiceFormalPackExportsUnprotectedV1Snapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstallDataWithProvenance() error = %v", err)
 	}
-	exported, err := store.ExportPack(ctx, installed.ID)
+	if _, err := store.ExportPack(ctx, installed.ID); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("ExportPack() error = %v, want ErrPackReadonly", err)
+	}
+	exported, err := store.ExportPackSnapshot(ctx, installed.ID)
 	if err != nil {
-		t.Fatalf("ExportPack() error = %v", err)
+		t.Fatalf("ExportPackSnapshot() error = %v", err)
 	}
 	archive, err := codec.Decode(exported.Data)
 	if err != nil {
@@ -670,9 +907,6 @@ func TestServiceFormalPackExportsUnprotectedV1Snapshot(t *testing.T) {
 	}
 	if exportedBundle.Manifest.ID != installed.ID {
 		t.Fatalf("exported package id = %q, want %q", exportedBundle.Manifest.ID, installed.ID)
-	}
-	if _, err := store.ExportPackSnapshot(ctx, installed.ID); err != nil {
-		t.Fatalf("ExportPackSnapshot() error = %v", err)
 	}
 	versioned, err := store.ExportPackSnapshotAtVersion(ctx, installed.ID, "1.0.7")
 	if err != nil {
@@ -717,17 +951,104 @@ func TestServiceStacksInstalledPackOnDefault(t *testing.T) {
 	}
 }
 
-func TestServiceHideEntryPersistsAcrossBuiltinSeed(t *testing.T) {
+func TestServiceImportedPackManagementAccess(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	installed, err := store.InstallPath(ctx, writeTestMGPack(t))
+	if err != nil {
+		t.Fatalf("InstallPath() error = %v", err)
+	}
+	entries, err := store.ListEntries(ctx, instructionpack.KindSkill)
+	if err != nil {
+		t.Fatalf("ListEntries() error = %v", err)
+	}
+	entry, ok := findEntry(entries, "test-skill")
+	if !ok {
+		t.Fatalf("entries = %#v, want imported test-skill available to runtime", entries)
+	}
+	local, err := store.CreatePack(ctx, Pack{ID: "local.import-copy-target", Name: "Copy Target"})
+	if err != nil {
+		t.Fatalf("CreatePack(copy target) error = %v", err)
+	}
+
+	tests := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "contents", run: func() error { _, err := store.GetPackContents(ctx, installed.ID); return err }},
+		{name: "export", run: func() error { _, err := store.ExportPack(ctx, installed.ID); return err }},
+		{name: "fork", run: func() error {
+			_, err := store.ForkPack(ctx, installed.ID, ForkPackInput{Name: "Copy", Version: "1.0.0"})
+			return err
+		}},
+		{name: "reset pack", run: func() error { _, err := store.ResetPack(ctx, installed.ID); return err }},
+		{name: "create entry", run: func() error {
+			_, err := store.CreatePackEntryDraft(ctx, installed.ID, instructionpack.KindSkill, "new-skill", "")
+			return err
+		}},
+		{name: "save entry", run: func() error {
+			_, err := store.SavePackEntry(ctx, installed.ID, entry.ID, EntryUpdate{Name: "Changed", Body: "Changed"})
+			return err
+		}},
+		{name: "reset entry", run: func() error { _, err := store.ResetPackEntry(ctx, installed.ID, entry.ID); return err }},
+		{name: "remove entry", run: func() error { return store.RemoveEntry(ctx, installed.ID, entry.ID) }},
+		{name: "copy entry as source", run: func() error {
+			_, err := store.CopyEntries(ctx, local.ID, []EntryReference{{
+				PackID: installed.ID, Kind: instructionpack.KindSkill, Slug: entry.Slug,
+			}})
+			return err
+		}},
+		{name: "legacy save entry", run: func() error {
+			_, err := store.SaveEntry(ctx, instructionpack.KindSkill, entry.Slug, Entry{
+				Name: "test-skill", Description: "Changed", Body: "Changed",
+			})
+			return err
+		}},
+		{name: "legacy reset entry", run: func() error {
+			_, err := store.ResetEntry(ctx, instructionpack.KindSkill, entry.Slug)
+			return err
+		}},
+		{name: "legacy hide entry", run: func() error { return store.HideEntry(ctx, instructionpack.KindSkill, entry.Slug) }},
+		{name: "create category", run: func() error {
+			_, err := store.CreatePackCategory(ctx, installed.ID, Category{ID: "new", Label: "New"})
+			return err
+		}},
+		{name: "update category", run: func() error {
+			_, err := store.UpdatePackCategory(ctx, installed.ID, "missing", Category{Label: "Changed"})
+			return err
+		}},
+		{name: "delete category", run: func() error {
+			return store.DeletePackCategory(ctx, installed.ID, "missing", "replacement")
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.run(); !errors.Is(err, ErrPackReadonly) {
+				t.Fatalf("operation error = %v, want ErrPackReadonly", err)
+			}
+		})
+	}
+
+	disabled, err := store.SetEnabled(ctx, installed.ID, false)
+	if err != nil {
+		t.Fatalf("SetEnabled(false) error = %v", err)
+	}
+	if disabled.Enabled {
+		t.Fatalf("SetEnabled(false) = %#v, want disabled imported pack", disabled)
+	}
+	if err := store.Uninstall(ctx, installed.ID); err != nil {
+		t.Fatalf("Uninstall() error = %v", err)
+	}
+}
+
+func TestServiceRejectsHidingDefaultEntryAcrossBuiltinSeed(t *testing.T) {
 	ctx := context.Background()
 	store := newTestService(t)
 	if _, err := store.GetEntry(ctx, instructionpack.KindPrompt, "image-character-concept"); err != nil {
 		t.Fatalf("GetEntry() before hide error = %v", err)
 	}
-	if err := store.HideEntry(ctx, instructionpack.KindPrompt, "image-character-concept"); err != nil {
-		t.Fatalf("HideEntry() error = %v", err)
-	}
-	if _, err := store.GetEntry(ctx, instructionpack.KindPrompt, "image-character-concept"); !errors.Is(err, ErrEntryNotFound) {
-		t.Fatalf("GetEntry() after hide error = %v, want ErrEntryNotFound", err)
+	if err := store.HideEntry(ctx, instructionpack.KindPrompt, "image-character-concept"); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("HideEntry() error = %v, want ErrPackReadonly", err)
 	}
 
 	store.seeded = false
@@ -735,8 +1056,8 @@ func TestServiceHideEntryPersistsAcrossBuiltinSeed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEntries() after reseed error = %v", err)
 	}
-	if _, ok := findEntry(entries, "image-character-concept"); ok {
-		t.Fatalf("entries = %#v, want hidden entry to survive reseed", entries)
+	if _, ok := findEntry(entries, "image-character-concept"); !ok {
+		t.Fatalf("entries = %#v, want readonly default entry to survive reseed", entries)
 	}
 }
 
@@ -758,19 +1079,6 @@ func TestServiceInstallsEncodedPackAndUninstalls(t *testing.T) {
 	entry, ok := findEntry(entries, "test-skill")
 	if !ok || entry.Source != entrySourcePack {
 		t.Fatalf("entries = %#v, want imported test-skill", entries)
-	}
-	if _, err := store.SavePackEntry(ctx, installed.ID, entry.ID, EntryUpdate{
-		Description: "Changed",
-		Body:        "Changed body",
-	}); err != nil {
-		t.Fatalf("SavePackEntry(imported skill) error = %v", err)
-	}
-	reset, err := store.ResetPackEntry(ctx, installed.ID, entry.ID)
-	if err != nil {
-		t.Fatalf("ResetPackEntry(imported skill) error = %v", err)
-	}
-	if reset.Source != entrySourcePack || reset.Description != "Test skill" || !strings.Contains(reset.Body, "Use this for tests.") {
-		t.Fatalf("reset = %#v, want imported pack default", reset)
 	}
 	if _, err := store.SetEnabled(ctx, installed.ID, false); err != nil {
 		t.Fatalf("SetEnabled(false) error = %v", err)
@@ -858,9 +1166,20 @@ func TestServiceSavePackEntryTargetsExactDuplicateSlug(t *testing.T) {
 func TestServiceExportsAndImportsFullMGPack(t *testing.T) {
 	ctx := context.Background()
 	source := newTestService(t)
-	installed, err := source.InstallPath(ctx, writeTestMGPack(t))
+	data, err := os.ReadFile(writeTestMGPack(t))
 	if err != nil {
-		t.Fatalf("InstallPath() error = %v", err)
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	installed, err := source.InstallDataWithProvenance(ctx, "test.mgpack", data, InstallProvenance{
+		PackageID: "com.example.test",
+		ReleaseID: "release-export-test",
+		Version:   "1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("InstallDataWithProvenance() error = %v", err)
+	}
+	if _, err := source.PromoteImportedPackToLocal(ctx, installed.ID); err != nil {
+		t.Fatalf("PromoteImportedPackToLocal() error = %v", err)
 	}
 	if _, err := source.SaveEntry(ctx, instructionpack.KindSkill, "test-skill", Entry{
 		Slug:        "test-skill",
@@ -985,18 +1304,14 @@ func TestServiceInstallsFormalReleaseWithProvenance(t *testing.T) {
 	if entry.SourcePackageID != pack.ID || entry.SourceReleaseID != "release-1" {
 		t.Fatalf("content provenance = %s/%s, want %s/release-1", entry.SourcePackageID, entry.SourceReleaseID, pack.ID)
 	}
-	updated, err := store.SavePackEntry(ctx, pack.ID, entry.ID, EntryUpdate{
+	if _, err := store.SavePackEntry(ctx, pack.ID, entry.ID, EntryUpdate{
 		Description: entry.Description,
 		Body:        "local edit",
-	})
-	if err != nil {
-		t.Fatalf("SavePackEntry() error = %v", err)
+	}); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("SavePackEntry(imported) error = %v, want ErrPackReadonly", err)
 	}
-	if updated.ReleaseID != "release-1" || updated.SourcePackageID != pack.ID || updated.SourceReleaseID != "release-1" {
-		t.Fatalf("updated provenance = %#v, want original formal source", updated)
-	}
-	if _, err := store.ExportPack(ctx, pack.ID); err != nil {
-		t.Fatalf("ExportPack(imported formal pack) error = %v", err)
+	if _, err := store.ExportPack(ctx, pack.ID); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("ExportPack(imported formal pack) error = %v, want ErrPackReadonly", err)
 	}
 	recovered, err := store.PromoteImportedPackToLocal(ctx, pack.ID)
 	if err != nil {
@@ -1004,6 +1319,16 @@ func TestServiceInstallsFormalReleaseWithProvenance(t *testing.T) {
 	}
 	if recovered.Source != packSourceLocal || recovered.ReleaseID != "release-1" || recovered.Origin != "" {
 		t.Fatalf("recovered = %#v, want local draft with formal release history", recovered)
+	}
+	updated, err := store.SavePackEntry(ctx, pack.ID, entry.ID, EntryUpdate{
+		Description: entry.Description,
+		Body:        "local edit",
+	})
+	if err != nil {
+		t.Fatalf("SavePackEntry(recovered) error = %v", err)
+	}
+	if updated.ReleaseID != "" || updated.SourcePackageID != pack.ID || updated.SourceReleaseID != "release-1" {
+		t.Fatalf("updated provenance = %#v, want original formal source", updated)
 	}
 	recoveredEntry, err := store.GetEntry(ctx, instructionpack.KindSkill, "test-skill")
 	if err != nil {
@@ -1039,11 +1364,11 @@ func TestServiceForksDefaultPackAsImportableMGPack(t *testing.T) {
 		Name:        "character-writer",
 		Description: "Changed default skill",
 		Body:        "Changed default pack body",
-	}); err != nil {
-		t.Fatalf("SaveEntry(default skill) error = %v", err)
+	}); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("SaveEntry(default skill) error = %v, want ErrPackReadonly", err)
 	}
-	if _, err := source.ExportPack(ctx, DefaultPackID); !errors.Is(err, ErrInvalidPack) {
-		t.Fatalf("ExportPack(default) error = %v, want ErrInvalidPack", err)
+	if _, err := source.ExportPack(ctx, DefaultPackID); !errors.Is(err, ErrPackReadonly) {
+		t.Fatalf("ExportPack(default) error = %v, want ErrPackReadonly", err)
 	}
 	forked, err := source.ForkPack(ctx, DefaultPackID, ForkPackInput{
 		Name:        "My Default Pack",
@@ -1086,8 +1411,8 @@ func TestServiceForksDefaultPackAsImportableMGPack(t *testing.T) {
 	if bundle.Manifest.ID != forked.ID {
 		t.Fatalf("bundle manifest id = %q, want %q", bundle.Manifest.ID, forked.ID)
 	}
-	if entry, ok := findPackEntry(bundle.Entries, "character-writer"); !ok || !strings.Contains(entry.Body, "Changed default pack body") {
-		t.Fatalf("exported default entries = %#v, want edited default content", bundle.Entries)
+	if entry, ok := findPackEntry(bundle.Entries, "character-writer"); !ok || strings.Contains(entry.Body, "Changed default pack body") {
+		t.Fatalf("exported fork entries = %#v, want original default content", bundle.Entries)
 	}
 
 	target := newTestService(t)
@@ -1102,8 +1427,8 @@ func TestServiceForksDefaultPackAsImportableMGPack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetEntry(imported default skill) error = %v", err)
 	}
-	if entry.PackID != forked.ID || !strings.Contains(entry.Body, "Changed default pack body") || entry.SourcePackageID != "" || entry.SourceReleaseID != "" {
-		t.Fatalf("entry = %#v, want imported default export to override builtin", entry)
+	if entry.PackID != forked.ID || strings.Contains(entry.Body, "Changed default pack body") || entry.SourcePackageID != "" || entry.SourceReleaseID != "" {
+		t.Fatalf("entry = %#v, want imported fork with original default content to override builtin", entry)
 	}
 	if _, err := target.SetEnabled(ctx, forked.ID, false); err != nil {
 		t.Fatalf("SetEnabled(default export false) error = %v", err)
@@ -1114,6 +1439,63 @@ func TestServiceForksDefaultPackAsImportableMGPack(t *testing.T) {
 	}
 	if reset.PackID == forked.ID || strings.Contains(reset.Body, "Changed default pack body") {
 		t.Fatalf("entry = %#v, want disabling imported export to reveal builtin", reset)
+	}
+}
+
+func TestServiceDefaultPackIsReadonlyExceptForFork(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	contents, err := store.GetPackContents(ctx, DefaultPackID)
+	if err != nil {
+		t.Fatalf("GetPackContents(default) error = %v", err)
+	}
+	var entry Entry
+	for _, candidate := range contents.Entries {
+		if candidate.Kind == instructionpack.KindSkill {
+			entry = candidate
+			break
+		}
+	}
+	if entry.ID == "" {
+		t.Fatal("default pack has no Skill entry")
+	}
+
+	operations := []struct {
+		name string
+		run  func() error
+	}{
+		{name: "save entry", run: func() error {
+			_, err := store.SavePackEntry(ctx, DefaultPackID, entry.ID, EntryUpdate{Name: entry.Title, Body: entry.Body})
+			return err
+		}},
+		{name: "reset entry", run: func() error {
+			_, err := store.ResetPackEntry(ctx, DefaultPackID, entry.ID)
+			return err
+		}},
+		{name: "remove entry", run: func() error { return store.RemoveEntry(ctx, DefaultPackID, entry.ID) }},
+		{name: "create entry", run: func() error {
+			_, err := store.CreatePackEntryDraft(ctx, DefaultPackID, instructionpack.KindSkill, "readonly-test", "")
+			return err
+		}},
+		{name: "reset pack", run: func() error {
+			_, err := store.ResetPack(ctx, DefaultPackID)
+			return err
+		}},
+		{name: "export pack", run: func() error {
+			_, err := store.ExportPack(ctx, DefaultPackID)
+			return err
+		}},
+	}
+	for _, operation := range operations {
+		t.Run(operation.name, func(t *testing.T) {
+			if err := operation.run(); !errors.Is(err, ErrPackReadonly) {
+				t.Fatalf("operation error = %v, want ErrPackReadonly", err)
+			}
+		})
+	}
+
+	if _, err := store.ForkPack(ctx, DefaultPackID, ForkPackInput{Name: "Editable Copy"}); err != nil {
+		t.Fatalf("ForkPack(default) error = %v, want editable local copy", err)
 	}
 }
 
@@ -1147,16 +1529,21 @@ func TestServiceForksLocalPackAsIndependentLocalCopy(t *testing.T) {
 	}
 }
 
-func TestServiceExportsDefaultPackWithUserUnicodeCategory(t *testing.T) {
+func TestServiceExportsForkedDefaultPackWithUserUnicodeCategory(t *testing.T) {
 	ctx := context.Background()
 	source := newTestService(t)
-	if _, err := source.CreateCategory(ctx, Category{ID: "角色", Label: "角色"}); err != nil {
-		t.Fatalf("CreateCategory() error = %v", err)
+	forked, err := source.ForkPack(ctx, DefaultPackID, ForkPackInput{Name: "Unicode Categories"})
+	if err != nil {
+		t.Fatalf("ForkPack(default) error = %v", err)
+	}
+	if _, err := source.CreatePackCategory(ctx, forked.ID, Category{ID: "角色", Label: "角色"}); err != nil {
+		t.Fatalf("CreatePackCategory() error = %v", err)
 	}
 	if _, err := source.CreateEntry(ctx, instructionpack.KindPrompt, Entry{
-		Slug: "character-reference",
-		Name: "角色参考",
-		Body: "保持角色一致。",
+		PackID: forked.ID,
+		Slug:   "character-reference",
+		Name:   "角色参考",
+		Body:   "保持角色一致。",
 		Metadata: map[string]any{
 			"category": "角色",
 			"type":     "image",
@@ -1165,10 +1552,6 @@ func TestServiceExportsDefaultPackWithUserUnicodeCategory(t *testing.T) {
 		t.Fatalf("CreateEntry(prompt) error = %v", err)
 	}
 
-	forked, err := source.ForkPack(ctx, DefaultPackID, ForkPackInput{Name: "Unicode Categories"})
-	if err != nil {
-		t.Fatalf("ForkPack(default) error = %v", err)
-	}
 	exported, err := source.ExportPack(ctx, forked.ID)
 	if err != nil {
 		t.Fatalf("ExportPack(default) error = %v", err)

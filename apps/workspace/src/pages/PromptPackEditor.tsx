@@ -6,10 +6,8 @@ import {
 	Loader2,
 	PackageOpen,
 	Pencil,
-	RotateCcw,
 	Save,
 	Trash2,
-	X,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -23,11 +21,11 @@ import {
 	listPromptPacks,
 	promptPackExportFileName,
 	promptPacksKey,
-	resetPromptPack,
 	setPromptPackEnabled,
 	type PromptPack,
 	type PromptPackEntry,
 	uninstallPromptPack,
+	updatePromptPackMetadata,
 } from "@/domains/settings/api/packs";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
 import {
@@ -35,6 +33,8 @@ import {
 	type PromptPackWorkspaceHandle,
 } from "@/domains/settings/components/debug/PromptPackWorkspace";
 import { isPromptPackContentCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
+import { isPersistedPromptPackDraftDirty } from "@/domains/settings/lib/prompt-pack-draft";
+import { usePromptPackDraftStore } from "@/domains/settings/stores/prompt-pack-drafts";
 import { useDesktopWindowDrag } from "@/domains/workspace/lib/desktop-window-drag";
 import { useToast } from "@/hooks/useToast";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
@@ -50,7 +50,6 @@ import {
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
-import { Switch } from "@/shared/components/ui/switch";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { openExternalUrl, revealNativePath } from "@/shared/desktop/actions";
 
@@ -71,14 +70,20 @@ export const PromptPackEditor: React.FC = () => {
 		mutate: mutatePacks,
 	} = useSWR(promptPacksKey, listPromptPacks);
 	const packs = allPacks;
-	const selectedPack = packs.find((pack) => pack.id === selectedPackID);
+	const selectedPack = packs.find(
+		(pack) => pack.id === selectedPackID && pack.source !== "imported",
+	);
 	const [creatingPack, setCreatingPack] = useState(searchParams.get("mode") === "create");
 	const [createBusy, setCreateBusy] = useState(false);
 	const [createError, setCreateError] = useState("");
 	const [deletingPackID, setDeletingPackID] = useState<string>();
 	const [exportingPackID, setExportingPackID] = useState<string>();
-	const [resettingPackID, setResettingPackID] = useState<string>();
 	const [togglingPackID, setTogglingPackID] = useState<string>();
+	const [metadataPack, setMetadataPack] = useState<PromptPack>();
+	const [metadataName, setMetadataName] = useState("");
+	const [metadataDescription, setMetadataDescription] = useState("");
+	const [metadataBusy, setMetadataBusy] = useState(false);
+	const [metadataError, setMetadataError] = useState("");
 	const [exportCompletion, setExportCompletion] = useState<PromptPackExportCompletion>();
 	const [saveAsSourcePack, setSaveAsSourcePack] = useState<PromptPack>();
 	const [saveAsName, setSaveAsName] = useState("");
@@ -88,13 +93,18 @@ export const PromptPackEditor: React.FC = () => {
 	const [saveAsBusy, setSaveAsBusy] = useState(false);
 	const [saveAsError, setSaveAsError] = useState("");
 	const [isEditing, setIsEditing] = useState(false);
-	const [isPackDirty, setIsPackDirty] = useState(false);
 	const [savingPack, setSavingPack] = useState(false);
 	const workspaceRef = useRef<PromptPackWorkspaceHandle>(null);
+	const persistedDraft = usePromptPackDraftStore((state) =>
+		selectedPackID ? state.draftsByPackId[selectedPackID] : undefined,
+	);
+	const persistedDraftDirty = Boolean(
+		persistedDraft && isPersistedPromptPackDraftDirty(persistedDraft),
+	);
+	const removePersistedDraft = usePromptPackDraftStore((state) => state.removeDraft);
 
 	useEffect(() => {
 		setIsEditing(false);
-		setIsPackDirty(false);
 	}, [selectedPackID]);
 
 	useEffect(() => {
@@ -102,14 +112,11 @@ export const PromptPackEditor: React.FC = () => {
 		if (!desktop?.onPromptPackEditorCloseRequested) return;
 		return desktop.onPromptPackEditorCloseRequested((request) => {
 			void (async () => {
-				let allow = false;
 				try {
-					allow = (await workspaceRef.current?.flush()) !== false;
-				} catch (error) {
-					toast.error("关闭前保存失败", { description: errorMessage(error) });
-				}
-				try {
-					await desktop.completePromptPackEditorClose({ allow, requestId: request.requestId });
+					await desktop.completePromptPackEditorClose({
+						allow: true,
+						requestId: request.requestId,
+					});
 				} catch (error) {
 					toast.error("无法关闭技能包编辑器", { description: errorMessage(error) });
 				}
@@ -121,10 +128,23 @@ export const PromptPackEditor: React.FC = () => {
 		await Promise.all([mutatePacks(), mutateGlobal(isPromptPackContentCacheKey)]);
 	};
 
-	const cancelEditing = () => {
-		workspaceRef.current?.discard();
-		setIsEditing(false);
-		setIsPackDirty(false);
+	const startEditing = () => {
+		if (workspaceRef.current?.beginEdit()) setIsEditing(true);
+	};
+
+	const abandonDraft = () => {
+		void confirmDialog({
+			title: "放弃全部草稿修改？",
+			description: "从点击编辑后产生的新增、修改、删除、分组和排序草稿都会被清除。",
+			confirmLabel: "放弃草稿",
+			confirmIcon: <Trash2 className="size-4" />,
+			variant: "destructive",
+			onConfirm: () => {
+				workspaceRef.current?.discard();
+				setIsEditing(false);
+				return true;
+			},
+		});
 	};
 
 	const savePack = useCallback(async () => {
@@ -132,7 +152,6 @@ export const PromptPackEditor: React.FC = () => {
 		try {
 			if ((await workspaceRef.current?.save()) === false) return;
 			setIsEditing(false);
-			setIsPackDirty(false);
 		} finally {
 			setSavingPack(false);
 		}
@@ -142,7 +161,7 @@ export const PromptPackEditor: React.FC = () => {
 		const handleSaveShortcut = (event: KeyboardEvent) => {
 			if (
 				!isEditing ||
-				!isPackDirty ||
+				!persistedDraftDirty ||
 				savingPack ||
 				!(event.metaKey || event.ctrlKey) ||
 				event.key.toLowerCase() !== "s"
@@ -153,7 +172,7 @@ export const PromptPackEditor: React.FC = () => {
 		};
 		window.addEventListener("keydown", handleSaveShortcut);
 		return () => window.removeEventListener("keydown", handleSaveShortcut);
-	}, [isEditing, isPackDirty, savePack, savingPack]);
+	}, [isEditing, persistedDraftDirty, savePack, savingPack]);
 
 	const selectPack = (packID?: string) => {
 		setCreatingPack(false);
@@ -251,16 +270,6 @@ export const PromptPackEditor: React.FC = () => {
 		await downloadPack(pack);
 	};
 
-	const openSaveAsAndExport = async (pack: PromptPack) => {
-		if (!(await validatePackForExport(pack))) return;
-		setSaveAsName(`${pack.name}副本`);
-		setSaveAsVersion(pack.version || "1.0.0");
-		setSaveAsDescription(pack.description || "");
-		setSaveAsShouldExport(true);
-		setSaveAsError("");
-		setSaveAsSourcePack(pack);
-	};
-
 	const openCopyPack = (pack: PromptPack) => {
 		setSaveAsName(`${pack.name}副本`);
 		setSaveAsVersion(pack.version || "1.0.0");
@@ -268,6 +277,38 @@ export const PromptPackEditor: React.FC = () => {
 		setSaveAsShouldExport(false);
 		setSaveAsError("");
 		setSaveAsSourcePack(pack);
+	};
+
+	const openMetadataEditor = (pack: PromptPack) => {
+		if (pack.source !== "local") return;
+		setMetadataName(pack.name);
+		setMetadataDescription(pack.description || "");
+		setMetadataError("");
+		setMetadataPack(pack);
+	};
+
+	const savePackMetadata = async () => {
+		if (!metadataPack || metadataPack.source !== "local" || !metadataName.trim()) return;
+		setMetadataBusy(true);
+		setMetadataError("");
+		try {
+			const updated = await updatePromptPackMetadata(metadataPack.id, {
+				description: metadataDescription.trim(),
+				name: metadataName.trim(),
+			});
+			await mutatePacks(
+				(current) =>
+					current?.map((pack) => (pack.id === updated.id ? { ...pack, ...updated } : pack)),
+				{ revalidate: false },
+			);
+			await mutateGlobal(isPromptPackContentCacheKey);
+			setMetadataPack(undefined);
+			toast.success("技能包信息已更新", { description: updated.name });
+		} catch (error) {
+			setMetadataError(errorMessage(error));
+		} finally {
+			setMetadataBusy(false);
+		}
 	};
 
 	const saveAsPack = async () => {
@@ -310,6 +351,7 @@ export const PromptPackEditor: React.FC = () => {
 		setDeletingPackID(pack.id);
 		try {
 			await uninstallPromptPack(pack.id);
+			removePersistedDraft(pack.id);
 			selectPack(undefined);
 			await mutatePacks((current) => current?.filter((candidate) => candidate.id !== pack.id), {
 				revalidate: false,
@@ -336,32 +378,6 @@ export const PromptPackEditor: React.FC = () => {
 			confirmIcon: <Trash2 className="size-4" />,
 			variant: "destructive",
 			onConfirm: () => deletePack(pack),
-		});
-	};
-
-	const resetPack = async (pack: PromptPack) => {
-		setResettingPackID(pack.id);
-		try {
-			await resetPromptPack(pack.id);
-			await refreshPromptData();
-			toast.success("技能包已恢复默认", { description: pack.name });
-			return true;
-		} catch (error) {
-			toast.error("恢复失败", { description: errorMessage(error) });
-			return false;
-		} finally {
-			setResettingPackID(undefined);
-		}
-	};
-
-	const confirmResetPack = (pack: PromptPack) => {
-		void confirmDialog({
-			title: "恢复技能包默认？",
-			description: `将恢复“${pack.name}”自带的 Skill 和提示词，保留用户新增内容。`,
-			confirmLabel: "恢复默认",
-			confirmIcon: <RotateCcw className="size-4" />,
-			variant: "default",
-			onConfirm: () => resetPack(pack),
 		});
 	};
 
@@ -430,14 +446,14 @@ export const PromptPackEditor: React.FC = () => {
 											type="button"
 											variant="outline"
 											disabled={savingPack}
-											onClick={cancelEditing}
+											onClick={abandonDraft}
 										>
-											<X className="size-4" />
-											<span>取消</span>
+											<Trash2 className="size-4" />
+											<span>放弃草稿</span>
 										</Button>
 										<Button
 											type="button"
-											disabled={!isPackDirty || savingPack}
+											disabled={!persistedDraftDirty || savingPack}
 											onClick={() => void savePack()}
 										>
 											{savingPack ? (
@@ -450,86 +466,41 @@ export const PromptPackEditor: React.FC = () => {
 									</>
 								) : (
 									<>
-										<div className="flex items-center gap-2 px-1">
-											<span className="text-xs text-muted-foreground">
-												{selectedPack.enabled ? "已启用" : "已停用"}
-											</span>
-											<Switch
-												checked={selectedPack.enabled}
-												disabled={togglingPackID === selectedPack.id}
-												aria-label={`${selectedPack.enabled ? "停用" : "启用"}技能包 ${selectedPack.name}`}
-												onCheckedChange={(enabled) => void togglePack(selectedPack, enabled)}
-											/>
-										</div>
-										<Button type="button" variant="outline" onClick={() => setIsEditing(true)}>
-											<Pencil className="size-4" />
-											<span>编辑</span>
-										</Button>
-										<Button
-											type="button"
-											variant="outline"
-											disabled={
-												exportingPackID === selectedPack.id ||
-												deletingPackID === selectedPack.id ||
-												saveAsBusy
-											}
-											onClick={() => openCopyPack(selectedPack)}
-										>
-											<Copy className="size-4" />
-											<span>复制技能包</span>
-										</Button>
-										{selectedPack.source !== "local" ? (
-											<Button
-												type="button"
-												variant="outline"
-												disabled={resettingPackID === selectedPack.id}
-												onClick={() => confirmResetPack(selectedPack)}
-											>
-												{resettingPackID === selectedPack.id ? (
-													<Loader2 className="size-4 animate-spin" />
-												) : (
-													<RotateCcw className="size-4" />
-												)}
-												<span>{resettingPackID === selectedPack.id ? "恢复中" : "恢复默认"}</span>
+										{selectedPack.source === "local" && persistedDraftDirty ? (
+											<>
+												<span className="text-xs text-warning-foreground">发现未保存草稿</span>
+												<Button type="button" variant="outline" onClick={startEditing}>
+													<Pencil className="size-4" />
+													<span>继续编辑</span>
+												</Button>
+												<Button type="button" variant="ghost" onClick={abandonDraft}>
+													<Trash2 className="size-4" />
+													<span>放弃草稿</span>
+												</Button>
+											</>
+										) : selectedPack.source === "local" ? (
+											<Button type="button" variant="outline" onClick={startEditing}>
+												<Pencil className="size-4" />
+												<span>编辑</span>
 											</Button>
 										) : null}
-										<Button
-											type="button"
-											variant="outline"
-											disabled={
-												exportingPackID === selectedPack.id ||
-												deletingPackID === selectedPack.id ||
-												saveAsBusy
-											}
-											onClick={() =>
-												void (selectedPack.source === "default"
-													? openSaveAsAndExport(selectedPack)
-													: exportPack(selectedPack))
-											}
-										>
-											{exportingPackID === selectedPack.id ? (
-												<Loader2 className="size-4 animate-spin" />
-											) : (
-												<Download className="size-4" />
-											)}
-											<span>{selectedPack.source === "default" ? "另存为并导出" : "导出"}</span>
-										</Button>
-										{selectedPack.source !== "default" ? (
+										{selectedPack.source === "local" ? (
 											<Button
 												type="button"
 												variant="outline"
-												className="text-destructive hover:bg-error-surface hover:text-error-foreground"
 												disabled={
-													deletingPackID === selectedPack.id || exportingPackID === selectedPack.id
+													exportingPackID === selectedPack.id ||
+													deletingPackID === selectedPack.id ||
+													saveAsBusy
 												}
-												onClick={() => confirmDeletePack(selectedPack)}
+												onClick={() => void exportPack(selectedPack)}
 											>
-												{deletingPackID === selectedPack.id ? (
+												{exportingPackID === selectedPack.id ? (
 													<Loader2 className="size-4 animate-spin" />
 												) : (
-													<Trash2 className="size-4" />
+													<Download className="size-4" />
 												)}
-												<span>{selectedPack.source === "local" ? "删除技能包" : "卸载技能包"}</span>
+												<span>导出</span>
 											</Button>
 										) : null}
 									</>
@@ -544,10 +515,12 @@ export const PromptPackEditor: React.FC = () => {
 				onCancelCreatePack={cancelCreatingPack}
 				onChanged={refreshPromptData}
 				onCreatePack={createPack}
-				onDirtyChange={setIsPackDirty}
+				onCopyPack={openCopyPack}
+				onEditPackMetadata={openMetadataEditor}
 				onPackEnabledChange={togglePack}
 				onSelectedPackChange={selectPack}
 				onStartCreatePack={startCreatingPack}
+				onUninstallPack={confirmDeletePack}
 				packs={packs}
 				selectedPackID={selectedPackID}
 				togglingPackID={togglingPackID}
@@ -576,9 +549,93 @@ export const PromptPackEditor: React.FC = () => {
 				open={Boolean(saveAsSourcePack)}
 				version={saveAsVersion}
 			/>
+			<PromptPackMetadataDialog
+				busy={metadataBusy}
+				description={metadataDescription}
+				error={metadataError}
+				name={metadataName}
+				onDescriptionChange={setMetadataDescription}
+				onNameChange={setMetadataName}
+				onOpenChange={(open) => {
+					if (!open && !metadataBusy) setMetadataPack(undefined);
+				}}
+				onSubmit={() => void savePackMetadata()}
+				open={Boolean(metadataPack)}
+			/>
 		</section>
 	);
 };
+
+const PromptPackMetadataDialog: React.FC<{
+	busy: boolean;
+	description: string;
+	error: string;
+	name: string;
+	onDescriptionChange: (value: string) => void;
+	onNameChange: (value: string) => void;
+	onOpenChange: (open: boolean) => void;
+	onSubmit: () => void;
+	open: boolean;
+}> = ({
+	busy,
+	description,
+	error,
+	name,
+	onDescriptionChange,
+	onNameChange,
+	onOpenChange,
+	onSubmit,
+	open,
+}) => (
+	<AlertDialog open={open} onOpenChange={onOpenChange}>
+		<AlertDialogContent>
+			<form
+				className="contents"
+				onSubmit={(event) => {
+					event.preventDefault();
+					onSubmit();
+				}}
+			>
+				<AlertDialogHeader>
+					<AlertDialogTitle>编辑技能包信息</AlertDialogTitle>
+					<AlertDialogDescription>修改列表卡片上展示的名称和描述。</AlertDialogDescription>
+				</AlertDialogHeader>
+				{error ? (
+					<Alert variant="destructive">
+						<AlertDescription>{error}</AlertDescription>
+					</Alert>
+				) : null}
+				<div className="space-y-4 py-1">
+					<div className="space-y-2">
+						<Label htmlFor="edit-pack-name">名称</Label>
+						<Input
+							id="edit-pack-name"
+							maxLength={160}
+							value={name}
+							onChange={(event) => onNameChange(event.target.value)}
+						/>
+					</div>
+					<div className="space-y-2">
+						<Label htmlFor="edit-pack-description">描述</Label>
+						<Textarea
+							id="edit-pack-description"
+							rows={4}
+							value={description}
+							onChange={(event) => onDescriptionChange(event.target.value)}
+						/>
+					</div>
+				</div>
+				<AlertDialogFooter>
+					<AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
+					<Button type="submit" disabled={busy || !name.trim()}>
+						{busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+						<span>{busy ? "保存中" : "保存"}</span>
+					</Button>
+				</AlertDialogFooter>
+			</form>
+		</AlertDialogContent>
+	</AlertDialog>
+);
 
 const PromptPackSaveAsDialog: React.FC<{
 	busy: boolean;

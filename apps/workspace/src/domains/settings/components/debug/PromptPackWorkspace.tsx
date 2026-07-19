@@ -10,12 +10,10 @@ import {
 } from "@dnd-kit/core";
 import {
 	BookOpenCheck,
-	Check,
 	ChevronLeft,
+	Copy,
 	FileText,
-	FilePlus2,
 	GripVertical,
-	LayoutDashboard,
 	Library,
 	Loader2,
 	PackageOpen,
@@ -23,29 +21,34 @@ import {
 	Pencil,
 	Plus,
 	RotateCcw,
-	Settings2,
 	Trash2,
 } from "lucide-react";
 import type React from "react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import {
-	createPromptPackCategory,
 	getPromptPackContents,
 	promptPackContentsKey,
-	createPromptPackEntry,
-	deletePromptPackCategory,
+	savePromptPackDraft,
 	type PromptPack,
 	type PromptPackCategory,
-	type PromptPackContents,
 	type PromptPackEntry,
 	type PromptPackEntryKind,
-	removePromptPackEntry,
-	resetPromptPackEntry,
-	updatePromptPackCategory,
-	updatePromptPackEntry,
 } from "@/domains/settings/api/packs";
 import { isPromptPackContentCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
+import {
+	createDraftEntry,
+	isPersistedPromptPackDraftDirty,
+	moveDraftPromptToCategory,
+	reorderDraftCategories,
+	removeDraftCategory,
+	removeDraftEntry,
+	serializePromptPackDraft,
+	updateDraftEntry,
+	upsertDraftCategory,
+	validatePromptPackDraft,
+} from "@/domains/settings/lib/prompt-pack-draft";
+import { usePromptPackDraftStore } from "@/domains/settings/stores/prompt-pack-drafts";
 import {
 	SidebarContentLayout,
 	useWorkspaceSidebarWidth,
@@ -65,6 +68,12 @@ import {
 	AlertDialogTitle,
 } from "@/shared/components/ui/alert-dialog";
 import { Button } from "@/shared/components/ui/button";
+import {
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuTrigger,
+} from "@/shared/components/ui/context-menu";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import {
@@ -79,14 +88,11 @@ import { Switch } from "@/shared/components/ui/switch";
 import { cn } from "@/shared/lib/utils";
 import {
 	PromptPackEntryEditor,
-	type PromptPackEntryDraft,
 	promptPackEntryDraft,
-	promptPackEntryDraftEquals,
 	promptPackEntryUpdate,
-	validatePromptPackEntryDraft,
 } from "./PromptPackContentEditor";
 
-type WorkspaceView = { type: "idle" } | { type: "categories" } | { entryID: string; type: "entry" };
+type WorkspaceView = { type: "idle" } | { entryID: string; type: "entry" };
 
 type NavigatorKind = "skill" | "prompt";
 
@@ -100,16 +106,19 @@ interface PromptPackWorkspaceProps {
 	onCancelCreatePack: () => void;
 	onChanged: () => Promise<void>;
 	onCreatePack: (input: { description: string; name: string }) => Promise<void>;
-	onDirtyChange: (dirty: boolean) => void;
+	onCopyPack: (pack: PromptPack) => void;
+	onEditPackMetadata: (pack: PromptPack) => void;
 	onPackEnabledChange: (pack: PromptPack, enabled: boolean) => Promise<void>;
 	onSelectedPackChange: (packID?: string) => void;
 	onStartCreatePack: () => void;
+	onUninstallPack: (pack: PromptPack) => void;
 	packs: PromptPack[];
 	selectedPackID?: string;
 	togglingPackID?: string;
 }
 
 export interface PromptPackWorkspaceHandle {
+	beginEdit: () => boolean;
 	discard: () => void;
 	flush: () => Promise<boolean>;
 	openEntry: (entryID: string) => void;
@@ -128,10 +137,12 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 			onCancelCreatePack,
 			onChanged,
 			onCreatePack,
-			onDirtyChange,
+			onCopyPack,
+			onEditPackMetadata,
 			onPackEnabledChange,
 			onSelectedPackChange,
 			onStartCreatePack,
+			onUninstallPack,
 			packs,
 			selectedPackID,
 			togglingPackID,
@@ -140,9 +151,13 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 	) {
 		const toast = useToast();
 		const { mutate: mutateGlobal } = useSWRConfig();
-		const selectedPack = packs.find((pack) => pack.id === selectedPackID);
+		const selectedPack = packs.find(
+			(pack) => pack.id === selectedPackID && pack.source !== "imported",
+		);
 		const contentsKey =
-			selectedPackID && !creatingPack ? promptPackContentsKey(selectedPackID) : null;
+			selectedPackID && selectedPack && !creatingPack
+				? promptPackContentsKey(selectedPackID)
+				: null;
 		const {
 			data: contents,
 			isLoading: contentsLoading,
@@ -150,32 +165,29 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 		} = useSWR(contentsKey, () => getPromptPackContents(selectedPackID ?? ""));
 		const [view, setView] = useState<WorkspaceView>({ type: "idle" });
 		const [navigatorKind, setNavigatorKind] = useState<NavigatorKind>("skill");
-		const [createEntryDialogOpen, setCreateEntryDialogOpen] = useState(false);
-		const [creatingEntry, setCreatingEntry] = useState(false);
-		const [deletingEntryID, setDeletingEntryID] = useState<string>();
-		const [resettingEntryID, setResettingEntryID] = useState<string>();
-		const [updatingCategoryEntryID, setUpdatingCategoryEntryID] = useState<string>();
-		const [drafts, setDrafts] = useState<Record<string, PromptPackEntryDraft>>({});
+		const [createCategoryDialogOpen, setCreateCategoryDialogOpen] = useState(false);
+		const [creatingEntryTarget, setCreatingEntryTarget] = useState("");
 		const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
 		const [navigatorWidth, setNavigatorWidth] = useWorkspaceSidebarWidth();
+		const persistedDraft = usePromptPackDraftStore((state) =>
+			selectedPackID ? state.draftsByPackId[selectedPackID] : undefined,
+		);
+		const startDraft = usePromptPackDraftStore((state) => state.startDraft);
+		const updateWorking = usePromptPackDraftStore((state) => state.updateWorking);
+		const removePersistedDraft = usePromptPackDraftStore((state) => state.removeDraft);
 
-		const entries = useMemo(() => contents?.entries ?? [], [contents]);
+		const displayedContents = isEditing && persistedDraft ? persistedDraft.working : contents;
+		const entries = useMemo(() => displayedContents?.entries ?? [], [displayedContents]);
 		const categories = useMemo(
-			() => packCategories(contents?.categories ?? [], entries),
-			[contents?.categories, entries],
+			() => packCategories(displayedContents?.categories ?? [], entries),
+			[displayedContents?.categories, entries],
 		);
 		const skillEntries = entries.filter((entry) => entry.kind === "skill");
 		const promptEntries = entries.filter((entry) => entry.kind === "prompt");
+		const selectedPackReadonly = selectedPack?.source !== "local";
 		const selectedEntry =
 			view.type === "entry" ? entries.find((entry) => entry.id === view.entryID) : undefined;
-		const changedEntries = useMemo(
-			() =>
-				entries.filter((entry) => {
-					const draft = drafts[entry.id];
-					return draft && !promptPackEntryDraftEquals(draft, promptPackEntryDraft(entry));
-				}),
-			[drafts, entries],
-		);
+		const draftDirty = Boolean(persistedDraft && isPersistedPromptPackDraftDirty(persistedDraft));
 
 		useEffect(() => {
 			if (navigatorKind === "skill" && skillEntries.length === 0 && promptEntries.length > 0) {
@@ -184,25 +196,18 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 		}, [navigatorKind, promptEntries.length, skillEntries.length]);
 
 		useEffect(() => {
-			if (!isEditing) {
-				setDrafts({});
-				setDraftErrors({});
-				return;
-			}
-			setDrafts(
-				Object.fromEntries(entries.map((entry) => [entry.id, promptPackEntryDraft(entry)])),
-			);
+			if (!isEditing) setDraftErrors({});
 		}, [isEditing]);
 
 		useEffect(() => {
-			onDirtyChange(changedEntries.length > 0);
-		}, [changedEntries.length, onDirtyChange]);
-
-		useEffect(() => {
 			setView({ type: "idle" });
-			setCreateEntryDialogOpen(false);
+			setCreateCategoryDialogOpen(false);
 			setNavigatorKind("skill");
 		}, [selectedPackID]);
+
+		useEffect(() => {
+			if (!isEditing) setCreateCategoryDialogOpen(false);
+		}, [isEditing]);
 
 		useEffect(() => {
 			if (selectedPackID && !selectedPack && !isLoading && !contentsLoading) {
@@ -212,77 +217,79 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 
 		useEffect(() => {
 			if (view.type === "entry" && contents && !selectedEntry) {
-				setView({ type: "idle" });
+				const nextEntry = entries.find((entry) => entry.kind === navigatorKind) ?? entries[0];
+				setView(nextEntry ? { entryID: nextEntry.id, type: "entry" } : { type: "idle" });
 			}
-		}, [contents, selectedEntry, view]);
+		}, [contents, entries, navigatorKind, selectedEntry, view]);
 
-		const refreshContents = async (): Promise<PromptPackContents | undefined> => {
-			await onChanged();
-			const refreshed = await mutateContents();
-			await mutateGlobal(isPromptPackContentCacheKey);
-			return refreshed;
-		};
+		useEffect(() => {
+			if (!contents || view.type !== "idle") return;
+			const nextEntry = entries.find((entry) => entry.kind === navigatorKind) ?? entries[0];
+			if (nextEntry) setView({ entryID: nextEntry.id, type: "entry" });
+		}, [contents, entries, navigatorKind, view.type]);
 
 		const openEntry = useCallback((entryID: string) => {
 			setView({ entryID, type: "entry" });
 		}, []);
 
 		const saveAll = async () => {
-			if (!isEditing || changedEntries.length === 0) return true;
-			const nextErrors: Record<string, string> = {};
-			for (const entry of changedEntries) {
-				const issue = validatePromptPackEntryDraft(entry.kind, drafts[entry.id]);
-				if (issue) nextErrors[entry.id] = issue;
-			}
-			if (Object.keys(nextErrors).length > 0) {
-				setDraftErrors(nextErrors);
-				const firstInvalidEntry = changedEntries.find((entry) => nextErrors[entry.id]);
-				if (firstInvalidEntry) setView({ entryID: firstInvalidEntry.id, type: "entry" });
+			if (!isEditing || !persistedDraft || !selectedPack) return true;
+			const issue = validatePromptPackDraft(persistedDraft.working);
+			if (issue) {
+				setDraftErrors(issue.entryId ? { [issue.entryId]: issue.message } : {});
+				if (issue.entryId) setView({ entryID: issue.entryId, type: "entry" });
+				toast.error("请完善技能包草稿", { description: issue.message });
 				return false;
 			}
-
+			if (!draftDirty) {
+				removePersistedDraft(selectedPack.id);
+				return true;
+			}
 			setDraftErrors({});
 			try {
-				await Promise.all(
-					changedEntries.map((entry) =>
-						updatePromptPackEntry(
-							selectedPack?.id ?? "",
-							entry.id,
-							promptPackEntryUpdate(entry, drafts[entry.id]),
-						),
-					),
+				const saved = await savePromptPackDraft(
+					selectedPack.id,
+					serializePromptPackDraft(persistedDraft),
 				);
-				const refreshed = await refreshContents();
-				if (refreshed) {
-					setDrafts(
-						Object.fromEntries(
-							refreshed.entries.map((entry) => [entry.id, promptPackEntryDraft(entry)]),
-						),
-					);
-				}
-				toast.success("技能包已保存", {
-					description: `已保存 ${changedEntries.length} 项内容。`,
-				});
+				await mutateContents(saved, { revalidate: false });
+				removePersistedDraft(selectedPack.id);
+				await onChanged();
+				await mutateGlobal(isPromptPackContentCacheKey);
+				toast.success("技能包已保存", { description: "草稿中的全部修改已一次性生效。" });
 				return true;
 			} catch (error) {
-				toast.error("技能包保存失败", { description: errorMessage(error) });
+				const conflict = apiErrorCode(error) === 409;
+				toast.error(conflict ? "技能包内容已变化" : "技能包保存失败", {
+					description: conflict
+						? "服务器内容已被更新。草稿仍保留，请放弃旧草稿后重新编辑。"
+						: errorMessage(error),
+				});
 				return false;
 			}
 		};
 
 		const discard = () => {
-			setDrafts({});
+			if (selectedPackID) removePersistedDraft(selectedPackID);
 			setDraftErrors({});
 		};
 
-		useImperativeHandle(ref, () => ({ discard, flush: saveAll, openEntry, save: saveAll }), [
-			openEntry,
-			saveAll,
-		]);
-
-		const navigate = (next: WorkspaceView) => {
-			setView(next);
+		const beginEdit = () => {
+			if (!contents || selectedPack?.source !== "local") return false;
+			if (persistedDraft && persistedDraft.baseRevision !== (contents.revision ?? "")) {
+				toast.error("旧草稿无法继续编辑", {
+					description: "服务器内容已变化，请先放弃旧草稿，再基于最新内容编辑。",
+				});
+				return false;
+			}
+			if (!persistedDraft) startDraft(contents);
+			return true;
 		};
+
+		useImperativeHandle(
+			ref,
+			() => ({ beginEdit, discard, flush: saveAll, openEntry, save: saveAll }),
+			[beginEdit, openEntry, saveAll],
+		);
 
 		const blockWhileEditing = () => {
 			if (!isEditing) return false;
@@ -291,7 +298,7 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 		};
 
 		const selectPack = (packID: string) => {
-			if (blockWhileEditing()) return;
+			if (packs.some((pack) => pack.id === packID && pack.source === "imported")) return;
 			onSelectedPackChange(packID);
 		};
 
@@ -304,49 +311,38 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 			kind: PromptPackEntryKind,
 			categoryID?: string,
 		): Promise<boolean> => {
-			if (blockWhileEditing()) return false;
-			if (!selectedPack || creatingEntry) return false;
-			setCreatingEntry(true);
+			const target = kind === "skill" ? "skill" : `prompt:${categoryID ?? ""}`;
+			if (!isEditing || !selectedPack || !persistedDraft || creatingEntryTarget) return false;
+			setCreatingEntryTarget(target);
 			try {
-				const created = await createPromptPackEntry(selectedPack.id, {
-					categoryId: kind === "prompt" ? categoryID : undefined,
-					kind,
-					slug: `${kind}-${globalThis.crypto.randomUUID()}`,
-				});
-				await refreshContents();
-				setView({ entryID: created.id, type: "entry" });
-				setCreateEntryDialogOpen(false);
+				const slug = `${kind}-${globalThis.crypto.randomUUID()}`;
+				const next = createDraftEntry(persistedDraft.working, kind, slug, categoryID);
+				updateWorking(selectedPack.id, next);
+				setView({ entryID: `${selectedPack.id}/${kind}/${slug}`, type: "entry" });
 				toast.success(kind === "skill" ? "Skill 已创建" : "提示词已创建");
 				return true;
 			} catch (error) {
 				toast.error("创建失败", { description: errorMessage(error) });
 				return false;
 			} finally {
-				setCreatingEntry(false);
+				setCreatingEntryTarget("");
 			}
 		};
 
 		const removeEntry = async (entry: PromptPackEntry) => {
-			if (!selectedPack) return false;
-			setDeletingEntryID(entry.id);
-			try {
-				await removePromptPackEntry(selectedPack.id, entry.id);
-				await refreshContents();
-				if (view.type === "entry" && view.entryID === entry.id) {
-					setView({ type: "idle" });
-				}
-				toast.success("内容已删除", { description: entryDisplayName(entry) });
-				return true;
-			} catch (error) {
-				toast.error("删除失败", { description: errorMessage(error) });
-				return false;
-			} finally {
-				setDeletingEntryID(undefined);
+			if (!selectedPack || !persistedDraft || !isEditing) return false;
+			const next = removeDraftEntry(persistedDraft.working, entry.id);
+			updateWorking(selectedPack.id, next);
+			if (view.type === "entry" && view.entryID === entry.id) {
+				const nextEntry =
+					next.entries.find((candidate) => candidate.kind === navigatorKind) ?? next.entries[0];
+				setView(nextEntry ? { entryID: nextEntry.id, type: "entry" } : { type: "idle" });
 			}
+			return true;
 		};
 
 		const confirmRemoveEntry = (entry: PromptPackEntry) => {
-			if (blockWhileEditing()) return;
+			if (!isEditing) return;
 			void confirmDialog({
 				title: "删除技能包内容？",
 				description: `将从“${selectedPack?.name ?? "当前技能包"}”永久删除“${entryDisplayName(entry)}”。`,
@@ -358,23 +354,22 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 		};
 
 		const resetEntry = async (entry: PromptPackEntry) => {
-			if (!selectedPack) return false;
-			setResettingEntryID(entry.id);
-			try {
-				await resetPromptPackEntry(selectedPack.id, entry.id);
-				await refreshContents();
-				toast.success("内容已恢复默认", { description: entryDisplayName(entry) });
-				return true;
-			} catch (error) {
-				toast.error("恢复失败", { description: errorMessage(error) });
-				return false;
-			} finally {
-				setResettingEntryID(undefined);
-			}
+			if (!selectedPack || !persistedDraft || !contents || !isEditing) return false;
+			const original = contents.entries.find((candidate) => candidate.id === entry.id);
+			const next = original
+				? {
+						...persistedDraft.working,
+						entries: persistedDraft.working.entries.map((candidate) =>
+							candidate.id === entry.id ? structuredClone(original) : candidate,
+						),
+					}
+				: removeDraftEntry(persistedDraft.working, entry.id);
+			updateWorking(selectedPack.id, next);
+			return true;
 		};
 
 		const confirmResetEntry = (entry: PromptPackEntry) => {
-			if (blockWhileEditing() || !entryCanReset(entry)) return;
+			if (!isEditing || !entryCanReset(entry)) return;
 			void confirmDialog({
 				title: "恢复内容默认？",
 				description: `将撤销“${entryDisplayName(entry)}”的本地修改，并恢复技能包自带内容。`,
@@ -385,67 +380,30 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 			});
 		};
 
-		const changeEntryCategory = async (entry: PromptPackEntry, categoryID: string) => {
-			if (!selectedPack || updatingCategoryEntryID || entry.kind !== "prompt") return false;
-			if (promptCategoryID(entry) === categoryID) return true;
-			const previousContents = contents;
-			setUpdatingCategoryEntryID(entry.id);
-			await mutateContents(
-				(current) =>
-					current
-						? {
-								...current,
-								entries: current.entries.map((candidate) =>
-									candidate.id === entry.id
-										? {
-												...candidate,
-												metadata: { ...candidate.metadata, category: categoryID },
-											}
-										: candidate,
-								),
-							}
-						: current,
-				{ revalidate: false },
-			);
-			try {
-				await updatePromptPackEntry(
-					selectedPack.id,
-					entry.id,
-					promptPackEntryUpdate(entry, {
-						...promptPackEntryDraft(entry),
-						category: categoryID,
-					}),
-				);
-				await refreshContents();
-				toast.success("分类已更新", {
-					description:
-						categories.find((category) => category.id === categoryID)?.label ?? categoryID,
-				});
-				return true;
-			} catch (error) {
-				await mutateContents(previousContents, { revalidate: false });
-				toast.error("更新分类失败", { description: errorMessage(error) });
+		const movePromptToCategory = async (entry: PromptPackEntry, categoryID: string) => {
+			if (!isEditing || entry.kind !== "prompt" || promptCategoryID(entry) === categoryID) {
 				return false;
-			} finally {
-				setUpdatingCategoryEntryID(undefined);
 			}
+			if (!selectedPack || !persistedDraft) return false;
+			updateWorking(
+				selectedPack.id,
+				moveDraftPromptToCategory(persistedDraft.working, entry.id, categoryID),
+			);
+			setDraftErrors((current) => ({ ...current, [entry.id]: "" }));
+			return true;
 		};
 
 		const createCategoryRecord = async (label: string): Promise<PromptPackCategory | undefined> => {
-			if (!selectedPack) return undefined;
-			try {
-				const created = await createPromptPackCategory(selectedPack.id, {
-					id: `category-${globalThis.crypto.randomUUID()}`,
-					label: label.trim(),
-					order: Math.max(-1, ...categories.map((category) => category.order ?? 0)) + 1,
-				});
-				await refreshContents();
-				toast.success("分组已创建", { description: label.trim() });
-				return created;
-			} catch (error) {
-				toast.error("创建分组失败", { description: errorMessage(error) });
-				return undefined;
-			}
+			if (!selectedPack || !persistedDraft || !isEditing) return undefined;
+			const created: PromptPackCategory = {
+				id: `category-${globalThis.crypto.randomUUID()}`,
+				label: label.trim(),
+				order: Math.max(-1, ...categories.map((category) => category.order ?? 0)) + 1,
+				packId: selectedPack.id,
+				source: "user",
+			};
+			updateWorking(selectedPack.id, upsertDraftCategory(persistedDraft.working, created));
+			return created;
 		};
 
 		const createCategory = async (label: string) =>
@@ -455,61 +413,30 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 			category: PromptPackCategory,
 			input: { label: string; order: number },
 		) => {
-			if (!selectedPack || !isEditing) return false;
-			try {
-				await updatePromptPackCategory(selectedPack.id, category.id, input);
-				await refreshContents();
-				toast.success("分组已更新", { description: input.label.trim() });
-				return true;
-			} catch (error) {
-				toast.error("更新分组失败", { description: errorMessage(error) });
-				return false;
-			}
-		};
-
-		const reorderCategory = async (category: PromptPackCategory, target: PromptPackCategory) => {
-			if (!selectedPack || !isEditing) return false;
-			const ordered = [...categories].sort(compareCategories);
-			const currentIndex = ordered.findIndex((item) => item.id === category.id);
-			const targetIndex = ordered.findIndex((item) => item.id === target.id);
-			if (currentIndex < 0 || targetIndex < 0 || currentIndex === targetIndex) return false;
-			const nextOrder = [...ordered];
-			const [moved] = nextOrder.splice(currentIndex, 1);
-			if (!moved) return false;
-			nextOrder.splice(targetIndex, 0, moved);
-			const orderSlots = ordered.map((item, index) => item.order ?? index);
-			try {
-				await Promise.all(
-					nextOrder.flatMap((item, index) => {
-						const order = orderSlots[index] ?? index;
-						if (item.order === order) return [];
-						return [
-							updatePromptPackCategory(selectedPack.id, item.id, {
-								label: item.label,
-								order,
-							}),
-						];
-					}),
-				);
-				await refreshContents();
-				return true;
-			} catch (error) {
-				toast.error("调整分组顺序失败", { description: errorMessage(error) });
-				return false;
-			}
+			if (!selectedPack || !persistedDraft || !isEditing) return false;
+			updateWorking(
+				selectedPack.id,
+				upsertDraftCategory(persistedDraft.working, { ...category, ...input }),
+			);
+			return true;
 		};
 
 		const deleteCategory = async (category: PromptPackCategory, replacementCategoryID: string) => {
-			if (!selectedPack || !isEditing) return false;
-			try {
-				await deletePromptPackCategory(selectedPack.id, category.id, replacementCategoryID);
-				await refreshContents();
-				toast.success("分组已删除", { description: category.label });
-				return true;
-			} catch (error) {
-				toast.error("删除分组失败", { description: errorMessage(error) });
-				return false;
-			}
+			if (!selectedPack || !persistedDraft || !isEditing) return false;
+			updateWorking(
+				selectedPack.id,
+				removeDraftCategory(persistedDraft.working, category.id, replacementCategoryID),
+			);
+			return true;
+		};
+
+		const reorderCategories = async (orderedCategoryIDs: string[]) => {
+			if (!selectedPack || !persistedDraft || !isEditing) return false;
+			updateWorking(
+				selectedPack.id,
+				reorderDraftCategories(persistedDraft.working, orderedCategoryIDs),
+			);
+			return true;
 		};
 
 		return (
@@ -528,27 +455,35 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 						<PromptPackNavigator
 							categories={categories}
 							creatingPack={creatingPack}
-							deletingEntryID={deletingEntryID}
+							creatingEntryTarget={creatingEntryTarget}
+							isEditing={isEditing}
 							isLoading={isLoading}
 							navigatorKind={navigatorKind}
 							onBackToPacks={() => selectPack("")}
-							onCreateEntry={() => setCreateEntryDialogOpen(true)}
 							onNavigatorKindChange={(kind) => {
 								setNavigatorKind(kind);
 								if (view.type === "entry" && selectedEntry?.kind !== kind) {
-									setView({ type: "idle" });
+									const nextEntry = entries.find((entry) => entry.kind === kind);
+									setView(nextEntry ? { entryID: nextEntry.id, type: "entry" } : { type: "idle" });
 								}
 							}}
-							onOpenCategories={() => navigate({ type: "categories" })}
-							onOpenOverview={() => navigate({ type: "idle" })}
+							onCreateCategory={() => setCreateCategoryDialogOpen(true)}
+							onCreatePrompt={(categoryID) => void createEntry("prompt", categoryID)}
+							onCreateSkill={() => void createEntry("skill")}
+							onDeleteCategory={deleteCategory}
 							onRemoveEntry={confirmRemoveEntry}
 							onResetEntry={confirmResetEntry}
-							onSelectEntry={(entryID) => navigate({ entryID, type: "entry" })}
+							onMovePrompt={movePromptToCategory}
+							onReorderCategories={reorderCategories}
+							onSelectEntry={(entryID) => setView({ entryID, type: "entry" })}
 							onSelectPack={selectPack}
 							onStartCreatePack={startCreatePack}
+							onPackEnabledChange={onPackEnabledChange}
+							onUninstallPack={onUninstallPack}
+							onUpdateCategory={updateCategory}
 							packs={packs}
 							promptEntries={promptEntries}
-							resettingEntryID={resettingEntryID}
+							readOnly={selectedPackReadonly || !isEditing}
 							selectedPack={selectedPack}
 							skillEntries={skillEntries}
 							view={view}
@@ -563,8 +498,11 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 							{!selectedPackID ? (
 								<WorkspaceStart
 									isLoading={isLoading}
+									onCopyPack={onCopyPack}
+									onEditPackMetadata={onEditPackMetadata}
 									onPackEnabledChange={onPackEnabledChange}
 									onSelectPack={(packID) => void selectPack(packID)}
+									onUninstallPack={onUninstallPack}
 									packs={packs}
 									togglingPackID={togglingPackID}
 								/>
@@ -572,44 +510,38 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 								<LoadingState label="加载技能包内容" />
 							) : view.type === "entry" && selectedEntry ? (
 								<PromptPackEntryEditor
-									categories={categories}
 									key={selectedEntry.id}
-									draft={drafts[selectedEntry.id] ?? promptPackEntryDraft(selectedEntry)}
+									draft={promptPackEntryDraft(selectedEntry)}
 									entry={selectedEntry}
 									error={draftErrors[selectedEntry.id]}
 									isEditing={isEditing}
-									isUpdatingCategory={updatingCategoryEntryID === selectedEntry.id}
-									onCategoryChange={(categoryID) =>
-										void changeEntryCategory(selectedEntry, categoryID)
-									}
 									onChange={(draft) => {
-										setDrafts((current) => ({ ...current, [selectedEntry.id]: draft }));
+										if (!selectedPack || !persistedDraft || !isEditing) return;
+										const update = promptPackEntryUpdate(selectedEntry, draft);
+										updateWorking(
+											selectedPack.id,
+											updateDraftEntry(persistedDraft.working, selectedEntry.id, {
+												body: update.body,
+												description: update.description,
+												metadata: update.metadata,
+												...(selectedEntry.kind === "skill"
+													? { title: update.name }
+													: { name: update.name, title: update.name }),
+											}),
+										);
 										setDraftErrors((current) => ({ ...current, [selectedEntry.id]: "" }));
 									}}
 								/>
-							) : view.type === "categories" ? (
-								<PromptCategoryManager
-									categories={categories}
-									isEditing={isEditing}
-									onCreate={createCategory}
-									onDelete={deleteCategory}
-									onReorder={reorderCategory}
-									onUpdate={updateCategory}
-									prompts={promptEntries}
-								/>
 							) : (
-								<WorkspaceIdle contents={contents} pack={selectedPack} />
+								<WorkspaceEmpty />
 							)}
 						</div>
 					</div>
 				</SidebarContentLayout>
-				<CreateEntryDialog
-					busy={creatingEntry}
-					categories={categories}
-					onCreate={createEntry}
-					onCreateCategory={createCategoryRecord}
-					onOpenChange={setCreateEntryDialogOpen}
-					open={createEntryDialogOpen}
+				<CreateCategoryDialog
+					onCreate={createCategory}
+					onOpenChange={setCreateCategoryDialogOpen}
+					open={createCategoryDialogOpen}
 				/>
 				<CreatePackDialog
 					error={createError}
@@ -625,51 +557,76 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 
 const PromptPackNavigator: React.FC<{
 	categories: PromptPackCategory[];
+	creatingEntryTarget: string;
 	creatingPack: boolean;
 	deletingEntryID?: string;
+	isEditing: boolean;
 	isLoading: boolean;
 	navigatorKind: NavigatorKind;
 	onBackToPacks: () => void;
-	onCreateEntry: () => void;
+	onCreateCategory: () => void;
+	onCreatePrompt: (categoryID: string) => void;
+	onCreateSkill: () => void;
+	onDeleteCategory: (
+		category: PromptPackCategory,
+		replacementCategoryID: string,
+	) => Promise<boolean>;
 	onNavigatorKindChange: (kind: NavigatorKind) => void;
-	onOpenCategories: () => void;
-	onOpenOverview: () => void;
+	onMovePrompt: (entry: PromptPackEntry, categoryID: string) => Promise<boolean>;
+	onReorderCategories: (orderedCategoryIDs: string[]) => Promise<boolean>;
 	onRemoveEntry: (entry: PromptPackEntry) => void;
 	onResetEntry: (entry: PromptPackEntry) => void;
 	onSelectEntry: (entryID: string) => void;
 	onSelectPack: (packID: string) => void;
 	onStartCreatePack: () => void;
+	onPackEnabledChange: (pack: PromptPack, enabled: boolean) => Promise<void>;
+	onUninstallPack: (pack: PromptPack) => void;
+	onUpdateCategory: (
+		category: PromptPackCategory,
+		input: { label: string; order: number },
+	) => Promise<boolean>;
 	packs: PromptPack[];
 	promptEntries: PromptPackEntry[];
+	readOnly: boolean;
 	resettingEntryID?: string;
+	updatingCategoryEntryID?: string;
 	selectedPack?: PromptPack;
 	skillEntries: PromptPackEntry[];
 	view: WorkspaceView;
 }> = ({
 	categories,
+	creatingEntryTarget,
 	creatingPack,
 	deletingEntryID,
+	isEditing,
 	isLoading,
 	navigatorKind,
 	onBackToPacks,
-	onCreateEntry,
+	onCreateCategory,
+	onCreatePrompt,
+	onCreateSkill,
+	onDeleteCategory,
 	onNavigatorKindChange,
-	onOpenCategories,
-	onOpenOverview,
+	onMovePrompt,
+	onReorderCategories,
 	onRemoveEntry,
 	onResetEntry,
 	onSelectEntry,
 	onSelectPack,
 	onStartCreatePack,
+	onPackEnabledChange,
+	onUninstallPack,
+	onUpdateCategory,
 	packs,
 	promptEntries,
+	readOnly,
 	resettingEntryID,
+	updatingCategoryEntryID,
 	selectedPack,
 	skillEntries,
 	view,
 }) => {
 	const orderedSkills = orderEntries(skillEntries);
-	const promptGroups = groupPromptEntries(categories, orderEntries(promptEntries));
 
 	return (
 		<nav
@@ -687,8 +644,10 @@ const PromptPackNavigator: React.FC<{
 							<PackLibraryNavigator
 								creatingPack={creatingPack}
 								isLoading={isLoading}
+								onPackEnabledChange={onPackEnabledChange}
 								onSelectPack={onSelectPack}
 								onStartCreatePack={onStartCreatePack}
+								onUninstallPack={onUninstallPack}
 								packs={packs}
 							/>
 						),
@@ -709,26 +668,8 @@ const PromptPackNavigator: React.FC<{
 										>
 											<ChevronLeft className="size-3.5" />
 										</button>
-										<div className="flex min-w-0 items-center justify-end gap-1">
-											<CreateEntryButton onClick={onCreateEntry} />
-										</div>
+										<div className="min-w-0" />
 									</div>
-								</div>
-
-								<div className="shrink-0 px-2 pb-2">
-									<button
-										type="button"
-										onClick={onOpenOverview}
-										className={cn(
-											"flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-xs transition-colors",
-											view.type === "idle"
-												? "bg-ide-list-active text-ide-list-active-foreground"
-												: "text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
-										)}
-									>
-										<LayoutDashboard className="size-3.5 shrink-0" />
-										<span className="min-w-0 flex-1 truncate">技能包概览</span>
-									</button>
 								</div>
 
 								<div
@@ -757,6 +698,7 @@ const PromptPackNavigator: React.FC<{
 												deletingEntryID={deletingEntryID}
 												entries={orderedSkills}
 												indented={false}
+												readOnly={readOnly}
 												onRemove={onRemoveEntry}
 												onReset={onResetEntry}
 												onSelect={onSelectEntry}
@@ -765,39 +707,53 @@ const PromptPackNavigator: React.FC<{
 											/>
 										</section>
 									) : (
-										<>
-											<button
-												type="button"
-												onClick={onOpenCategories}
-												className={cn(
-													"mt-2 flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-xs text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
-													view.type === "categories" &&
-														"bg-ide-list-active text-ide-list-active-foreground",
-												)}
-											>
-												<Settings2 className="size-3.5" />
-												<span>分组管理</span>
-											</button>
-											{promptGroups.map((group) => (
-												<NavigatorGroup
-													key={group.id || "uncategorized"}
-													icon={<Library className="size-4" />}
-													label={`${group.label} · ${group.entries.length}`}
-												>
-													<EntryRows
-														deletingEntryID={deletingEntryID}
-														entries={group.entries}
-														onRemove={onRemoveEntry}
-														onReset={onResetEntry}
-														onSelect={onSelectEntry}
-														resettingEntryID={resettingEntryID}
-														selectedEntryID={view.type === "entry" ? view.entryID : undefined}
-													/>
-												</NavigatorGroup>
-											))}
-										</>
+										<PromptCategoryNavigatorGroups
+											categories={categories}
+											creatingEntryTarget={creatingEntryTarget}
+											isEditing={isEditing && !readOnly}
+											dragDisabled={Boolean(updatingCategoryEntryID)}
+											onCreatePrompt={onCreatePrompt}
+											onDelete={onDeleteCategory}
+											onMovePrompt={onMovePrompt}
+											onReorder={onReorderCategories}
+											onUpdate={onUpdateCategory}
+											prompts={promptEntries}
+											renderEntries={(groupEntries, onKeyboardMove) => (
+												<EntryRows
+													dragDisabled={Boolean(updatingCategoryEntryID)}
+													draggable={isEditing && !readOnly}
+													deletingEntryID={deletingEntryID}
+													entries={groupEntries}
+													onRemove={onRemoveEntry}
+													readOnly={readOnly}
+													onReset={onResetEntry}
+													onKeyboardMove={onKeyboardMove}
+													onSelect={onSelectEntry}
+													resettingEntryID={resettingEntryID}
+													selectedEntryID={view.type === "entry" ? view.entryID : undefined}
+												/>
+											)}
+										/>
 									)}
 								</div>
+
+								{isEditing && !readOnly ? (
+									<div className="shrink-0 border-t border-border px-2 py-2">
+										<button
+											type="button"
+											className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-xs font-medium text-muted-foreground hover:bg-ide-list-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+											disabled={Boolean(creatingEntryTarget)}
+											onClick={navigatorKind === "skill" ? onCreateSkill : onCreateCategory}
+										>
+											{navigatorKind === "skill" && creatingEntryTarget === "skill" ? (
+												<Loader2 className="size-3.5 animate-spin" />
+											) : (
+												<Plus className="size-3.5" />
+											)}
+											<span>{navigatorKind === "skill" ? "新建 Skill" : "新建分组"}</span>
+										</button>
+									</div>
+								) : null}
 							</>
 						) : null,
 					},
@@ -812,9 +768,20 @@ const PackLibraryNavigator: React.FC<{
 	isLoading: boolean;
 	onSelectPack: (packID: string) => void;
 	onStartCreatePack: () => void;
+	onPackEnabledChange: (pack: PromptPack, enabled: boolean) => Promise<void>;
+	onUninstallPack: (pack: PromptPack) => void;
 	packs: PromptPack[];
-}> = ({ creatingPack, isLoading, onSelectPack, onStartCreatePack, packs }) => {
-	const orderedPacks = orderPacks(packs);
+}> = ({
+	creatingPack,
+	isLoading,
+	onPackEnabledChange,
+	onSelectPack,
+	onStartCreatePack,
+	onUninstallPack,
+	packs,
+}) => {
+	const manageablePacks = orderPacks(packs.filter((pack) => pack.source !== "imported"));
+	const importedPacks = orderPacks(packs.filter((pack) => pack.source === "imported"));
 
 	return (
 		<>
@@ -838,116 +805,110 @@ const PackLibraryNavigator: React.FC<{
 						<Loader2 className="size-3.5 animate-spin" />
 						<span>加载技能包</span>
 					</div>
-				) : orderedPacks.length === 0 ? (
+				) : manageablePacks.length === 0 ? (
 					<p className="px-2 py-2 text-xs text-muted-foreground">暂无技能包</p>
 				) : (
 					<div className="space-y-0.5">
-						{orderedPacks.map((pack) => (
-							<button
+						{manageablePacks.map((pack) => (
+							<PackLibraryRow
 								key={pack.id}
-								type="button"
-								aria-label={pack.name}
-								className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm text-ide-sidebar-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground"
-								onClick={() => onSelectPack(pack.id)}
-							>
-								<PackageOpen className="size-3.5 shrink-0 text-muted-foreground" />
-								<span className="min-w-0 flex-1 truncate">{pack.name}</span>
-								<span className="shrink-0 text-2xs text-muted-foreground">
-									{packSourceLabel(pack.source)}
-								</span>
-							</button>
+								onPackEnabledChange={onPackEnabledChange}
+								onSelectPack={onSelectPack}
+								onUninstallPack={onUninstallPack}
+								pack={pack}
+							/>
 						))}
 					</div>
 				)}
+				{!isLoading && importedPacks.length > 0 ? (
+					<section aria-label="已导入技能包导航" className="mt-5 border-t border-border pt-3">
+						<p className="mb-1 px-2 text-xs font-medium text-muted-foreground">已导入</p>
+						<div className="space-y-0.5">
+							{importedPacks.map((pack) => (
+								<PackLibraryRow
+									key={pack.id}
+									onPackEnabledChange={onPackEnabledChange}
+									onSelectPack={onSelectPack}
+									onUninstallPack={onUninstallPack}
+									pack={pack}
+								/>
+							))}
+						</div>
+					</section>
+				) : null}
 			</div>
 		</>
 	);
 };
 
-const CreateEntryButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
-	<button
-		type="button"
-		className={sidebarToolbarIconButtonClassName}
-		title="新建内容"
-		aria-label="新建内容"
-		onClick={onClick}
-	>
-		<FilePlus2 className="size-3.5" />
-	</button>
-);
+const PackLibraryRow: React.FC<{
+	onPackEnabledChange: (pack: PromptPack, enabled: boolean) => Promise<void>;
+	onSelectPack: (packID: string) => void;
+	onUninstallPack: (pack: PromptPack) => void;
+	pack: PromptPack;
+}> = ({ onPackEnabledChange, onSelectPack, onUninstallPack, pack }) => {
+	const imported = pack.source === "imported";
+	const row = (
+		<button
+			type="button"
+			aria-label={pack.name}
+			className={cn(
+				"flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm text-ide-sidebar-foreground transition-colors",
+				imported
+					? "cursor-not-allowed opacity-60"
+					: "hover:bg-ide-list-hover hover:text-foreground",
+			)}
+			disabled={imported}
+			onClick={() => onSelectPack(pack.id)}
+		>
+			<PackageOpen className="size-3.5 shrink-0 text-muted-foreground" />
+			<span className="min-w-0 flex-1 truncate">{pack.name}</span>
+			{imported ? null : (
+				<span className="shrink-0 text-2xs text-muted-foreground">
+					{packSourceLabel(pack.source)}
+				</span>
+			)}
+		</button>
+	);
+	if (!imported) return row;
+	return (
+		<ContextMenu>
+			<ContextMenuTrigger asChild>
+				<div>{row}</div>
+			</ContextMenuTrigger>
+			<ContextMenuContent>
+				<ContextMenuItem onSelect={() => void onPackEnabledChange(pack, !pack.enabled)}>
+					{pack.enabled ? "停用技能包" : "启用技能包"}
+				</ContextMenuItem>
+				<ContextMenuItem
+					className="text-destructive focus:bg-error-surface focus:text-error-foreground"
+					onSelect={() => onUninstallPack(pack)}
+				>
+					卸载技能包
+				</ContextMenuItem>
+			</ContextMenuContent>
+		</ContextMenu>
+	);
+};
 
-const createEntryOptions: Array<{
-	description: string;
-	icon: React.ComponentType<{ className?: string }>;
-	kind: PromptPackEntryKind;
-	label: string;
-}> = [
-	{
-		description: "编写可复用的提示词正文",
-		icon: FileText,
-		kind: "prompt",
-		label: "提示词",
-	},
-	{
-		description: "编写带说明的 Skill 内容",
-		icon: BookOpenCheck,
-		kind: "skill",
-		label: "Skill",
-	},
-];
-
-const CreateEntryDialog: React.FC<{
-	busy: boolean;
-	categories: PromptPackCategory[];
-	onCreate: (kind: PromptPackEntryKind, categoryID?: string) => Promise<boolean>;
-	onCreateCategory: (label: string) => Promise<PromptPackCategory | undefined>;
+const CreateCategoryDialog: React.FC<{
+	onCreate: (label: string) => Promise<boolean>;
 	onOpenChange: (open: boolean) => void;
 	open: boolean;
-}> = ({ busy, categories, onCreate, onCreateCategory, onOpenChange, open }) => {
-	const [kind, setKind] = useState<PromptPackEntryKind>("prompt");
-	const [categoryID, setCategoryID] = useState("");
-	const [createdCategories, setCreatedCategories] = useState<PromptPackCategory[]>([]);
-	const [newCategoryLabel, setNewCategoryLabel] = useState("");
-	const [showCreateCategory, setShowCreateCategory] = useState(false);
-	const [creatingCategory, setCreatingCategory] = useState(false);
-	const availableCategories = useMemo(() => {
-		const merged = new Map(categories.map((category) => [category.id, category]));
-		for (const category of createdCategories) merged.set(category.id, category);
-		return [...merged.values()].filter((category) => category.id).sort(compareCategories);
-	}, [categories, createdCategories]);
+}> = ({ onCreate, onOpenChange, open }) => {
+	const [label, setLabel] = useState("");
+	const [busy, setBusy] = useState(false);
 
-	useEffect(() => {
-		if (!open) return;
-		setKind("prompt");
-		setCreatedCategories([]);
-		setNewCategoryLabel("");
-		setShowCreateCategory(false);
-	}, [open]);
-
-	useEffect(() => {
-		if (!open) return;
-		setCategoryID((current) =>
-			availableCategories.some((category) => category.id === current)
-				? current
-				: (availableCategories[0]?.id ?? ""),
-		);
-	}, [availableCategories, open]);
-
-	const selected = createEntryOptions.find((option) => option.kind === kind);
-	const dialogBusy = busy || creatingCategory;
-	const createSelectedCategory = async () => {
-		const label = newCategoryLabel.trim();
-		if (!label || creatingCategory) return;
-		setCreatingCategory(true);
+	const create = async () => {
+		const trimmedLabel = label.trim();
+		if (!trimmedLabel || busy) return;
+		setBusy(true);
 		try {
-			const created = await onCreateCategory(label);
-			if (!created) return;
-			setCreatedCategories((current) => [...current, created]);
-			setCategoryID(created.id);
-			setNewCategoryLabel("");
-			setShowCreateCategory(false);
+			if (!(await onCreate(trimmedLabel))) return;
+			setLabel("");
+			onOpenChange(false);
 		} finally {
-			setCreatingCategory(false);
+			setBusy(false);
 		}
 	};
 
@@ -955,160 +916,44 @@ const CreateEntryDialog: React.FC<{
 		<AlertDialog
 			open={open}
 			onOpenChange={(nextOpen) => {
-				if (!dialogBusy) onOpenChange(nextOpen);
+				if (busy) return;
+				onOpenChange(nextOpen);
+				if (!nextOpen) setLabel("");
 			}}
 		>
-			<AlertDialogContent
-				className="max-w-xl gap-5 p-5"
-				onOpenAutoFocus={(event) => {
-					event.preventDefault();
-					document.getElementById(`prompt-pack-entry-${kind}`)?.focus();
-				}}
-			>
+			<AlertDialogContent className="max-w-md">
 				<AlertDialogHeader>
-					<AlertDialogTitle>新建技能包内容</AlertDialogTitle>
-					<AlertDialogDescription>选择一种内容类型开始创作。</AlertDialogDescription>
+					<AlertDialogTitle>新建提示词分组</AlertDialogTitle>
+					<AlertDialogDescription>输入分组名称后即可在侧边栏中添加提示词。</AlertDialogDescription>
 				</AlertDialogHeader>
-
-				<div role="radiogroup" aria-label="技能包内容类型" className="grid gap-2 sm:grid-cols-2">
-					{createEntryOptions.map((option) => {
-						const OptionIcon = option.icon;
-						const optionSelected = option.kind === kind;
-						return (
-							<button
-								id={`prompt-pack-entry-${option.kind}`}
-								key={option.kind}
-								type="button"
-								role="radio"
-								aria-checked={optionSelected}
-								tabIndex={optionSelected ? 0 : -1}
-								disabled={dialogBusy}
-								onClick={() => setKind(option.kind)}
-								onKeyDown={(event) => {
-									if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
-										return;
-									}
-									event.preventDefault();
-									const nextKind = option.kind === "prompt" ? "skill" : "prompt";
-									setKind(nextKind);
-									document.getElementById(`prompt-pack-entry-${nextKind}`)?.focus();
-								}}
-								className={cn(
-									"grid min-h-24 grid-cols-[2.5rem_minmax(0,1fr)_1rem] items-start gap-3 rounded-sm border p-3 text-left transition-[background-color,border-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-60",
-									optionSelected
-										? "border-primary bg-ide-list-active shadow-sm"
-										: "border-border bg-ide-editor hover:bg-ide-list-hover",
-								)}
-							>
-								<span className="flex size-10 items-center justify-center rounded-sm bg-ide-toolbar text-primary">
-									<OptionIcon className="size-5" />
-								</span>
-								<span className="min-w-0 pt-0.5">
-									<span className="block text-sm font-semibold text-foreground">
-										{option.label}
-									</span>
-									<span className="mt-1 block text-xs leading-5 text-muted-foreground">
-										{option.description}
-									</span>
-								</span>
-								<span
-									className={cn(
-										"mt-1 flex size-4 items-center justify-center rounded-full border",
-										optionSelected
-											? "border-primary bg-primary text-primary-foreground"
-											: "border-border",
-									)}
-									aria-hidden="true"
-								>
-									{optionSelected ? <Check className="size-3" strokeWidth={2.5} /> : null}
-								</span>
-							</button>
-						);
-					})}
-				</div>
-
-				{kind === "prompt" ? (
-					<div className="rounded-sm border border-border bg-muted/30 p-3">
-						<div className="flex items-center justify-between gap-3">
-							<Label htmlFor="prompt-pack-create-category">提示词分组</Label>
-							<Button
-								type="button"
-								variant="ghost"
-								size="sm"
-								disabled={dialogBusy}
-								onClick={() => setShowCreateCategory((current) => !current)}
-							>
-								<Plus className="size-4" />
-								<span>新建分组</span>
-							</Button>
-						</div>
-						<Select
-							value={categoryID}
-							disabled={dialogBusy || availableCategories.length === 0}
-							onValueChange={setCategoryID}
-						>
-							<SelectTrigger
-								id="prompt-pack-create-category"
-								className="mt-2 h-9 w-full bg-background px-3 text-sm"
-							>
-								<SelectValue placeholder="请先新建分组" />
-							</SelectTrigger>
-							<SelectContent>
-								{availableCategories.map((category) => (
-									<SelectItem key={category.id} value={category.id}>
-										{category.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-						{showCreateCategory ? (
-							<div className="mt-3 border-t border-border pt-3">
-								<Label htmlFor="prompt-pack-create-category-name">新分组名称</Label>
-								<div className="mt-2 flex gap-2">
-									<Input
-										id="prompt-pack-create-category-name"
-										value={newCategoryLabel}
-										disabled={dialogBusy}
-										placeholder="例如：分镜"
-										onChange={(event) => setNewCategoryLabel(event.target.value)}
-										onKeyDown={(event) => {
-											if (event.key !== "Enter") return;
-											event.preventDefault();
-											void createSelectedCategory();
-										}}
-									/>
-									<Button
-										type="button"
-										variant="outline"
-										disabled={dialogBusy || !newCategoryLabel.trim()}
-										onClick={() => void createSelectedCategory()}
-									>
-										{creatingCategory ? (
-											<Loader2 className="size-4 animate-spin" />
-										) : (
-											<Plus className="size-4" />
-										)}
-										<span>{creatingCategory ? "创建中" : "创建并选择"}</span>
-									</Button>
-								</div>
-							</div>
-						) : null}
+				<form
+					className="space-y-5"
+					onSubmit={(event) => {
+						event.preventDefault();
+						void create();
+					}}
+				>
+					<div className="space-y-2">
+						<Label htmlFor="new-sidebar-prompt-category">分组名称</Label>
+						<Input
+							id="new-sidebar-prompt-category"
+							autoFocus
+							disabled={busy}
+							placeholder="例如：角色风格"
+							value={label}
+							onChange={(event) => setLabel(event.target.value)}
+						/>
 					</div>
-				) : null}
-
-				<AlertDialogFooter>
-					<AlertDialogCancel disabled={dialogBusy} className="rounded-sm">
-						取消
-					</AlertDialogCancel>
-					<Button
-						type="button"
-						disabled={dialogBusy || (kind === "prompt" && !categoryID)}
-						onClick={() => void onCreate(kind, kind === "prompt" ? categoryID : undefined)}
-					>
-						{busy ? <Loader2 className="size-4 animate-spin" /> : <FilePlus2 className="size-4" />}
-						<span>{busy ? "创建中" : `创建${selected?.label ?? "内容"}`}</span>
-					</Button>
-				</AlertDialogFooter>
+					<AlertDialogFooter>
+						<AlertDialogCancel type="button" disabled={busy}>
+							取消
+						</AlertDialogCancel>
+						<Button type="submit" disabled={busy || !label.trim()}>
+							{busy ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+							<span>{busy ? "创建中" : "创建分组"}</span>
+						</Button>
+					</AlertDialogFooter>
+				</form>
 			</AlertDialogContent>
 		</AlertDialog>
 	);
@@ -1139,36 +984,30 @@ const NavigatorKindTab: React.FC<{
 const sidebarToolbarIconButtonClassName =
 	"flex size-7 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar text-muted-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-50";
 
-const NavigatorGroup: React.FC<{
-	children: React.ReactNode;
-	icon: React.ReactNode;
-	label: string;
-}> = ({ children, icon, label }) => (
-	<section className="mt-4">
-		<div className="mb-1 flex h-7 items-center gap-2 px-2 text-xs font-medium text-muted-foreground">
-			<span className="text-muted-foreground">{icon}</span>
-			<span className="flex-1">{label}</span>
-		</div>
-		{children}
-	</section>
-);
-
 const EntryRows: React.FC<{
+	dragDisabled?: boolean;
+	draggable?: boolean;
 	deletingEntryID?: string;
 	entries: PromptPackEntry[];
 	indented?: boolean;
 	onRemove: (entry: PromptPackEntry) => void;
 	onReset: (entry: PromptPackEntry) => void;
+	onKeyboardMove?: (entry: PromptPackEntry, direction: -1 | 1) => void;
 	onSelect: (entryID: string) => void;
+	readOnly: boolean;
 	resettingEntryID?: string;
 	selectedEntryID?: string;
 }> = ({
+	dragDisabled = false,
+	draggable = false,
 	deletingEntryID,
 	entries,
 	indented = true,
 	onRemove,
 	onReset,
+	onKeyboardMove,
 	onSelect,
+	readOnly,
 	resettingEntryID,
 	selectedEntryID,
 }) => {
@@ -1179,29 +1018,17 @@ const EntryRows: React.FC<{
 	return (
 		<div className="space-y-0.5">
 			{entries.map((entry) => (
-				<div
+				<EntryRow
 					key={entry.id}
-					className={cn(
-						"group flex h-8 items-center rounded-md pr-1 hover:bg-ide-list-hover",
-						selectedEntryID === entry.id && "bg-ide-list-active",
-					)}
+					disabled={dragDisabled}
+					draggable={draggable && entry.kind === "prompt"}
+					entry={entry}
+					indented={indented}
+					onKeyboardMove={onKeyboardMove}
+					selected={selectedEntryID === entry.id}
+					onSelect={onSelect}
 				>
-					<button
-						type="button"
-						className={cn(
-							"flex min-w-0 flex-1 items-center gap-2 px-2 text-left text-xs text-foreground",
-							indented && "pl-8",
-						)}
-						onClick={() => onSelect(entry.id)}
-					>
-						{entry.kind === "skill" ? (
-							<BookOpenCheck className="size-3.5 shrink-0 text-muted-foreground" />
-						) : (
-							<FileText className="size-3.5 shrink-0 text-muted-foreground" />
-						)}
-						<span className="truncate">{entryDisplayName(entry)}</span>
-					</button>
-					{entryCanReset(entry) ? (
+					{!readOnly && entryCanReset(entry) ? (
 						<Button
 							type="button"
 							size="icon"
@@ -1218,23 +1045,93 @@ const EntryRows: React.FC<{
 							)}
 						</Button>
 					) : null}
-					<Button
-						type="button"
-						size="icon"
-						variant="ghost"
-						className="size-6 shrink-0 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
-						aria-label={`删除 ${entryDisplayName(entry)}`}
-						disabled={deletingEntryID === entry.id}
-						onClick={() => onRemove(entry)}
-					>
-						{deletingEntryID === entry.id ? (
-							<Loader2 className="size-3.5 animate-spin" />
-						) : (
-							<Trash2 className="size-3.5" />
-						)}
-					</Button>
-				</div>
+					{readOnly ? null : (
+						<Button
+							type="button"
+							size="icon"
+							variant="ghost"
+							className="size-6 shrink-0 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
+							aria-label={`删除 ${entryDisplayName(entry)}`}
+							disabled={deletingEntryID === entry.id}
+							onClick={() => onRemove(entry)}
+						>
+							{deletingEntryID === entry.id ? (
+								<Loader2 className="size-3.5 animate-spin" />
+							) : (
+								<Trash2 className="size-3.5" />
+							)}
+						</Button>
+					)}
+				</EntryRow>
 			))}
+		</div>
+	);
+};
+
+const EntryRow: React.FC<{
+	children: React.ReactNode;
+	disabled: boolean;
+	draggable: boolean;
+	entry: PromptPackEntry;
+	indented: boolean;
+	onKeyboardMove?: (entry: PromptPackEntry, direction: -1 | 1) => void;
+	onSelect: (entryID: string) => void;
+	selected: boolean;
+}> = ({ children, disabled, draggable, entry, indented, onKeyboardMove, onSelect, selected }) => {
+	const { attributes, isDragging, listeners, setActivatorNodeRef, setNodeRef, transform } =
+		useDraggable({
+			data: { entryID: entry.id, type: "prompt" },
+			disabled: disabled || !draggable,
+			id: `prompt-drag:${entry.id}`,
+		});
+
+	return (
+		<div
+			ref={setNodeRef}
+			style={
+				transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined
+			}
+			className={cn(
+				"group flex h-8 items-center rounded-md pr-1 hover:bg-ide-list-hover",
+				selected && "bg-ide-list-active",
+				isDragging && "relative z-20 bg-ide-list-hover opacity-60 shadow-md",
+			)}
+		>
+			{draggable ? (
+				<button
+					ref={setActivatorNodeRef}
+					type="button"
+					className="flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm text-muted-foreground hover:text-foreground active:cursor-grabbing disabled:pointer-events-none disabled:opacity-50"
+					disabled={disabled}
+					{...attributes}
+					{...listeners}
+					aria-label={`拖动提示词 ${entryDisplayName(entry)}`}
+					title="拖动到其他分组"
+					onKeyDown={(event) => {
+						if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+						event.preventDefault();
+						onKeyboardMove?.(entry, event.key === "ArrowUp" ? -1 : 1);
+					}}
+				>
+					<GripVertical className="size-3.5" />
+				</button>
+			) : null}
+			<button
+				type="button"
+				className={cn(
+					"flex min-w-0 flex-1 items-center gap-2 px-2 text-left text-xs text-foreground",
+					indented && !draggable && "pl-8",
+				)}
+				onClick={() => onSelect(entry.id)}
+			>
+				{entry.kind === "skill" ? (
+					<BookOpenCheck className="size-3.5 shrink-0 text-muted-foreground" />
+				) : (
+					<FileText className="size-3.5 shrink-0 text-muted-foreground" />
+				)}
+				<span className="truncate">{entryDisplayName(entry)}</span>
+			</button>
+			{children}
 		</div>
 	);
 };
@@ -1345,102 +1242,107 @@ const CreatePackDialog: React.FC<{
 	);
 };
 
-const PromptCategorySortableCard: React.FC<{
+const PromptCategoryDropGroup: React.FC<{
 	category: PromptPackCategory;
 	children: React.ReactNode;
 	disabled: boolean;
-	isEditing: boolean;
-	onKeyboardMove: (direction: -1 | 1) => void;
-}> = ({ category, children, disabled, isEditing, onKeyboardMove }) => {
-	const {
-		attributes,
-		isDragging,
-		listeners,
-		setActivatorNodeRef,
-		setNodeRef: setDraggableNodeRef,
-		transform,
-	} = useDraggable({ disabled, id: category.id });
-	const { isOver, setNodeRef: setDroppableNodeRef } = useDroppable({ disabled, id: category.id });
+}> = ({ category, children, disabled }) => {
+	const { isOver, setNodeRef } = useDroppable({
+		data: { categoryID: category.id, type: "category" },
+		disabled,
+		id: `category-drop:${category.id}`,
+	});
 
 	return (
-		<div
-			ref={(node) => {
-				setDraggableNodeRef(node);
-				setDroppableNodeRef(node);
-			}}
-			style={
-				transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined
-			}
+		<section
+			aria-label={`提示词分组 ${category.label}`}
+			ref={setNodeRef}
 			className={cn(
-				"rounded-sm border border-border bg-card p-4 transition-[border-color,box-shadow,opacity]",
-				isDragging && "relative z-10 opacity-60 shadow-lg",
-				isOver && !isDragging && "border-primary ring-2 ring-primary/15",
+				"mt-3 rounded-sm transition-[background-color,box-shadow]",
+				isOver && "bg-ide-list-hover ring-1 ring-primary/30",
 			)}
 		>
-			<div className="flex items-start gap-3">
-				{isEditing ? (
-					<Button
-						ref={setActivatorNodeRef}
-						type="button"
-						variant="ghost"
-						size="icon"
-						className="size-8 shrink-0 cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
-						disabled={disabled}
-						{...attributes}
-						{...listeners}
-						aria-label={`拖动分组 ${category.label}`}
-						title={disabled ? "该分组不可调整顺序" : "拖动调整顺序"}
-						onKeyDown={(event) => {
-							if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-							event.preventDefault();
-							onKeyboardMove(event.key === "ArrowUp" ? -1 : 1);
-						}}
-					>
-						<GripVertical className="size-4" />
-					</Button>
-				) : null}
-				<div className="min-w-0 flex-1">{children}</div>
-			</div>
-		</div>
+			{children}
+		</section>
 	);
 };
 
-const PromptCategoryManager: React.FC<{
+const PromptCategoryDragHandle: React.FC<{
+	category: PromptPackCategory;
+	disabled: boolean;
+	onKeyboardMove: (direction: -1 | 1) => void;
+}> = ({ category, disabled, onKeyboardMove }) => {
+	const { attributes, isDragging, listeners, setNodeRef } = useDraggable({
+		data: { categoryID: category.id, type: "category" },
+		disabled,
+		id: `category-drag:${category.id}`,
+	});
+	return (
+		<button
+			ref={setNodeRef}
+			type="button"
+			aria-label={`拖动分组 ${category.label}`}
+			title="拖拽移动分组"
+			className={cn(
+				"flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm hover:bg-ide-list-hover hover:text-foreground active:cursor-grabbing disabled:pointer-events-none disabled:opacity-50",
+				isDragging && "opacity-40",
+			)}
+			disabled={disabled}
+			{...attributes}
+			{...listeners}
+			onKeyDown={(event) => {
+				if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+				event.preventDefault();
+				onKeyboardMove(event.key === "ArrowUp" ? -1 : 1);
+			}}
+		>
+			<GripVertical className="size-3.5" />
+		</button>
+	);
+};
+
+const PromptCategoryNavigatorGroups: React.FC<{
 	categories: PromptPackCategory[];
+	creatingEntryTarget: string;
+	dragDisabled: boolean;
 	isEditing: boolean;
-	onCreate: (label: string) => Promise<boolean>;
+	onCreatePrompt: (categoryID: string) => void;
 	onDelete: (category: PromptPackCategory, replacementCategoryID: string) => Promise<boolean>;
-	onReorder: (category: PromptPackCategory, target: PromptPackCategory) => Promise<boolean>;
+	onMovePrompt: (entry: PromptPackEntry, categoryID: string) => Promise<boolean>;
+	onReorder: (orderedCategoryIDs: string[]) => Promise<boolean>;
 	onUpdate: (
 		category: PromptPackCategory,
 		input: { label: string; order: number },
 	) => Promise<boolean>;
 	prompts: PromptPackEntry[];
-}> = ({ categories, isEditing, onCreate, onDelete, onReorder, onUpdate, prompts }) => {
-	const [createDialogOpen, setCreateDialogOpen] = useState(false);
+	renderEntries: (
+		entries: PromptPackEntry[],
+		onKeyboardMove: (entry: PromptPackEntry, direction: -1 | 1) => void,
+	) => React.ReactNode;
+}> = ({
+	categories,
+	creatingEntryTarget,
+	dragDisabled,
+	isEditing,
+	onCreatePrompt,
+	onDelete,
+	onMovePrompt,
+	onReorder,
+	onUpdate,
+	prompts,
+	renderEntries,
+}) => {
 	const [deletingCategoryID, setDeletingCategoryID] = useState("");
 	const [editingCategoryID, setEditingCategoryID] = useState("");
 	const [editLabel, setEditLabel] = useState("");
-	const [newLabel, setNewLabel] = useState("");
 	const [replacements, setReplacements] = useState<Record<string, string>>({});
 	const [busyID, setBusyID] = useState("");
-	const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
 	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
-	const categoriesByID = new Map(categories.map((category) => [category.id, category]));
-	const orderedCategories = [
-		...categoryOrder.flatMap((categoryID) => {
-			const category = categoriesByID.get(categoryID);
-			return category ? [category] : [];
-		}),
-		...categories
-			.filter((category) => !categoryOrder.includes(category.id))
-			.sort(compareCategories),
-	];
+	const orderedCategories = [...categories].sort(compareCategories);
 	const deletingCategory = categories.find((category) => category.id === deletingCategoryID);
 	const editingCategory = categories.find((category) => category.id === editingCategoryID);
 
 	useEffect(() => {
-		setCategoryOrder([...categories].sort(compareCategories).map((category) => category.id));
 		setReplacements((current) =>
 			Object.fromEntries(
 				categories.map((category) => {
@@ -1459,19 +1361,6 @@ const PromptCategoryManager: React.FC<{
 		);
 	}, [categories]);
 
-	const create = async () => {
-		const label = newLabel.trim();
-		if (!label || busyID === "create") return;
-		setBusyID("create");
-		try {
-			if (!(await onCreate(label))) return;
-			setNewLabel("");
-			setCreateDialogOpen(false);
-		} finally {
-			setBusyID("");
-		}
-	};
-
 	const update = async () => {
 		const label = editLabel.trim();
 		if (!editingCategory || !label || label === editingCategory.label) return;
@@ -1485,31 +1374,26 @@ const PromptCategoryManager: React.FC<{
 		}
 	};
 
-	const reorder = async (category: PromptPackCategory, target: PromptPackCategory) => {
-		if (category.id === target.id || busyID) {
+	const handleDragEnd = (event: DragEndEvent) => {
+		const activeData = event.active.data.current;
+		const targetCategoryID = event.over?.data.current?.categoryID;
+		if (typeof targetCategoryID !== "string") return;
+		if (activeData?.type === "category" && typeof activeData.categoryID === "string") {
+			const fromIndex = orderedCategories.findIndex(
+				(category) => category.id === activeData.categoryID,
+			);
+			const toIndex = orderedCategories.findIndex((category) => category.id === targetCategoryID);
+			if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
+			const reordered = [...orderedCategories];
+			const [moved] = reordered.splice(fromIndex, 1);
+			reordered.splice(toIndex, 0, moved);
+			void onReorder(reordered.map((category) => category.id));
 			return;
 		}
-		const previousOrder = orderedCategories.map((item) => item.id);
-		const currentIndex = previousOrder.indexOf(category.id);
-		const targetIndex = previousOrder.indexOf(target.id);
-		if (currentIndex < 0 || targetIndex < 0) return;
-		const nextOrder = [...previousOrder];
-		const [movedCategoryID] = nextOrder.splice(currentIndex, 1);
-		if (!movedCategoryID) return;
-		nextOrder.splice(targetIndex, 0, movedCategoryID);
-		setCategoryOrder(nextOrder);
-		setBusyID(category.id);
-		try {
-			if (!(await onReorder(category, target))) setCategoryOrder(previousOrder);
-		} finally {
-			setBusyID("");
+		if (activeData?.type === "prompt" && typeof activeData.entryID === "string") {
+			const entry = prompts.find((candidate) => candidate.id === activeData.entryID);
+			if (entry) void onMovePrompt(entry, targetCategoryID);
 		}
-	};
-
-	const handleDragEnd = (event: DragEndEvent) => {
-		const category = categoriesByID.get(String(event.active.id));
-		const target = event.over ? categoriesByID.get(String(event.over.id)) : undefined;
-		if (category && target) void reorder(category, target);
 	};
 
 	const remove = async (category: PromptPackCategory) => {
@@ -1525,382 +1409,423 @@ const PromptCategoryManager: React.FC<{
 	};
 
 	return (
-		<section className="h-full overflow-y-auto">
-			<div className="mx-auto w-full max-w-4xl px-10 py-8 xl:px-14">
-				<div className="flex items-center justify-between gap-4">
-					<h2 className="text-2xl font-semibold text-foreground">提示词分组管理</h2>
-					{isEditing ? (
-						<Button type="button" onClick={() => setCreateDialogOpen(true)}>
-							<Plus className="size-4" />
-							<span>新建分组</span>
-						</Button>
-					) : null}
-				</div>
-
-				<AlertDialog
-					open={createDialogOpen}
-					onOpenChange={(open) => {
-						if (busyID === "create") return;
-						setCreateDialogOpen(open);
-						if (!open) setNewLabel("");
-					}}
-				>
-					<AlertDialogContent className="max-w-md">
-						<AlertDialogHeader>
-							<AlertDialogTitle>新建提示词分组</AlertDialogTitle>
-							<AlertDialogDescription>为当前技能包创建一个新的提示词分组。</AlertDialogDescription>
-						</AlertDialogHeader>
+		<>
+			<AlertDialog
+				open={Boolean(editingCategory)}
+				onOpenChange={(open) => {
+					if (editingCategory && busyID === editingCategory.id) return;
+					if (!open) {
+						setEditingCategoryID("");
+						setEditLabel("");
+					}
+				}}
+			>
+				<AlertDialogContent className="max-w-md">
+					<AlertDialogHeader>
+						<AlertDialogTitle>修改分组名称</AlertDialogTitle>
+						<AlertDialogDescription>
+							修改“{editingCategory?.label}”在当前技能包中的显示名称。
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					{editingCategory ? (
 						<form
 							className="space-y-5"
 							onSubmit={(event) => {
 								event.preventDefault();
-								void create();
+								void update();
 							}}
 						>
 							<div className="space-y-2">
-								<Label htmlFor="new-prompt-category">分组名称</Label>
+								<Label htmlFor="edit-prompt-category">新的分组名称</Label>
 								<Input
-									id="new-prompt-category"
-									value={newLabel}
-									onChange={(event) => setNewLabel(event.target.value)}
-									placeholder="例如：角色风格"
+									id="edit-prompt-category"
+									value={editLabel}
+									onChange={(event) => setEditLabel(event.target.value)}
 									autoFocus
 								/>
 							</div>
 							<AlertDialogFooter>
-								<AlertDialogCancel type="button" disabled={busyID === "create"}>
+								<AlertDialogCancel type="button" disabled={busyID === editingCategory.id}>
 									取消
 								</AlertDialogCancel>
-								<Button type="submit" disabled={!newLabel.trim() || busyID === "create"}>
-									{busyID === "create" ? (
+								<Button
+									type="submit"
+									disabled={
+										busyID === editingCategory.id ||
+										!editLabel.trim() ||
+										editLabel.trim() === editingCategory.label
+									}
+								>
+									{busyID === editingCategory.id ? (
 										<Loader2 className="size-4 animate-spin" />
 									) : (
-										<Plus className="size-4" />
+										<Pencil className="size-4" />
 									)}
-									<span>{busyID === "create" ? "创建中" : "创建分组"}</span>
+									<span>{busyID === editingCategory.id ? "保存中" : "保存修改"}</span>
 								</Button>
 							</AlertDialogFooter>
 						</form>
-					</AlertDialogContent>
-				</AlertDialog>
+					) : null}
+				</AlertDialogContent>
+			</AlertDialog>
 
-				<AlertDialog
-					open={Boolean(editingCategory)}
-					onOpenChange={(open) => {
-						if (editingCategory && busyID === editingCategory.id) return;
-						if (!open) {
-							setEditingCategoryID("");
-							setEditLabel("");
-						}
-					}}
-				>
-					<AlertDialogContent className="max-w-md">
-						<AlertDialogHeader>
-							<AlertDialogTitle>修改分组名称</AlertDialogTitle>
-							<AlertDialogDescription>
-								修改“{editingCategory?.label}”在当前技能包中的显示名称。
-							</AlertDialogDescription>
-						</AlertDialogHeader>
-						{editingCategory ? (
-							<form
-								className="space-y-5"
-								onSubmit={(event) => {
-									event.preventDefault();
-									void update();
-								}}
-							>
-								<div className="space-y-2">
-									<Label htmlFor="edit-prompt-category">新的分组名称</Label>
-									<Input
-										id="edit-prompt-category"
-										value={editLabel}
-										onChange={(event) => setEditLabel(event.target.value)}
-										autoFocus
-									/>
-								</div>
-								<AlertDialogFooter>
-									<AlertDialogCancel type="button" disabled={busyID === editingCategory.id}>
-										取消
-									</AlertDialogCancel>
-									<Button
-										type="submit"
-										disabled={
-											busyID === editingCategory.id ||
-											!editLabel.trim() ||
-											editLabel.trim() === editingCategory.label
-										}
+			<AlertDialog
+				open={Boolean(deletingCategory)}
+				onOpenChange={(open) => {
+					if (deletingCategory && busyID === deletingCategory.id) return;
+					if (!open) setDeletingCategoryID("");
+				}}
+			>
+				<AlertDialogContent className="max-w-md">
+					<AlertDialogHeader>
+						<AlertDialogTitle>删除提示词分组？</AlertDialogTitle>
+						<AlertDialogDescription>
+							删除“{deletingCategory?.label}
+							”后，该分组中的提示词将移动到所选分组。此操作无法撤销。
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					{deletingCategory ? (
+						<div className="space-y-5">
+							<div className="space-y-2">
+								<Label htmlFor="delete-category-replacement">删除后移动到</Label>
+								<Select
+									value={replacements[deletingCategory.id] ?? ""}
+									onValueChange={(value) =>
+										setReplacements((current) => ({
+											...current,
+											[deletingCategory.id]: value,
+										}))
+									}
+									disabled={busyID === deletingCategory.id}
+								>
+									<SelectTrigger
+										id="delete-category-replacement"
+										className="h-9 w-full bg-background px-3 text-sm"
 									>
-										{busyID === editingCategory.id ? (
-											<Loader2 className="size-4 animate-spin" />
-										) : (
-											<Pencil className="size-4" />
-										)}
-										<span>{busyID === editingCategory.id ? "保存中" : "保存修改"}</span>
-									</Button>
-								</AlertDialogFooter>
-							</form>
-						) : null}
-					</AlertDialogContent>
-				</AlertDialog>
-
-				<AlertDialog
-					open={Boolean(deletingCategory)}
-					onOpenChange={(open) => {
-						if (deletingCategory && busyID === deletingCategory.id) return;
-						if (!open) setDeletingCategoryID("");
-					}}
-				>
-					<AlertDialogContent className="max-w-md">
-						<AlertDialogHeader>
-							<AlertDialogTitle>删除提示词分组？</AlertDialogTitle>
-							<AlertDialogDescription>
-								删除“{deletingCategory?.label}
-								”后，该分组中的提示词将移动到所选分组。此操作无法撤销。
-							</AlertDialogDescription>
-						</AlertDialogHeader>
-						{deletingCategory ? (
-							<div className="space-y-5">
-								<div className="space-y-2">
-									<Label htmlFor="delete-category-replacement">删除后移动到</Label>
-									<Select
-										value={replacements[deletingCategory.id] ?? ""}
-										onValueChange={(value) =>
-											setReplacements((current) => ({
-												...current,
-												[deletingCategory.id]: value,
-											}))
-										}
-										disabled={busyID === deletingCategory.id}
-									>
-										<SelectTrigger
-											id="delete-category-replacement"
-											className="h-9 w-full bg-background px-3 text-sm"
-										>
-											<SelectValue placeholder="选择迁移分组" />
-										</SelectTrigger>
-										<SelectContent>
-											{categories
-												.filter((candidate) => candidate.id !== deletingCategory.id)
-												.map((candidate) => (
-													<SelectItem key={candidate.id} value={candidate.id}>
-														{candidate.label}
-													</SelectItem>
-												))}
-										</SelectContent>
-									</Select>
-								</div>
-								<AlertDialogFooter>
-									<AlertDialogCancel type="button" disabled={busyID === deletingCategory.id}>
-										取消
-									</AlertDialogCancel>
-									<Button
-										type="button"
-										variant="destructive"
-										disabled={busyID === deletingCategory.id || !replacements[deletingCategory.id]}
-										onClick={() => void remove(deletingCategory)}
-									>
-										{busyID === deletingCategory.id ? (
-											<Loader2 className="size-4 animate-spin" />
-										) : (
-											<Trash2 className="size-4" />
-										)}
-										<span>{busyID === deletingCategory.id ? "删除中" : "删除分组"}</span>
-									</Button>
-								</AlertDialogFooter>
+										<SelectValue placeholder="选择迁移分组" />
+									</SelectTrigger>
+									<SelectContent>
+										{categories
+											.filter((candidate) => candidate.id !== deletingCategory.id)
+											.map((candidate) => (
+												<SelectItem key={candidate.id} value={candidate.id}>
+													{candidate.label}
+												</SelectItem>
+											))}
+									</SelectContent>
+								</Select>
 							</div>
-						) : null}
-					</AlertDialogContent>
-				</AlertDialog>
+							<AlertDialogFooter>
+								<AlertDialogCancel type="button" disabled={busyID === deletingCategory.id}>
+									取消
+								</AlertDialogCancel>
+								<Button
+									type="button"
+									variant="destructive"
+									disabled={busyID === deletingCategory.id || !replacements[deletingCategory.id]}
+									onClick={() => void remove(deletingCategory)}
+								>
+									{busyID === deletingCategory.id ? (
+										<Loader2 className="size-4 animate-spin" />
+									) : (
+										<Trash2 className="size-4" />
+									)}
+									<span>{busyID === deletingCategory.id ? "删除中" : "删除分组"}</span>
+								</Button>
+							</AlertDialogFooter>
+						</div>
+					) : null}
+				</AlertDialogContent>
+			</AlertDialog>
 
-				<DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-					<div className="mt-4 space-y-3">
-						{orderedCategories.length === 0 ? (
-							<div className="rounded-sm border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-								当前技能包还没有分组，请先创建一个分组。
-							</div>
-						) : (
-							orderedCategories.map((category, index) => {
-								const promptCount = prompts.filter(
-									(prompt) => promptCategoryID(prompt) === category.id,
-								).length;
-								const busy = busyID === category.id;
-								const builtIn = category.source !== "user";
-								return (
-									<PromptCategorySortableCard
-										key={category.id}
-										category={category}
-										disabled={!isEditing || Boolean(busyID)}
-										isEditing={isEditing}
-										onKeyboardMove={(direction) => {
-											const target = orderedCategories[index + direction];
-											if (target) void reorder(category, target);
-										}}
-									>
-										<div className="flex items-center justify-between gap-4">
-											<div className="min-w-0">
-												<p className="truncate text-sm font-medium text-foreground">
-													{category.label}
-												</p>
-												<p className="mt-1 text-xs text-muted-foreground">
-													{builtIn ? "技能包内置 · " : ""}
-													{promptCount} 条提示词
-												</p>
-											</div>
-											<div className="flex shrink-0 items-center gap-2">
-												{isEditing ? (
-													<Button
-														type="button"
-														variant="outline"
-														aria-label={`修改分组 ${category.label}`}
-														disabled={busy}
-														onClick={() => {
-															setEditingCategoryID(category.id);
-															setEditLabel(category.label);
-														}}
-													>
-														<Pencil className="size-4" />
-														<span>修改</span>
-													</Button>
-												) : null}
-												{isEditing && categories.length > 1 ? (
-													<Button
-														type="button"
-														variant="destructive"
-														aria-label={`删除分组 ${category.label}`}
-														disabled={busy}
-														onClick={() => setDeletingCategoryID(category.id)}
-													>
-														<Trash2 className="size-4" />
-														<span>删除</span>
-													</Button>
-												) : null}
-											</div>
+			<DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+				<div>
+					{isEditing && orderedCategories.length > 1 ? (
+						<p className="px-2 pt-2 text-2xs text-muted-foreground">拖拽移动分组</p>
+					) : null}
+					{orderedCategories.length === 0 ? (
+						<p className="px-2 py-3 text-xs text-muted-foreground">当前还没有分组</p>
+					) : (
+						orderedCategories.map((category, index) => {
+							const groupEntries = orderEntries(
+								prompts.filter((prompt) => promptCategoryID(prompt) === category.id),
+							);
+							const busy = busyID === category.id;
+							return (
+								<PromptCategoryDropGroup
+									key={category.id}
+									category={category}
+									disabled={!isEditing || dragDisabled || Boolean(busyID)}
+								>
+									<div className="mb-1 flex h-7 items-center gap-1 pr-1 text-xs font-medium text-muted-foreground">
+										{isEditing ? (
+											<PromptCategoryDragHandle
+												category={category}
+												disabled={busy || dragDisabled}
+												onKeyboardMove={(direction) => {
+													const target = orderedCategories[index + direction];
+													if (!target) return;
+													const reordered = [...orderedCategories];
+													const [moved] = reordered.splice(index, 1);
+													reordered.splice(index + direction, 0, moved);
+													void onReorder(reordered.map((item) => item.id));
+												}}
+											/>
+										) : null}
+										<Library className="size-3.5 shrink-0" />
+										<span className="min-w-0 flex-1 truncate">{category.label}</span>
+										<div className="flex shrink-0 items-center gap-0.5">
+											{isEditing ? (
+												<button
+													type="button"
+													aria-label={`修改分组 ${category.label}`}
+													className="flex size-6 items-center justify-center rounded-sm hover:bg-ide-list-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+													disabled={busy}
+													onClick={() => {
+														setEditingCategoryID(category.id);
+														setEditLabel(category.label);
+													}}
+												>
+													<Pencil className="size-3.5" />
+												</button>
+											) : null}
+											{isEditing && categories.length > 1 ? (
+												<button
+													type="button"
+													aria-label={`删除分组 ${category.label}`}
+													className="flex size-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-error-surface hover:text-error-foreground disabled:pointer-events-none disabled:opacity-50"
+													disabled={busy}
+													onClick={() => setDeletingCategoryID(category.id)}
+												>
+													<Trash2 className="size-3.5" />
+												</button>
+											) : null}
+											{isEditing && category.id ? (
+												<button
+													type="button"
+													aria-label={`在${category.label}分组中新建提示词`}
+													className="flex size-6 items-center justify-center rounded-sm hover:bg-ide-list-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+													disabled={Boolean(creatingEntryTarget)}
+													onClick={() => onCreatePrompt(category.id)}
+												>
+													{creatingEntryTarget === `prompt:${category.id}` ? (
+														<Loader2 className="size-3.5 animate-spin" />
+													) : (
+														<Plus className="size-3.5" />
+													)}
+												</button>
+											) : null}
 										</div>
-									</PromptCategorySortableCard>
-								);
-							})
-						)}
-					</div>
-				</DndContext>
-			</div>
-		</section>
+									</div>
+									{renderEntries(groupEntries, (entry, direction) => {
+										const target = orderedCategories[index + direction];
+										if (target) void onMovePrompt(entry, target.id);
+									})}
+								</PromptCategoryDropGroup>
+							);
+						})
+					)}
+				</div>
+			</DndContext>
+		</>
 	);
 };
 
 const WorkspaceStart: React.FC<{
 	isLoading: boolean;
+	onCopyPack: (pack: PromptPack) => void;
+	onEditPackMetadata: (pack: PromptPack) => void;
 	onPackEnabledChange: (pack: PromptPack, enabled: boolean) => Promise<void>;
 	onSelectPack: (packID: string) => void;
+	onUninstallPack: (pack: PromptPack) => void;
 	packs: PromptPack[];
 	togglingPackID?: string;
-}> = ({ isLoading, onPackEnabledChange, onSelectPack, packs, togglingPackID }) => {
+}> = ({
+	isLoading,
+	onCopyPack,
+	onEditPackMetadata,
+	onPackEnabledChange,
+	onSelectPack,
+	onUninstallPack,
+	packs,
+	togglingPackID,
+}) => {
 	if (isLoading) return <LoadingState label="加载技能包" />;
-	const orderedPacks = orderPacks(packs);
+	const manageablePacks = orderPacks(packs.filter((pack) => pack.source !== "imported"));
+	const importedPacks = orderPacks(packs.filter((pack) => pack.source === "imported"));
 
 	return (
 		<div className="h-full overflow-y-auto px-6 py-8 xl:px-8">
 			<section aria-label="技能包列表" className="mx-auto w-full max-w-5xl">
-				{orderedPacks.length > 0 ? (
-					<div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-						{orderedPacks.map((pack) => (
-							<article
-								key={pack.id}
-								className="group flex min-h-40 flex-col rounded-md border border-border bg-card p-4 transition-[border-color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:border-ring/60 hover:shadow-md focus-within:border-ring focus-within:shadow-md"
-							>
-								<div className="flex min-w-0 items-start gap-3">
-									<span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-ide-toolbar text-muted-foreground transition-colors group-hover:text-primary">
-										<PackageOpen className="size-5" />
-									</span>
-									<div className="min-w-0 flex-1">
-										<div className="flex min-w-0 flex-wrap items-center gap-2">
-											<h3 className="min-w-0 truncate text-sm font-semibold text-foreground">
-												{pack.name}
-											</h3>
-											<span className="shrink-0 rounded-sm border border-border bg-background px-1.5 py-0.5 text-2xs text-muted-foreground">
-												{packSourceLabel(pack.source)}
-											</span>
-										</div>
-										<p className="mt-1.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
-											{pack.description || pack.id}
-										</p>
-									</div>
-									<Switch
-										checked={pack.enabled}
-										className="mt-1 shrink-0"
-										disabled={togglingPackID === pack.id}
-										aria-label={`${pack.enabled ? "停用" : "启用"}技能包 ${pack.name}`}
-										onCheckedChange={(enabled) => void onPackEnabledChange(pack, enabled)}
-									/>
-								</div>
-								<div className="mt-auto flex items-center justify-between gap-3 border-t border-border pt-3">
-									<div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
-										<span>{pack.skillCount ?? 0} Skills</span>
-										<span>{pack.promptCount ?? 0} 提示词</span>
-										<span>v{pack.version}</span>
-									</div>
-									<Button
+				<section aria-label="默认和本地技能包">
+					<h2 className="mb-3 text-sm font-semibold text-foreground">技能包</h2>
+					{manageablePacks.length > 0 ? (
+						<div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+							{manageablePacks.map((pack) => (
+								<article
+									key={pack.id}
+									className="group relative flex min-h-40 cursor-pointer flex-col rounded-md border border-border bg-card p-4 transition-[border-color,box-shadow] duration-150 hover:border-ring/60 hover:shadow-md focus-within:border-ring focus-within:shadow-md"
+								>
+									<button
 										type="button"
-										variant="outline"
-										size="sm"
-										className="shrink-0"
+										className="absolute inset-0 z-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
 										aria-label={`打开技能包 ${pack.name}`}
 										onClick={() => onSelectPack(pack.id)}
-									>
-										<span>打开</span>
-									</Button>
-								</div>
-							</article>
-						))}
-					</div>
-				) : (
-					<div className="py-16 text-center">
-						<PackageOpen className="mx-auto size-8 text-muted-foreground" />
-						<h3 className="mt-4 text-sm font-medium text-foreground">还没有技能包</h3>
-						<p className="mt-1 text-xs text-muted-foreground">使用左侧的新建技能包入口开始制作。</p>
-					</div>
-				)}
+									/>
+									<div className="pointer-events-none relative z-10 flex min-w-0 items-start gap-3">
+										<span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-ide-toolbar text-muted-foreground transition-colors group-hover:text-primary">
+											<PackageOpen className="size-5" />
+										</span>
+										<div className="min-w-0 flex-1">
+											<div className="flex min-w-0 flex-wrap items-center gap-2">
+												<h3 className="min-w-0 truncate text-sm font-semibold text-foreground">
+													{pack.name}
+												</h3>
+												<span className="shrink-0 rounded-sm border border-border bg-background px-1.5 py-0.5 text-2xs text-muted-foreground">
+													{packSourceLabel(pack.source)}
+												</span>
+											</div>
+											<p className="mt-1.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
+												{packCardDescription(pack)}
+											</p>
+										</div>
+										<Switch
+											checked={pack.enabled}
+											className="pointer-events-auto mt-1 shrink-0"
+											disabled={togglingPackID === pack.id}
+											aria-label={`${pack.enabled ? "停用" : "启用"}技能包 ${pack.name}`}
+											onCheckedChange={(enabled) => void onPackEnabledChange(pack, enabled)}
+										/>
+									</div>
+									<div className="pointer-events-none relative z-10 mt-auto flex items-center justify-between gap-3 border-t border-border pt-3">
+										<div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
+											<span>{pack.skillCount ?? 0} Skills</span>
+											<span>{pack.promptCount ?? 0} 提示词</span>
+											<span>v{pack.version}</span>
+										</div>
+										<div className="pointer-events-auto flex shrink-0 items-center gap-1.5">
+											<Button
+												type="button"
+												variant="outline"
+												size="icon"
+												className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+												aria-label={`复制技能包 ${pack.name}`}
+												title={`复制 ${pack.name}`}
+												onClick={() => onCopyPack(pack)}
+											>
+												<Copy className="size-3.5" />
+											</Button>
+											{pack.source === "local" ? (
+												<Button
+													type="button"
+													variant="outline"
+													size="icon"
+													className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+													aria-label={`编辑技能包信息 ${pack.name}`}
+													title={`编辑 ${pack.name}`}
+													onClick={() => onEditPackMetadata(pack)}
+												>
+													<Pencil className="size-3.5" />
+												</Button>
+											) : null}
+											{pack.source === "local" ? (
+												<Button
+													type="button"
+													variant="outline"
+													size="icon"
+													className="size-7 shrink-0 text-destructive hover:bg-error-surface hover:text-error-foreground"
+													aria-label={`卸载技能包 ${pack.name}`}
+													title={`卸载 ${pack.name}`}
+													onClick={() => onUninstallPack(pack)}
+												>
+													<Trash2 className="size-3.5" />
+												</Button>
+											) : null}
+										</div>
+									</div>
+								</article>
+							))}
+						</div>
+					) : (
+						<div className="py-16 text-center">
+							<PackageOpen className="mx-auto size-8 text-muted-foreground" />
+							<h3 className="mt-4 text-sm font-medium text-foreground">还没有技能包</h3>
+							<p className="mt-1 text-xs text-muted-foreground">
+								使用左侧的新建技能包入口开始制作。
+							</p>
+						</div>
+					)}
+				</section>
+				{importedPacks.length > 0 ? (
+					<section aria-label="已导入技能包" className="mt-8 border-t border-border pt-6">
+						<h2 className="mb-3 text-sm font-semibold text-foreground">已导入</h2>
+						<div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+							{importedPacks.map((pack) => (
+								<article
+									key={pack.id}
+									className="relative flex min-h-40 flex-col rounded-md border border-border bg-card p-4"
+								>
+									<div className="flex min-w-0 items-start gap-3">
+										<span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border bg-ide-toolbar text-muted-foreground">
+											<PackageOpen className="size-5" />
+										</span>
+										<div className="min-w-0 flex-1">
+											<div className="flex min-w-0 flex-wrap items-center gap-2">
+												<h3 className="min-w-0 truncate text-sm font-semibold text-foreground">
+													{pack.name}
+												</h3>
+												<span className="shrink-0 rounded-sm border border-border bg-background px-1.5 py-0.5 text-2xs text-muted-foreground">
+													{packSourceLabel(pack.source)}
+												</span>
+											</div>
+											<p className="mt-1.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
+												{packCardDescription(pack)}
+											</p>
+										</div>
+										<Switch
+											checked={pack.enabled}
+											className="mt-1 shrink-0"
+											disabled={togglingPackID === pack.id}
+											aria-label={`${pack.enabled ? "停用" : "启用"}技能包 ${pack.name}`}
+											onCheckedChange={(enabled) => void onPackEnabledChange(pack, enabled)}
+										/>
+									</div>
+									<div className="mt-auto flex items-center justify-between gap-3 border-t border-border pt-3">
+										<div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
+											<span>{pack.skillCount ?? 0} Skills</span>
+											<span>{pack.promptCount ?? 0} 提示词</span>
+											<span>v{pack.version}</span>
+										</div>
+										<Button
+											type="button"
+											variant="outline"
+											size="icon"
+											className="size-7 shrink-0 text-destructive hover:bg-error-surface hover:text-error-foreground"
+											aria-label={`卸载技能包 ${pack.name}`}
+											title={`卸载 ${pack.name}`}
+											onClick={() => onUninstallPack(pack)}
+										>
+											<Trash2 className="size-3.5" />
+										</Button>
+									</div>
+								</article>
+							))}
+						</div>
+					</section>
+				) : null}
 			</section>
 		</div>
 	);
 };
 
-const WorkspaceIdle: React.FC<{ contents: PromptPackContents; pack: PromptPack }> = ({
-	contents,
-	pack,
-}) => (
-	<div className="h-full overflow-y-auto py-10">
-		<div className="mx-auto w-full max-w-4xl">
-			<div className="flex items-start gap-4 border-b border-border pb-6">
-				<span className="flex size-11 shrink-0 items-center justify-center rounded-md border border-border bg-ide-toolbar text-primary">
-					<PackageOpen className="size-5" />
-				</span>
-				<div className="min-w-0">
-					<div className="flex flex-wrap items-center gap-2">
-						<h2 className="truncate text-2xl font-semibold text-foreground">{pack.name}</h2>
-						<span className="rounded-sm border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
-							{packSourceLabel(pack.source)}
-						</span>
-					</div>
-					<p className="mt-2 text-sm leading-6 text-muted-foreground">
-						{pack.description || "这个技能包还没有简介。"}
-					</p>
-				</div>
-			</div>
-			<div className="grid grid-cols-2 gap-6 py-7">
-				<div className="border-b border-border pb-4">
-					<p className="text-xs text-muted-foreground">Skills</p>
-					<p className="mt-2 text-2xl font-semibold text-foreground">
-						{contents.entries.filter((entry) => entry.kind === "skill").length}
-					</p>
-				</div>
-				<div className="border-b border-border pb-4">
-					<p className="text-xs text-muted-foreground">提示词</p>
-					<p className="mt-2 text-2xl font-semibold text-foreground">
-						{contents.entries.filter((entry) => entry.kind === "prompt").length}
-					</p>
-				</div>
-			</div>
-			<p className="text-sm text-muted-foreground">使用左侧顶部的新建图标添加内容。</p>
+const WorkspaceEmpty: React.FC = () => (
+	<div className="flex h-full items-center justify-center px-6 text-center">
+		<div className="max-w-sm">
+			<PackagePlus className="mx-auto size-8 text-muted-foreground" />
+			<h2 className="mt-4 text-sm font-medium text-foreground">技能包中还没有内容</h2>
+			<p className="mt-1 text-xs leading-5 text-muted-foreground">
+				使用左侧顶部的新建按钮添加 Skill 或提示词。
+			</p>
 		</div>
 	</div>
 );
@@ -1914,6 +1839,8 @@ const LoadingState: React.FC<{ label: string }> = ({ label }) => (
 
 const orderPacks = (packs: PromptPack[]) =>
 	[...packs].sort((first, second) => {
+		const sourceDifference = packSourceOrder(first.source) - packSourceOrder(second.source);
+		if (sourceDifference !== 0) return sourceDifference;
 		const firstTime = Date.parse(first.updatedAt || first.createdAt || "");
 		const secondTime = Date.parse(second.updatedAt || second.createdAt || "");
 		if (Number.isFinite(firstTime) && Number.isFinite(secondTime) && firstTime !== secondTime) {
@@ -1921,6 +1848,17 @@ const orderPacks = (packs: PromptPack[]) =>
 		}
 		return first.name.localeCompare(second.name, "zh-CN");
 	});
+
+const packSourceOrder = (source: PromptPack["source"]) => {
+	switch (source) {
+		case "default":
+			return 0;
+		case "local":
+			return 1;
+		case "imported":
+			return 2;
+	}
+};
 
 const orderEntries = (entries: PromptPackEntry[]) =>
 	[...entries].sort((first, second) =>
@@ -1957,19 +1895,6 @@ const packCategories = (
 	return [...merged.values()].sort(compareCategories);
 };
 
-const groupPromptEntries = (categories: PromptPackCategory[], entries: PromptPackEntry[]) => {
-	const entriesByCategory = new Map<string, PromptPackEntry[]>();
-	for (const entry of entries) {
-		const categoryID = promptCategoryID(entry);
-		entriesByCategory.set(categoryID, [...(entriesByCategory.get(categoryID) ?? []), entry]);
-	}
-	return categories.map((category) => ({
-		id: category.id,
-		label: category.label,
-		entries: entriesByCategory.get(category.id) ?? [],
-	}));
-};
-
 const entryDisplayName = (entry: PromptPackEntry) => entry.title || entry.name || entry.slug;
 
 const entryCanReset = (entry: PromptPackEntry) =>
@@ -1986,5 +1911,23 @@ const packSourceLabel = (source: PromptPack["source"]) => {
 	}
 };
 
+const packCardDescription = (pack: PromptPack) => {
+	if (
+		pack.source === "default" ||
+		pack.description?.trim() === "Default agent skills, reusable prompt presets, and visual styles."
+	) {
+		return "这是系统内置的默认技能包，包含常用的 Skill 和提示词。";
+	}
+	const description = pack.description?.trim();
+	if (description) return description;
+	return pack.source === "imported" ? "这个导入技能包还没有描述。" : "这个技能包还没有描述。";
+};
+
 const errorMessage = (error: unknown) =>
 	error instanceof Error && error.message.trim() ? error.message : "请稍后重试。";
+
+const apiErrorCode = (error: unknown) => {
+	if (!error || typeof error !== "object") return undefined;
+	const code = (error as { code?: unknown }).code;
+	return typeof code === "number" ? code : undefined;
+};

@@ -142,12 +142,63 @@ func TestRegistryNotFoundIncludesAvailableSkills(t *testing.T) {
 	}
 }
 
+func TestRegistryBrowsableSkillsExcludeImportedPackContents(t *testing.T) {
+	ctx := context.Background()
+	store := newFakeSkillPackStore()
+	store.packs = append(store.packs, promptpack.Pack{
+		ID: "marketplace.hidden-pack", Name: "Hidden Pack", Source: "imported", Enabled: true,
+	})
+	store.entries["unnamed-imported-skill"] = promptpack.Entry{
+		ID: "marketplace.hidden-pack/skill/unnamed-imported-skill", PackID: "marketplace.hidden-pack",
+		Kind: instructionpack.KindSkill, Slug: "unnamed-imported-skill", Name: "unnamed-imported-skill",
+		Title: "未命名 Skill", Description: "hidden", Body: "hidden body", Source: "pack",
+	}
+	registry := NewRegistryWithStore(store)
+
+	runtimeSkills, err := registry.List(ctx)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(runtimeSkills) != 3 {
+		t.Fatalf("List() = %#v, want imported skill available to runtime", runtimeSkills)
+	}
+	browsableSkills, err := registry.ListBrowsable(ctx)
+	if err != nil {
+		t.Fatalf("ListBrowsable() error = %v", err)
+	}
+	if len(browsableSkills) != 3 {
+		t.Fatalf("ListBrowsable() = %#v, want imported skill name indexed", browsableSkills)
+	}
+	var importedMeta SkillMeta
+	for _, meta := range browsableSkills {
+		if meta.Name == "unnamed-imported-skill" {
+			importedMeta = meta
+			break
+		}
+	}
+	if importedMeta.Name == "" || importedMeta.Title != "未命名 Skill" || importedMeta.PackID != "marketplace.hidden-pack" {
+		t.Fatalf("imported browse metadata = %#v, want name, title, and pack id", importedMeta)
+	}
+	if importedMeta.Description != "" || importedMeta.TemplateID != "" || len(importedMeta.Hint) != 0 || importedMeta.ReleaseID != "" || importedMeta.SourcePackageID != "" || importedMeta.SourceReleaseID != "" {
+		t.Fatalf("imported browse metadata = %#v, want content metadata redacted", importedMeta)
+	}
+	if _, err := registry.GetBrowsable(ctx, "unnamed-imported-skill"); !errors.Is(err, ErrSkillNotFound) {
+		t.Fatalf("GetBrowsable(imported) error = %v, want ErrSkillNotFound", err)
+	}
+	if _, err := registry.GetRaw(ctx, "unnamed-imported-skill"); err != nil {
+		t.Fatalf("GetRaw(imported) error = %v, want runtime access preserved", err)
+	}
+}
+
 type fakeSkillPackStore struct {
 	entries map[string]promptpack.Entry
+	packs   []promptpack.Pack
 }
 
 func newFakeSkillPackStore() *fakeSkillPackStore {
-	return &fakeSkillPackStore{entries: map[string]promptpack.Entry{
+	return &fakeSkillPackStore{packs: []promptpack.Pack{{
+		ID: "builtin", Name: "Default", Source: "default", Enabled: true,
+	}}, entries: map[string]promptpack.Entry{
 		"screenplay-writer": {
 			ID: "builtin/skill/screenplay-writer", PackID: "builtin", Kind: instructionpack.KindSkill,
 			Slug: "screenplay-writer", Name: "screenplay-writer", Title: "剧本", Description: "剧本指导",
@@ -159,6 +210,10 @@ func newFakeSkillPackStore() *fakeSkillPackStore {
 			Body: "场景正文", Source: "pack",
 		},
 	}}
+}
+
+func (store *fakeSkillPackStore) ListPacks(_ context.Context) ([]promptpack.Pack, error) {
+	return append([]promptpack.Pack(nil), store.packs...), nil
 }
 
 func (store *fakeSkillPackStore) ListEntries(_ context.Context, kind instructionpack.Kind) ([]promptpack.Entry, error) {

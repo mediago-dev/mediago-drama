@@ -2,19 +2,37 @@ package mcp
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 )
 
 func TestLoadSkillReadsWorkspaceSettingsDB(t *testing.T) {
 	ctx := context.Background()
 	store := newWorkspaceStateService(t.TempDir())
 	registry := newSkillRegistryForWorkspace(store)
+	settingsDBPath := store.SettingsDatabasePath()
+	repos, err := repository.OpenSettingsRepositories(settingsDBPath)
+	if err != nil {
+		t.Fatalf("OpenSettingsRepositories() error = %v", err)
+	}
+	packStore := promptpack.NewServiceFromRepositoryWithPackFilesDir(
+		repos.Packs,
+		repos.PromptLibrary,
+		nil,
+		filepath.Join(filepath.Dir(settingsDBPath), "packs"),
+	)
+	localPack, err := packStore.ForkPack(ctx, promptpack.DefaultPackID, promptpack.ForkPackInput{Name: "MCP test pack"})
+	if err != nil {
+		t.Fatalf("ForkPack() error = %v", err)
+	}
 	const skillName = "mcp-hot-skill"
 	const skillBody = "hot skill body from workspace settings"
-	if _, err := registry.Create(ctx, skillName, testMCPRawSkill(skillName, "Hot skill", skillBody)); err != nil {
+	if _, err := registry.CreateInPack(ctx, skillName, testMCPRawSkill(skillName, "Hot skill", skillBody), localPack.ID); err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
 

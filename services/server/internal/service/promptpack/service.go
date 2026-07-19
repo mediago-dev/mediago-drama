@@ -4,11 +4,14 @@ package promptpack
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -60,8 +63,10 @@ var (
 	ErrPackNotFound = errors.New("prompt pack not found")
 	// ErrPackExists reports an attempt to reuse an installed pack ID.
 	ErrPackExists = errors.New("prompt pack already exists")
-	// ErrPackReadonly reports attempts to remove protected packs.
+	// ErrPackReadonly reports attempts to view or modify protected pack content.
 	ErrPackReadonly = errors.New("prompt pack is read-only")
+	// ErrPackConflict reports that content changed after an editor draft started.
+	ErrPackConflict = errors.New("prompt pack content revision conflict")
 	// ErrEntryNotFound reports a missing pack entry.
 	ErrEntryNotFound = errors.New("prompt pack entry not found")
 	// ErrEntryExists reports attempts to create a duplicate entry.
@@ -142,11 +147,50 @@ type EntryUpdate struct {
 	Metadata    map[string]any `json:"metadata,omitempty"`
 }
 
+// SavePackDraftInput is the complete editable target state of one local pack.
+type SavePackDraftInput struct {
+	BaseRevision string     `json:"baseRevision"`
+	Entries      []Entry    `json:"entries"`
+	Categories   []Category `json:"categories"`
+}
+
 // PackContents contains one pack and its direct or linked draft entries.
 type PackContents struct {
 	Pack       Pack       `json:"pack"`
 	Entries    []Entry    `json:"entries"`
 	Categories []Category `json:"categories"`
+	Revision   string     `json:"revision"`
+}
+
+type revisionEntry struct {
+	ID              string               `json:"id"`
+	PackID          string               `json:"packId"`
+	ReleaseID       string               `json:"releaseId"`
+	SourcePackageID string               `json:"sourcePackageId"`
+	SourceReleaseID string               `json:"sourceReleaseId"`
+	Kind            instructionpack.Kind `json:"kind"`
+	Slug            string               `json:"slug"`
+	Name            string               `json:"name"`
+	Title           string               `json:"title"`
+	Description     string               `json:"description"`
+	Body            string               `json:"body"`
+	Metadata        map[string]any       `json:"metadata"`
+	Source          string               `json:"source"`
+	OverriddenFrom  string               `json:"overriddenFrom"`
+}
+
+type revisionCategory struct {
+	ID      string `json:"id"`
+	PackID  string `json:"packId"`
+	Label   string `json:"label"`
+	Order   int    `json:"order"`
+	Source  string `json:"source"`
+	Builtin bool   `json:"builtin"`
+}
+
+type revisionContents struct {
+	Entries    []revisionEntry    `json:"entries"`
+	Categories []revisionCategory `json:"categories"`
 }
 
 // ForkPackInput contains editable metadata for a standalone local copy.
@@ -154,6 +198,12 @@ type ForkPackInput struct {
 	Name        string `json:"name"`
 	Version     string `json:"version"`
 	Description string `json:"description,omitempty"`
+}
+
+// UpdatePackMetadataInput contains the editable metadata for a local prompt pack.
+type UpdatePackMetadataInput struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 // Service coordinates prompt pack persistence and built-in seeding.
@@ -383,6 +433,9 @@ func (store *Service) GetPackContents(ctx context.Context, packID string) (PackC
 	if err != nil {
 		return PackContents{}, err
 	}
+	if err := rejectImportedPackManagement(model); err != nil {
+		return PackContents{}, err
+	}
 	models, err := store.repo.ListEntries()
 	if err != nil {
 		return PackContents{}, err
@@ -409,7 +462,264 @@ func (store *Service) GetPackContents(ctx context.Context, packID string) (PackC
 			pack.PromptCount++
 		}
 	}
-	return PackContents{Pack: pack, Entries: entries, Categories: categories}, nil
+	revision, err := revisionForPackContents(entries, categories)
+	if err != nil {
+		return PackContents{}, err
+	}
+	return PackContents{Pack: pack, Entries: entries, Categories: categories, Revision: revision}, nil
+}
+
+func revisionForPackContents(entries []Entry, categories []Category) (string, error) {
+	canonical := revisionContents{
+		Entries:    make([]revisionEntry, 0, len(entries)),
+		Categories: make([]revisionCategory, 0, len(categories)),
+	}
+	for _, entry := range entries {
+		canonical.Entries = append(canonical.Entries, revisionEntry{
+			ID: entry.ID, PackID: entry.PackID, ReleaseID: entry.ReleaseID,
+			SourcePackageID: entry.SourcePackageID, SourceReleaseID: entry.SourceReleaseID,
+			Kind: entry.Kind, Slug: entry.Slug, Name: entry.Name, Title: entry.Title,
+			Description: entry.Description, Body: entry.Body, Metadata: entry.Metadata,
+			Source: entry.Source, OverriddenFrom: entry.OverriddenFrom,
+		})
+	}
+	for _, category := range categories {
+		canonical.Categories = append(canonical.Categories, revisionCategory(category))
+	}
+	sort.Slice(canonical.Entries, func(first, second int) bool {
+		return canonical.Entries[first].ID < canonical.Entries[second].ID
+	})
+	sort.Slice(canonical.Categories, func(first, second int) bool {
+		return canonical.Categories[first].ID < canonical.Categories[second].ID
+	})
+	data, err := json.Marshal(canonical)
+	if err != nil {
+		return "", fmt.Errorf("encoding prompt pack revision: %w", err)
+	}
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:]), nil
+}
+
+// SavePackDraft atomically replaces the editable contents of one local pack.
+// BaseRevision prevents a stale browser draft from overwriting newer content.
+func (store *Service) SavePackDraft(
+	ctx context.Context,
+	packID string,
+	input SavePackDraftInput,
+) (PackContents, error) {
+	if err := store.ensureSeeded(ctx); err != nil {
+		return PackContents{}, err
+	}
+	packID = strings.TrimSpace(packID)
+	input.BaseRevision = strings.TrimSpace(input.BaseRevision)
+	if packID == "" || input.BaseRevision == "" {
+		return PackContents{}, fmt.Errorf("%w: pack id and base revision are required", ErrInvalidPack)
+	}
+
+	err := store.repo.WithTransaction(ctx, func(tx *repository.PackRepository) error {
+		pack, err := tx.GetPack(packID)
+		if repository.IsRecordNotFound(err) {
+			return fmt.Errorf("%w: %s", ErrPackNotFound, packID)
+		}
+		if err != nil {
+			return err
+		}
+		if err := rejectReadonlyPackMutation(pack); err != nil {
+			return err
+		}
+
+		allEntryModels, err := tx.ListEntries()
+		if err != nil {
+			return err
+		}
+		storedEntryModels, err := tx.ListEntriesByPack(packID)
+		if err != nil {
+			return err
+		}
+		storedCategoryModels, err := tx.ListCategoriesByPack(packID)
+		if err != nil {
+			return err
+		}
+		currentEntries := resolvePackEntryModels(allEntryModels, packID)
+		currentCategories := make([]Category, 0, len(storedCategoryModels))
+		for _, model := range storedCategoryModels {
+			currentCategories = append(currentCategories, categoryFromModel(model))
+		}
+		currentRevision, err := revisionForPackContents(currentEntries, currentCategories)
+		if err != nil {
+			return err
+		}
+		if currentRevision != input.BaseRevision {
+			return fmt.Errorf("%w: expected %s, got %s", ErrPackConflict, input.BaseRevision, currentRevision)
+		}
+
+		storedEntries := make(map[string]domain.PackEntryModel, len(storedEntryModels))
+		for _, model := range storedEntryModels {
+			storedEntries[model.ID] = model
+		}
+		resolvedEntries := make(map[string]Entry, len(currentEntries))
+		for _, entry := range currentEntries {
+			resolvedEntries[entry.ID] = entry
+		}
+		storedCategories := make(map[string]domain.PackCategoryModel, len(storedCategoryModels))
+		for _, model := range storedCategoryModels {
+			storedCategories[model.ID] = model
+		}
+
+		desiredCategories := make(map[string]Category, len(input.Categories))
+		for _, draft := range input.Categories {
+			draft.ID = strings.TrimSpace(draft.ID)
+			draft.Label = strings.TrimSpace(draft.Label)
+			if _, duplicate := desiredCategories[draft.ID]; duplicate {
+				return fmt.Errorf("%w: duplicate category %s", ErrInvalidPack, draft.ID)
+			}
+			draft.PackID = packID
+			if current, exists := storedCategories[draft.ID]; exists {
+				draft.Source = normalizeLegacyEntrySource(current.Source)
+				draft.Builtin = current.Builtin
+			} else {
+				draft.Source = entrySourceUser
+				draft.Builtin = false
+			}
+			if err := validatePackCategory(draft); err != nil {
+				return err
+			}
+			desiredCategories[draft.ID] = draft
+		}
+
+		desiredEntries := make(map[string]Entry, len(input.Entries))
+		for _, draft := range input.Entries {
+			draft.ID = strings.TrimSpace(draft.ID)
+			draft.Slug = strings.TrimSpace(draft.Slug)
+			if err := draft.Kind.Validate(); err != nil {
+				return fmt.Errorf("%w: %w", ErrInvalidPack, err)
+			}
+			if err := validateEntrySlug(draft.Kind, draft.Slug); err != nil {
+				return err
+			}
+			canonicalID := instructionpack.EntryID(packID, draft.Kind, draft.Slug)
+			if draft.ID == "" || draft.ID != canonicalID {
+				return fmt.Errorf("%w: entry id does not match %s/%s", ErrInvalidPack, draft.Kind, draft.Slug)
+			}
+			if _, duplicate := desiredEntries[draft.ID]; duplicate {
+				return fmt.Errorf("%w: duplicate entry %s", ErrInvalidPack, draft.ID)
+			}
+			draft.PackID = packID
+			draft.Body = normalizeBody(draft.Body)
+			draft.Metadata = cloneMetadata(draft.Metadata)
+			currentModel, exists := storedEntries[draft.ID]
+			if exists {
+				if currentModel.Kind != string(draft.Kind) || currentModel.Slug != draft.Slug {
+					return fmt.Errorf("%w: entry identity cannot be changed", ErrInvalidPack)
+				}
+				current := entryFromModel(currentModel)
+				draft.ReleaseID = current.ReleaseID
+				draft.SourcePackageID = current.SourcePackageID
+				draft.SourceReleaseID = current.SourceReleaseID
+				draft.Source = entrySourceUser
+				draft.OverriddenFrom = current.OverriddenFrom
+				for _, key := range []string{entryMetadataCopiedFrom, entryMetadataCopiedFromPack, entryMetadataLinked} {
+					if value, ok := current.Metadata[key]; ok {
+						if draft.Metadata == nil {
+							draft.Metadata = map[string]any{}
+						}
+						draft.Metadata[key] = value
+					}
+				}
+			} else {
+				draft.ReleaseID = pack.ReleaseID
+				draft.SourcePackageID = ""
+				draft.SourceReleaseID = ""
+				draft.Source = entrySourceUser
+				draft.OverriddenFrom = ""
+				for _, key := range []string{entryMetadataCopiedFrom, entryMetadataCopiedFromPack, entryMetadataLinked} {
+					delete(draft.Metadata, key)
+				}
+			}
+			if draft.Kind == instructionpack.KindPrompt {
+				draft.Name = strings.TrimSpace(draft.Name)
+				draft.Title = draft.Name
+				categoryID := metadataText(draft.Metadata, "category")
+				if categoryID != "" {
+					if _, exists := desiredCategories[categoryID]; !exists {
+						return fmt.Errorf("%w: %s", ErrCategoryNotFound, categoryID)
+					}
+				}
+			} else {
+				draft.Title = strings.TrimSpace(nonEmpty(draft.Title, draft.Name))
+				if exists {
+					draft.Name = currentModel.Name
+				} else {
+					draft.Name = draft.Slug
+				}
+				draft.Description = strings.TrimSpace(draft.Description)
+			}
+			if err := validateDraftEntryForWrite(draft); err != nil {
+				return err
+			}
+			desiredEntries[draft.ID] = draft
+		}
+
+		for id, draft := range desiredEntries {
+			if current, exists := resolvedEntries[id]; exists && current.Linked {
+				if !editableEntryEqual(current, draft) {
+					return fmt.Errorf("%w: linked entry %s must be detached before editing", ErrPackReadonly, id)
+				}
+				continue
+			}
+			if err := tx.UpsertEntry(entryModelFromEntry(draft)); err != nil {
+				return err
+			}
+		}
+		for id, model := range storedEntries {
+			if _, keep := desiredEntries[id]; keep {
+				continue
+			}
+			if normalizeLegacyEntrySource(model.Source) != entrySourceUser || strings.TrimSpace(model.OverriddenFrom) != "" {
+				return fmt.Errorf("%w: entry %s cannot be deleted", ErrPackReadonly, id)
+			}
+			if err := tx.DeleteEntry(id); err != nil {
+				return err
+			}
+		}
+		for _, category := range desiredCategories {
+			if err := tx.UpsertCategory(categoryModelFromCategory(category)); err != nil {
+				return err
+			}
+		}
+		for id, model := range storedCategories {
+			if _, keep := desiredCategories[id]; keep {
+				continue
+			}
+			if normalizeLegacyEntrySource(model.Source) != entrySourceUser || model.Builtin {
+				return fmt.Errorf("%w: category %s cannot be deleted", ErrPackReadonly, id)
+			}
+			if err := tx.DeleteCategory(packID, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return PackContents{}, err
+	}
+	return store.GetPackContents(ctx, packID)
+}
+
+func editableEntryEqual(current Entry, desired Entry) bool {
+	current.Body = normalizeBody(current.Body)
+	desired.Body = normalizeBody(desired.Body)
+	if current.Kind == instructionpack.KindPrompt {
+		current.Title = current.Name
+		desired.Title = desired.Name
+	}
+	return current.Kind == desired.Kind &&
+		current.Slug == desired.Slug &&
+		current.Name == desired.Name &&
+		current.Title == desired.Title &&
+		current.Description == desired.Description &&
+		current.Body == desired.Body &&
+		reflect.DeepEqual(current.Metadata, desired.Metadata)
 }
 
 // CreatePack creates an empty local authoring pack.
@@ -450,6 +760,39 @@ func (store *Service) CreatePack(ctx context.Context, pack Pack) (Pack, error) {
 	return store.GetPack(ctx, pack.ID)
 }
 
+// UpdatePackMetadata changes the display metadata of a local authoring pack.
+func (store *Service) UpdatePackMetadata(
+	ctx context.Context,
+	packID string,
+	input UpdatePackMetadataInput,
+) (Pack, error) {
+	if err := store.ensureSeeded(ctx); err != nil {
+		return Pack{}, err
+	}
+	packID = strings.TrimSpace(packID)
+	input.Name = strings.TrimSpace(input.Name)
+	input.Description = strings.TrimSpace(input.Description)
+	if packID == "" || input.Name == "" || len(input.Name) > 160 {
+		return Pack{}, fmt.Errorf("%w: local pack id or name is invalid", ErrInvalidPack)
+	}
+	model, err := store.repo.GetPack(packID)
+	if repository.IsRecordNotFound(err) {
+		return Pack{}, fmt.Errorf("%w: %s", ErrPackNotFound, packID)
+	}
+	if err != nil {
+		return Pack{}, err
+	}
+	if err := rejectReadonlyPackMutation(model); err != nil {
+		return Pack{}, err
+	}
+	model.Name = input.Name
+	model.Description = input.Description
+	if err := store.repo.UpsertPack(model); err != nil {
+		return Pack{}, err
+	}
+	return store.GetPack(ctx, packID)
+}
+
 // ForkPack snapshots a resolved installed pack into a standalone local authoring pack.
 func (store *Service) ForkPack(ctx context.Context, sourcePackID string, input ForkPackInput) (Pack, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
@@ -479,6 +822,9 @@ func (store *Service) ForkPack(ctx context.Context, sourcePackID string, input F
 			return fmt.Errorf("%w: %s", ErrPackNotFound, sourcePackID)
 		}
 		if err != nil {
+			return err
+		}
+		if err := rejectImportedPackManagement(source); err != nil {
 			return err
 		}
 		if _, err := tx.GetPack(packID); err == nil {
@@ -578,6 +924,9 @@ func (store *Service) CreatePackEntryDraft(
 		return Entry{}, fmt.Errorf("%w: %s", ErrPackNotFound, packID)
 	}
 	if err != nil {
+		return Entry{}, err
+	}
+	if err := rejectReadonlyPackMutation(pack); err != nil {
 		return Entry{}, err
 	}
 	entry := Entry{
@@ -694,6 +1043,16 @@ func (store *Service) CopyEntries(
 		}
 
 		for _, reference := range normalized {
+			sourcePack, err := tx.GetPack(reference.PackID)
+			if repository.IsRecordNotFound(err) {
+				return fmt.Errorf("%w: %s", ErrPackNotFound, reference.PackID)
+			}
+			if err != nil {
+				return err
+			}
+			if err := rejectImportedPackManagement(sourcePack); err != nil {
+				return err
+			}
 			sourceModel, err := tx.GetEntryByPackKindSlug(reference.PackID, string(reference.Kind), reference.Slug)
 			if repository.IsRecordNotFound(err) {
 				return fmt.Errorf("%w: %s/%s/%s", ErrEntryNotFound, reference.PackID, reference.Kind, reference.Slug)
@@ -832,6 +1191,9 @@ func (store *Service) RemoveEntry(ctx context.Context, packID string, entryID st
 	if err != nil {
 		return err
 	}
+	if err := rejectReadonlyPackMutation(pack); err != nil {
+		return err
+	}
 	model, err := store.repo.GetEntry(entryID)
 	if repository.IsRecordNotFound(err) || model.PackID != packID {
 		return fmt.Errorf("%w: %s", ErrEntryNotFound, entryID)
@@ -907,6 +1269,9 @@ func (store *Service) ResetPack(ctx context.Context, packID string) (Pack, error
 		return Pack{}, fmt.Errorf("%w: %s", ErrPackNotFound, packID)
 	}
 	if err != nil {
+		return Pack{}, err
+	}
+	if err := rejectReadonlyPackMutation(pack); err != nil {
 		return Pack{}, err
 	}
 	defaults, err := store.bundleForInstalledPack(ctx, pack)
@@ -1050,6 +1415,16 @@ func (store *Service) SaveEntry(ctx context.Context, kind instructionpack.Kind, 
 	if err != nil {
 		return Entry{}, err
 	}
+	pack, err := store.repo.GetPack(current.PackID)
+	if repository.IsRecordNotFound(err) {
+		return Entry{}, fmt.Errorf("%w: %s", ErrPackNotFound, current.PackID)
+	}
+	if err != nil {
+		return Entry{}, err
+	}
+	if err := rejectReadonlyPackMutation(pack); err != nil {
+		return Entry{}, err
+	}
 	entry.Kind = kind
 	entry.Slug = strings.TrimSpace(slug)
 	if err := validateEntryForWrite(entry); err != nil {
@@ -1081,6 +1456,17 @@ func (store *Service) SavePackEntry(
 	update EntryUpdate,
 ) (Entry, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
+		return Entry{}, err
+	}
+	packID = strings.TrimSpace(packID)
+	pack, err := store.repo.GetPack(packID)
+	if repository.IsRecordNotFound(err) {
+		return Entry{}, fmt.Errorf("%w: %s", ErrPackNotFound, packID)
+	}
+	if err != nil {
+		return Entry{}, err
+	}
+	if err := rejectReadonlyPackMutation(pack); err != nil {
 		return Entry{}, err
 	}
 	current, err := store.getPackEntry(packID, entryID)
@@ -1119,13 +1505,6 @@ func (store *Service) SavePackEntry(
 		updated.OverriddenFrom = current.OverriddenFrom
 	} else {
 		updated.OverriddenFrom = current.ID
-	}
-	pack, err := store.repo.GetPack(current.PackID)
-	if repository.IsRecordNotFound(err) {
-		return Entry{}, fmt.Errorf("%w: %s", ErrPackNotFound, current.PackID)
-	}
-	if err != nil {
-		return Entry{}, err
 	}
 	validate := validateEntryForWrite
 	if normalizePackSource(pack.Source, pack.ID) == packSourceLocal {
@@ -1169,6 +1548,9 @@ func (store *Service) CreateEntry(ctx context.Context, kind instructionpack.Kind
 	if err != nil {
 		return Entry{}, err
 	}
+	if err := rejectReadonlyPackMutation(pack); err != nil {
+		return Entry{}, err
+	}
 	entry.PackID = packID
 	entry.ReleaseID = pack.ReleaseID
 	entry.SourcePackageID = ""
@@ -1203,6 +1585,9 @@ func (store *Service) ResetEntry(ctx context.Context, kind instructionpack.Kind,
 	if err != nil {
 		return Entry{}, err
 	}
+	if err := rejectReadonlyPackMutation(pack); err != nil {
+		return Entry{}, err
+	}
 	defaults, err := store.bundleForInstalledPack(ctx, pack)
 	if err != nil {
 		return Entry{}, err
@@ -1228,6 +1613,17 @@ func (store *Service) ResetPackEntry(ctx context.Context, packID string, entryID
 	if err := store.ensureSeeded(ctx); err != nil {
 		return Entry{}, err
 	}
+	packID = strings.TrimSpace(packID)
+	pack, err := store.repo.GetPack(packID)
+	if repository.IsRecordNotFound(err) {
+		return Entry{}, fmt.Errorf("%w: %s", ErrPackNotFound, packID)
+	}
+	if err != nil {
+		return Entry{}, err
+	}
+	if err := rejectReadonlyPackMutation(pack); err != nil {
+		return Entry{}, err
+	}
 	current, err := store.getPackEntry(packID, entryID)
 	if err != nil {
 		return Entry{}, err
@@ -1237,13 +1633,6 @@ func (store *Service) ResetPackEntry(ctx context.Context, packID string, entryID
 	}
 	if current.Source == entrySourceUser && current.OverriddenFrom == "" {
 		return Entry{}, fmt.Errorf("%w: %s", ErrPackReadonly, entryID)
-	}
-	pack, err := store.repo.GetPack(current.PackID)
-	if repository.IsRecordNotFound(err) {
-		return Entry{}, fmt.Errorf("%w: %s", ErrPackNotFound, current.PackID)
-	}
-	if err != nil {
-		return Entry{}, err
 	}
 	defaults, err := store.bundleForInstalledPack(ctx, pack)
 	if err != nil {
@@ -1299,6 +1688,16 @@ func (store *Service) DeleteEntry(ctx context.Context, kind instructionpack.Kind
 	if err != nil {
 		return err
 	}
+	pack, err := store.repo.GetPack(current.PackID)
+	if repository.IsRecordNotFound(err) {
+		return fmt.Errorf("%w: %s", ErrPackNotFound, current.PackID)
+	}
+	if err != nil {
+		return err
+	}
+	if err := rejectReadonlyPackMutation(pack); err != nil {
+		return err
+	}
 	if current.Source != entrySourceUser || current.OverriddenFrom != "" {
 		return fmt.Errorf("%w: %s/%s", ErrPackReadonly, kind, slug)
 	}
@@ -1315,6 +1714,16 @@ func (store *Service) HideEntry(ctx context.Context, kind instructionpack.Kind, 
 	}
 	current, err := store.GetEntry(ctx, kind, slug)
 	if err != nil {
+		return err
+	}
+	pack, err := store.repo.GetPack(current.PackID)
+	if repository.IsRecordNotFound(err) {
+		return fmt.Errorf("%w: %s", ErrPackNotFound, current.PackID)
+	}
+	if err != nil {
+		return err
+	}
+	if err := rejectReadonlyPackMutation(pack); err != nil {
 		return err
 	}
 	if current.Source == entrySourceUser && current.OverriddenFrom == "" {
@@ -1349,9 +1758,13 @@ func (store *Service) CreatePackCategory(
 	if err := validatePackCategory(category); err != nil {
 		return Category{}, err
 	}
-	if _, err := store.repo.GetPack(packID); repository.IsRecordNotFound(err) {
+	pack, err := store.repo.GetPack(packID)
+	if repository.IsRecordNotFound(err) {
 		return Category{}, fmt.Errorf("%w: %s", ErrPackNotFound, packID)
 	} else if err != nil {
+		return Category{}, err
+	}
+	if err := rejectReadonlyPackMutation(pack); err != nil {
 		return Category{}, err
 	}
 	if _, err := store.repo.GetCategory(packID, category.ID); err == nil {
@@ -1380,6 +1793,16 @@ func (store *Service) UpdatePackCategory(
 	}
 	packID = strings.TrimSpace(packID)
 	categoryID = strings.TrimSpace(categoryID)
+	pack, err := store.repo.GetPack(packID)
+	if repository.IsRecordNotFound(err) {
+		return Category{}, fmt.Errorf("%w: %s", ErrPackNotFound, packID)
+	}
+	if err != nil {
+		return Category{}, err
+	}
+	if err := rejectReadonlyPackMutation(pack); err != nil {
+		return Category{}, err
+	}
 	model, err := store.repo.GetCategory(packID, categoryID)
 	if repository.IsRecordNotFound(err) {
 		return Category{}, fmt.Errorf("%w: %s", ErrCategoryNotFound, categoryID)
@@ -1422,6 +1845,9 @@ func (store *Service) DeletePackCategory(
 			return fmt.Errorf("%w: %s", ErrPackNotFound, packID)
 		}
 		if err != nil {
+			return err
+		}
+		if err := rejectReadonlyPackMutation(pack); err != nil {
 			return err
 		}
 		_, err = tx.GetCategory(packID, categoryID)
@@ -1497,6 +1923,20 @@ func (store *Service) ListCategories(ctx context.Context) ([]Category, error) {
 func validatePackCategory(category Category) error {
 	if category.ID == "" || category.Label == "" || len(category.ID) > 128 || len(category.Label) > 160 || category.Order < 0 {
 		return fmt.Errorf("%w: category id, label, or order is invalid", ErrInvalidPack)
+	}
+	return nil
+}
+
+func rejectImportedPackManagement(pack domain.PackModel) error {
+	if normalizePackSource(pack.Source, pack.ID) == packSourceImported {
+		return fmt.Errorf("%w: imported pack %s cannot be viewed or modified", ErrPackReadonly, pack.ID)
+	}
+	return nil
+}
+
+func rejectReadonlyPackMutation(pack domain.PackModel) error {
+	if normalizePackSource(pack.Source, pack.ID) != packSourceLocal {
+		return fmt.Errorf("%w: only copied local packs can be modified: %s", ErrPackReadonly, pack.ID)
 	}
 	return nil
 }

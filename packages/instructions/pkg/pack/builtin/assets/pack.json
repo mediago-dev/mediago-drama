@@ -3,7 +3,7 @@
   "name": "默认技能包",
   "version": "1.0.0",
   "author": "MediaGo Drama",
-  "description": "Default agent skills, reusable prompt presets, and visual styles.",
+  "description": "这是系统内置的默认技能包，包含常用的 Skill 和提示词。",
   "categories": [
     {
       "id": "style",

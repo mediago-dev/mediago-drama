@@ -7,8 +7,9 @@ import {
 	type PromptPresetCategory,
 	createPromptPreset,
 	deletePromptPreset,
-	listPromptPresets,
-	promptPresetsKey,
+	getPromptPreset,
+	listPromptPresetIndex,
+	promptPresetIndexKey,
 	resetPromptPreset,
 } from "@/domains/generation/api/prompt-presets";
 import {
@@ -42,6 +43,7 @@ import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { cn } from "@/shared/lib/utils";
 import { isPromptPackContentCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
 import { listPromptPacks, promptPacksKey } from "@/domains/settings/api/packs";
+import { orderItemsByPackTag } from "@/domains/settings/lib/pack-tag-order";
 import { PromptPackActions } from "./PromptPackActionsSlot";
 import { PromptPackMembershipBadge } from "./PromptPackMembershipBadge";
 import { SettingsMarkdownPreview } from "./SettingsMarkdownEditor";
@@ -70,13 +72,13 @@ export const PromptLibraryEditorPanel: React.FC<{ showActions?: boolean }> = ({
 	const {
 		data: presets = [],
 		isLoading,
-		mutate,
-	} = useSWR(promptPresetsKey, () => listPromptPresets());
+		mutate: mutateIndex,
+	} = useSWR(promptPresetIndexKey, () => listPromptPresetIndex());
 	const { data: categories = defaultPromptCategories, mutate: mutateCategories } = useSWR(
 		promptCategoriesKey,
 		listPromptCategories,
 	);
-	const { data: packs = [] } = useSWR(promptPacksKey, listPromptPacks);
+	const { data: packs = [], isLoading: packsLoading } = useSWR(promptPacksKey, listPromptPacks);
 	const [categoryFilter, setCategoryFilter] = useState<PromptPresetCategory | "all">("all");
 	const [selectedId, setSelectedId] = useState("");
 	const [createDraft, setCreateDraft] = useState<Draft>(emptyDraft("style"));
@@ -91,10 +93,18 @@ export const PromptLibraryEditorPanel: React.FC<{ showActions?: boolean }> = ({
 	const [isResetting, setIsResetting] = useState(false);
 	const [error, setError] = useState("");
 
+	const importedPackIds = useMemo(
+		() => new Set(packs.filter((pack) => pack.source === "imported").map((pack) => pack.id)),
+		[packs],
+	);
+	const editablePacks = useMemo(() => packs.filter((pack) => pack.source === "local"), [packs]);
+	const orderedPresets = useMemo(() => orderItemsByPackTag(presets, packs), [presets, packs]);
 	const visiblePresets = useMemo(
 		() =>
-			presets.filter((preset) => categoryFilter === "all" || preset.category === categoryFilter),
-		[presets, categoryFilter],
+			orderedPresets.filter(
+				(preset) => categoryFilter === "all" || preset.category === categoryFilter,
+			),
+		[orderedPresets, categoryFilter],
 	);
 
 	const presetCategories = useMemo(
@@ -112,45 +122,75 @@ export const PromptLibraryEditorPanel: React.FC<{ showActions?: boolean }> = ({
 		[categories, presetCategories, createDraft.category],
 	);
 
-	const selectedPreset = useMemo(
+	const selectedPresetIndex = useMemo(
 		() => presets.find((preset) => preset.id === selectedId),
 		[presets, selectedId],
 	);
+	const selectedPresetKey =
+		selectedPresetIndex && !importedPackIds.has(selectedPresetIndex.packId ?? "builtin")
+			? `/prompt-presets/${encodeURIComponent(selectedPresetIndex.id)}`
+			: null;
+	const {
+		data: selectedPreset,
+		isLoading: selectedPresetLoading,
+		mutate: mutateSelectedPreset,
+	} = useSWR(selectedPresetKey, () => getPromptPreset(selectedPresetIndex!.id));
 
 	useEffect(() => {
-		if (!selectedPreset && visiblePresets[0]) {
-			setSelectedId(visiblePresets[0].id);
+		if (packsLoading) return;
+		const selectionIsValid =
+			selectedPresetIndex &&
+			!importedPackIds.has(selectedPresetIndex.packId ?? "builtin") &&
+			visiblePresets.some((preset) => preset.id === selectedPresetIndex.id);
+		if (!selectionIsValid) {
+			setSelectedId(
+				visiblePresets.find((preset) => !importedPackIds.has(preset.packId ?? "builtin"))?.id ?? "",
+			);
 		}
-	}, [selectedPreset, visiblePresets]);
+	}, [importedPackIds, packsLoading, selectedPresetIndex, visiblePresets]);
 
 	useEffect(() => {
 		if (!selectedPreset) return;
 		setError("");
 	}, [selectedPreset]);
 
-	const canDeletePreset = Boolean(selectedPreset);
+	const selectedPresetPack = packs.find(
+		(pack) => pack.id === (selectedPresetIndex?.packId || "builtin"),
+	);
+	const selectedPresetReadonly = selectedPresetPack?.source !== "local";
+	const canDeletePreset = Boolean(selectedPreset) && !selectedPresetReadonly;
 	const canResetPreset = Boolean(
-		selectedPreset && (selectedPreset.source !== "user" || selectedPreset.overridden),
+		!selectedPresetReadonly &&
+		selectedPreset &&
+		(selectedPreset.source !== "user" || selectedPreset.overridden),
 	);
 	const createDraftValid = Boolean(
-		createDraft.category.trim() && createDraft.name.trim() && createDraft.prompt.trim(),
+		createDraft.packId &&
+		createDraft.category.trim() &&
+		createDraft.name.trim() &&
+		createDraft.prompt.trim(),
 	);
 	const refreshPromptLibraryCaches = () => mutateGlobal(isPromptPackContentCacheKey);
 
 	const startCreate = () => {
 		const category = categoryFilter === "all" ? stylePromptCategory : categoryFilter;
-		setCreateDraft(emptyDraft(category));
+		setCreateDraft({ ...emptyDraft(category), packId: editablePacks[0]?.id ?? "" });
 		setCreateError("");
 		setCreateDialogOpen(true);
 	};
 
 	const cancelCreate = () => {
 		setCreateDialogOpen(false);
-		setCreateDraft(emptyDraft(categoryFilter === "all" ? stylePromptCategory : categoryFilter));
+		setCreateDraft({
+			...emptyDraft(categoryFilter === "all" ? stylePromptCategory : categoryFilter),
+			packId: editablePacks[0]?.id ?? "",
+		});
 		setCreateError("");
 	};
 
 	const selectPreset = (id: string) => {
+		const preset = presets.find((item) => item.id === id);
+		if (!preset || packsLoading || importedPackIds.has(preset.packId ?? "builtin")) return;
 		setSelectedId(id);
 	};
 
@@ -167,6 +207,7 @@ export const PromptLibraryEditorPanel: React.FC<{ showActions?: boolean }> = ({
 				packId: createDraft.packId,
 			};
 			const saved = await createPromptPreset(input);
+			await mutateIndex();
 			await refreshPromptLibraryCaches();
 			setCreateDialogOpen(false);
 			setCategoryFilter((current) => categoryFilterAfterSave(current, saved.category));
@@ -226,7 +267,7 @@ export const PromptLibraryEditorPanel: React.FC<{ showActions?: boolean }> = ({
 		setError("");
 		try {
 			await deletePromptPreset(selectedPreset.id);
-			await mutate();
+			await mutateIndex();
 			await refreshPromptLibraryCaches();
 			setSelectedId("");
 			toast.success("已删除");
@@ -261,6 +302,8 @@ export const PromptLibraryEditorPanel: React.FC<{ showActions?: boolean }> = ({
 		setError("");
 		try {
 			const reset = await resetPromptPreset(selectedPreset.id);
+			await mutateSelectedPreset(reset, { revalidate: false });
+			await mutateIndex();
 			await refreshPromptLibraryCaches();
 			setCategoryFilter((current) => categoryFilterAfterSave(current, reset.category));
 			setSelectedId(reset.id);
@@ -292,7 +335,12 @@ export const PromptLibraryEditorPanel: React.FC<{ showActions?: boolean }> = ({
 		<>
 			{showActions ? (
 				<PromptPackActions>
-					<Button type="button" variant="outline" onClick={startCreate}>
+					<Button
+						type="button"
+						variant="outline"
+						onClick={startCreate}
+						disabled={editablePacks.length === 0}
+					>
 						<Plus className="size-4" />
 						<span>新建</span>
 					</Button>
@@ -311,19 +359,21 @@ export const PromptLibraryEditorPanel: React.FC<{ showActions?: boolean }> = ({
 							<span>{isDeleting ? "处理中" : "删除"}</span>
 						</Button>
 					) : null}
-					<Button
-						type="button"
-						variant="outline"
-						onClick={confirmResetPreset}
-						disabled={!selectedPreset || !canResetPreset || isResetting}
-					>
-						{isResetting ? (
-							<Loader2 className="size-4 animate-spin" />
-						) : (
-							<RotateCcw className="size-4" />
-						)}
-						<span>{isResetting ? "恢复中" : "恢复默认"}</span>
-					</Button>
+					{!selectedPresetReadonly ? (
+						<Button
+							type="button"
+							variant="outline"
+							onClick={confirmResetPreset}
+							disabled={!selectedPreset || !canResetPreset || isResetting}
+						>
+							{isResetting ? (
+								<Loader2 className="size-4 animate-spin" />
+							) : (
+								<RotateCcw className="size-4" />
+							)}
+							<span>{isResetting ? "恢复中" : "恢复默认"}</span>
+						</Button>
+					) : null}
 				</PromptPackActions>
 			) : null}
 
@@ -354,38 +404,48 @@ export const PromptLibraryEditorPanel: React.FC<{ showActions?: boolean }> = ({
 						) : visiblePresets.length === 0 ? (
 							<p className="p-3 text-xs text-muted-foreground">没有匹配的预设。</p>
 						) : (
-							visiblePresets.map((preset) => (
-								<button
-									key={preset.id}
-									type="button"
-									onClick={() => selectPreset(preset.id)}
-									className={cn(
-										"flex w-full items-center gap-3 border-l-2 px-3 py-2 text-left",
-										preset.id === selectedId
-											? "border-primary bg-ide-list-hover"
-											: "border-transparent hover:bg-ide-list-hover",
-									)}
-								>
-									<span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
-										{preset.name}
-									</span>
-									<span className="flex shrink-0 items-center gap-1.5">
-										<PromptPackMembershipBadge
-											className="max-w-24 shrink-0"
-											packId={preset.packId}
-											packs={packs}
-										/>
-										<span className="whitespace-nowrap text-2xs text-muted-foreground">
-											{promptCategoryOptionLabel(preset.category, categoryOptions)}
+							visiblePresets.map((preset) => {
+								const imported = importedPackIds.has(preset.packId ?? "builtin");
+								return (
+									<button
+										key={preset.id}
+										type="button"
+										disabled={packsLoading || imported}
+										onClick={() => selectPreset(preset.id)}
+										className={cn(
+											"flex w-full items-center gap-3 border-l-2 px-3 py-2 text-left",
+											preset.id === selectedId && !imported
+												? "border-primary bg-ide-list-hover"
+												: "border-transparent hover:bg-ide-list-hover",
+											imported && "cursor-not-allowed opacity-50 hover:bg-transparent",
+										)}
+									>
+										<span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
+											{preset.name}
 										</span>
-									</span>
-								</button>
-							))
+										<span className="flex shrink-0 items-center gap-1.5">
+											<PromptPackMembershipBadge
+												className="max-w-24 shrink-0"
+												packId={preset.packId}
+												packs={packs}
+											/>
+											<span className="whitespace-nowrap text-2xs text-muted-foreground">
+												{promptCategoryOptionLabel(preset.category, categoryOptions)}
+											</span>
+										</span>
+									</button>
+								);
+							})
 						)}
 					</div>
 
 					<div className="min-h-0 min-w-0 overflow-y-auto rounded-md border border-border p-3">
-						{!selectedPreset ? (
+						{selectedPresetLoading ? (
+							<div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+								<Loader2 className="size-4 animate-spin" />
+								<span>加载详情</span>
+							</div>
+						) : !selectedPreset ? (
 							<p className="py-6 text-center text-sm text-muted-foreground">
 								选择左侧预设查看详情，或点击「新建」。
 							</p>
@@ -446,7 +506,7 @@ export const PromptLibraryEditorPanel: React.FC<{ showActions?: boolean }> = ({
 					isSaving={isSaving}
 					open={createDialogOpen}
 					categoryOptions={categoryOptions}
-					packs={packs}
+					packs={editablePacks}
 					valid={createDraftValid}
 					onCancel={cancelCreate}
 					onCreateCategory={openCategoryDialog}

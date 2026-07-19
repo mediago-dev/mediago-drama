@@ -77,6 +77,20 @@ type PromptEntry struct {
 	Overridden      bool   `json:"overridden,omitempty"`
 }
 
+// PromptEntryIndex describes the identity and ownership fields needed by
+// prompt-library list UIs. It intentionally excludes prompt content and
+// release provenance.
+type PromptEntryIndex struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Category   string `json:"category"`
+	Type       string `json:"type,omitempty"`
+	PackID     string `json:"packId,omitempty"`
+	Source     Source `json:"source"`
+	Builtin    bool   `json:"builtin,omitempty"`
+	Overridden bool   `json:"overridden,omitempty"`
+}
+
 // Filter limits prompt library list results.
 type Filter struct {
 	Category string
@@ -142,6 +156,24 @@ func (store *Service) List(ctx context.Context, filter Filter) ([]PromptEntry, e
 	return items, nil
 }
 
+// ListBrowsable returns the metadata-only index shown by prompt-library UIs.
+// Prompt bodies and release provenance are never part of this response.
+func (store *Service) ListBrowsable(ctx context.Context, filter Filter) ([]PromptEntryIndex, error) {
+	entries, err := store.List(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]PromptEntryIndex, 0, len(entries))
+	for _, entry := range entries {
+		items = append(items, PromptEntryIndex{
+			ID: entry.ID, Name: entry.Name, Category: entry.Category, Type: entry.Type,
+			PackID: entry.PackID, Source: entry.Source, Builtin: entry.Builtin,
+			Overridden: entry.Overridden,
+		})
+	}
+	return items, nil
+}
+
 // ListCategories returns prompt categories from enabled packs.
 func (store *Service) ListCategories(ctx context.Context) ([]PromptCategory, error) {
 	if err := store.ensureReady(); err != nil {
@@ -203,6 +235,23 @@ func (store *Service) Get(ctx context.Context, id string) (PromptEntry, error) {
 	return promptEntryFromPackEntry(entry), nil
 }
 
+// GetBrowsable returns one prompt only when its owning pack is visible to the
+// management UI. Runtime callers continue to use Get for imported content.
+func (store *Service) GetBrowsable(ctx context.Context, id string) (PromptEntry, error) {
+	entry, err := store.Get(ctx, id)
+	if err != nil {
+		return PromptEntry{}, err
+	}
+	pack, err := store.store.GetPack(ctx, entry.PackID)
+	if err != nil {
+		return PromptEntry{}, err
+	}
+	if pack.Source != "imported" {
+		return entry, nil
+	}
+	return PromptEntry{}, fmt.Errorf("%w: %s", ErrPromptEntryNotFound, strings.TrimSpace(id))
+}
+
 // Create validates and writes a new user prompt entry.
 func (store *Service) Create(ctx context.Context, entry PromptEntry) (PromptEntry, error) {
 	if err := store.ensureReady(); err != nil {
@@ -218,6 +267,9 @@ func (store *Service) Create(ctx context.Context, entry PromptEntry) (PromptEntr
 	created, err := store.store.CreateEntry(ctx, instructionpack.KindPrompt, packEntryFromPromptEntry(entry))
 	if errors.Is(err, promptpack.ErrEntryExists) {
 		return PromptEntry{}, fmt.Errorf("%w: %s", ErrPromptEntryExists, entry.ID)
+	}
+	if errors.Is(err, promptpack.ErrPackReadonly) {
+		return PromptEntry{}, fmt.Errorf("%w: %s", ErrBuiltinPromptEntryReadonly, entry.ID)
 	}
 	if err != nil {
 		return PromptEntry{}, err
@@ -245,6 +297,9 @@ func (store *Service) Update(ctx context.Context, id string, entry PromptEntry) 
 	if errors.Is(err, promptpack.ErrEntryNotFound) {
 		return PromptEntry{}, fmt.Errorf("%w: %s", ErrPromptEntryNotFound, id)
 	}
+	if errors.Is(err, promptpack.ErrPackReadonly) {
+		return PromptEntry{}, fmt.Errorf("%w: %s", ErrBuiltinPromptEntryReadonly, id)
+	}
 	if err != nil {
 		return PromptEntry{}, err
 	}
@@ -259,6 +314,9 @@ func (store *Service) Reset(ctx context.Context, id string) (PromptEntry, error)
 	reset, err := store.store.ResetEntry(ctx, instructionpack.KindPrompt, strings.TrimSpace(id))
 	if errors.Is(err, promptpack.ErrEntryNotFound) {
 		return PromptEntry{}, fmt.Errorf("%w: %s", ErrPromptEntryNotFound, strings.TrimSpace(id))
+	}
+	if errors.Is(err, promptpack.ErrPackReadonly) {
+		return PromptEntry{}, fmt.Errorf("%w: %s", ErrBuiltinPromptEntryReadonly, strings.TrimSpace(id))
 	}
 	if err != nil {
 		return PromptEntry{}, err

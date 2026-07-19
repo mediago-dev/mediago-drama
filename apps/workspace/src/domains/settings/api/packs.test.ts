@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import httpClient from "@/shared/lib/http";
-import { exportPromptPack, forkPromptPack, promptPackExportFileName } from "./packs";
+import {
+	exportPromptPack,
+	forkPromptPack,
+	promptPackExportFileName,
+	savePromptPackDraft,
+} from "./packs";
 
 vi.mock("@/shared/lib/http", () => ({
-	default: { post: vi.fn() },
+	default: { get: vi.fn(), post: vi.fn(), put: vi.fn() },
 }));
 
 afterEach(() => vi.unstubAllGlobals());
@@ -82,5 +87,31 @@ describe("forkPromptPack", () => {
 			name: "默认技能包副本",
 			version: "1.0.0",
 		});
+	});
+});
+
+describe("savePromptPackDraft", () => {
+	it("puts one complete revisioned desired-state request", async () => {
+		const saved = {
+			categories: [],
+			entries: [],
+			pack: {
+				enabled: true,
+				id: "local.test",
+				name: "Test",
+				source: "local" as const,
+				version: "1.0.0",
+			},
+			revision: "next",
+		};
+		vi.mocked(httpClient.put).mockResolvedValueOnce({
+			code: 0,
+			data: saved,
+			message: "",
+			success: true,
+		});
+		const input = { baseRevision: "base", categories: [], entries: [] };
+		await expect(savePromptPackDraft("local.test", input)).resolves.toEqual(saved);
+		expect(httpClient.put).toHaveBeenCalledWith("/packs/local.test/contents", input);
 	});
 });

@@ -13,8 +13,10 @@ import (
 // PromptLibraryService supplies reusable generation prompt persistence.
 type PromptLibraryService interface {
 	List(ctx context.Context, filter service.Filter) ([]service.PromptEntry, error)
+	ListBrowsable(ctx context.Context, filter service.Filter) ([]service.PromptEntryIndex, error)
 	ListCategories(ctx context.Context) ([]service.PromptCategory, error)
 	Get(ctx context.Context, id string) (service.PromptEntry, error)
+	GetBrowsable(ctx context.Context, id string) (service.PromptEntry, error)
 	Create(ctx context.Context, entry service.PromptEntry) (service.PromptEntry, error)
 	CreateCategory(ctx context.Context, category service.PromptCategory) (service.PromptCategory, error)
 	Update(ctx context.Context, id string, entry service.PromptEntry) (service.PromptEntry, error)
@@ -33,7 +35,7 @@ func NewPromptLibrary(store PromptLibraryService) PromptLibrary {
 }
 
 type promptLibraryListResponse struct {
-	Prompts []service.PromptEntry `json:"prompts"`
+	Prompts []service.PromptEntryIndex `json:"prompts"`
 }
 
 type promptCategoryListResponse struct {
@@ -89,7 +91,7 @@ func (handler PromptLibrary) HandlePostCategory(context *gin.Context) {
 
 // HandleListPrompts godoc
 // @Summary 获取提示词预设
-// @Description 返回来自技能包和用户自定义的可复用生成提示词。
+// @Description 返回来自技能包和用户自定义的提示词索引，不包含提示词正文。
 // @Tags Prompt Presets
 // @Produce json
 // @Param category query string false "Prompt category"
@@ -106,7 +108,7 @@ func (handler PromptLibrary) HandleListPrompts(context *gin.Context) {
 			category = "extra"
 		}
 	}
-	prompts, err := handler.store.List(context.Request.Context(), service.Filter{
+	prompts, err := handler.store.ListBrowsable(context.Request.Context(), service.Filter{
 		Category: category,
 		Type:     context.Query("type"),
 	})
@@ -128,7 +130,7 @@ func (handler PromptLibrary) HandleListPrompts(context *gin.Context) {
 // @Failure 500 {object} SwaggerEnvelope
 // @Router /api/v1/prompt-presets/{id} [get]
 func (handler PromptLibrary) HandleGetPrompt(context *gin.Context) {
-	prompt, err := handler.store.Get(context.Request.Context(), context.Param("id"))
+	prompt, err := handler.store.GetBrowsable(context.Request.Context(), context.Param("id"))
 	if err != nil {
 		writePromptLibraryError(context, err)
 		return

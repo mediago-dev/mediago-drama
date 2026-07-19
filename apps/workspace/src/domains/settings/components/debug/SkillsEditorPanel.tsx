@@ -31,7 +31,7 @@ import {
 	updateSkillDescription,
 } from "@/domains/settings/lib/skill-markdown";
 import { sanitizeSkillName } from "@/domains/settings/lib/skill-name";
-import { orderSkillsForPrimaryFlows } from "@/domains/settings/lib/skill-order";
+import { orderSkillsByPackTag } from "@/domains/settings/lib/skill-order";
 import { useToast } from "@/hooks/useToast";
 import { dialogContentMotion } from "@/shared/components/ui/dialog-motion";
 import { Textarea } from "@/shared/components/ui/textarea";
@@ -46,15 +46,27 @@ export const SkillsEditorPanel: React.FC<{ showActions?: boolean }> = ({ showAct
 	const toast = useToast();
 	const { mutate: mutateGlobal } = useSWRConfig();
 	const { data: skills = [], isLoading, mutate: mutateSkills } = useSWR(skillsKey, listSkills);
-	const { data: packs = [] } = useSWR(promptPacksKey, listPromptPacks);
-	const orderedSkills = useMemo(() => orderSkillsForPrimaryFlows(skills), [skills]);
+	const { data: packs = [], isLoading: isPacksLoading } = useSWR(promptPacksKey, listPromptPacks);
+	const importedPackIDs = useMemo(
+		() => new Set(packs.filter((pack) => pack.source === "imported").map((pack) => pack.id)),
+		[packs],
+	);
+	const orderedSkills = useMemo(
+		() => orderSkillsByPackTag(isPacksLoading ? [] : skills, packs),
+		[isPacksLoading, packs, skills],
+	);
+	const selectableSkills = useMemo(
+		() => orderedSkills.filter((skill) => !skill.packId || !importedPackIDs.has(skill.packId)),
+		[importedPackIDs, orderedSkills],
+	);
+	const editablePacks = useMemo(() => packs.filter((pack) => pack.source === "local"), [packs]);
 	const [selectedName, setSelectedName] = useState("");
 	const [frontmatterDraft, setFrontmatterDraft] = useState("");
 	const [descriptionDraft, setDescriptionDraft] = useState("");
 	const [bodyDraft, setBodyDraft] = useState("");
 	const selectedMeta = useMemo(
-		() => orderedSkills.find((skill) => skill.name === selectedName) ?? orderedSkills[0],
-		[selectedName, orderedSkills],
+		() => selectableSkills.find((skill) => skill.name === selectedName) ?? selectableSkills[0],
+		[selectableSkills, selectedName],
 	);
 	const skillDetailKey = selectedMeta ? `${skillsKey}/${selectedMeta.name}` : null;
 	const {
@@ -70,7 +82,7 @@ export const SkillsEditorPanel: React.FC<{ showActions?: boolean }> = ({ showAct
 	const [editDialogOpen, setEditDialogOpen] = useState(false);
 	const [newSkillName, setNewSkillName] = useState("");
 	const [newSkillDescription, setNewSkillDescription] = useState("");
-	const [newSkillPackID, setNewSkillPackID] = useState("builtin");
+	const [newSkillPackID, setNewSkillPackID] = useState("");
 	const [createError, setCreateError] = useState("");
 	const draft = useMemo(
 		() =>
@@ -82,11 +94,11 @@ export const SkillsEditorPanel: React.FC<{ showActions?: boolean }> = ({ showAct
 	);
 
 	useEffect(() => {
-		if (!orderedSkills.length) return;
-		if (!selectedName || !orderedSkills.some((skill) => skill.name === selectedName)) {
-			setSelectedName(orderedSkills[0].name);
+		if (!selectableSkills.length) return;
+		if (!selectedName || !selectableSkills.some((skill) => skill.name === selectedName)) {
+			setSelectedName(selectableSkills[0].name);
 		}
-	}, [selectedName, orderedSkills]);
+	}, [selectableSkills, selectedName]);
 
 	useEffect(() => {
 		const parts = splitSkillMarkdown(selectedSkill?.content ?? "");
@@ -97,16 +109,30 @@ export const SkillsEditorPanel: React.FC<{ showActions?: boolean }> = ({ showAct
 	}, [selectedSkill]);
 
 	const selectedEntry = selectedSkill ?? selectedMeta;
-	const canDelete = Boolean(selectedEntry);
+	const selectedPack = packs.find((pack) => pack.id === (selectedEntry?.packId || "builtin"));
+	const selectedPackReadonly = selectedPack?.source !== "local";
+	const canDelete = Boolean(selectedEntry) && !selectedPackReadonly;
 	const canReset = Boolean(
-		selectedSkill && (selectedEntry?.source !== "user" || selectedEntry?.overridden),
+		!selectedPackReadonly &&
+		selectedSkill &&
+		(selectedEntry?.source !== "user" || selectedEntry?.overridden),
 	);
+
+	useEffect(() => {
+		if (!editablePacks.length) {
+			setNewSkillPackID("");
+			return;
+		}
+		if (!editablePacks.some((pack) => pack.id === newSkillPackID)) {
+			setNewSkillPackID(editablePacks[0].id);
+		}
+	}, [editablePacks, newSkillPackID]);
 	const refreshSkillCaches = () => mutateGlobal(isPromptPackContentCacheKey);
 	const cancelCreateSkill = () => {
 		setIsCreating(false);
 		setNewSkillName("");
 		setNewSkillDescription("");
-		setNewSkillPackID("builtin");
+		setNewSkillPackID(editablePacks[0]?.id ?? "");
 		setCreateError("");
 	};
 
@@ -175,7 +201,7 @@ export const SkillsEditorPanel: React.FC<{ showActions?: boolean }> = ({ showAct
 			setBodyDraft(parts.body);
 			setNewSkillName("");
 			setNewSkillDescription("");
-			setNewSkillPackID("builtin");
+			setNewSkillPackID(editablePacks[0]?.id ?? "");
 			setIsCreating(false);
 			setCreateError("");
 			toast.success("Skill 已创建", { description: created.name });
@@ -273,36 +299,41 @@ export const SkillsEditorPanel: React.FC<{ showActions?: boolean }> = ({ showAct
 								setCreateError("");
 								setIsCreating(true);
 							}}
+							disabled={editablePacks.length === 0}
 						>
 							<Plus className="size-4" />
 							<span>新建</span>
 						</Button>
-						<Button type="button" onClick={openEditDialog} disabled={!selectedSkill}>
-							<Pencil className="size-4" />
-							<span>编辑</span>
-						</Button>
-						<Button
-							type="button"
-							variant="outline"
-							onClick={confirmReset}
-							disabled={!selectedSkill || !canReset || isResetting}
-						>
-							{isResetting ? (
-								<Loader2 className="size-4 animate-spin" />
-							) : (
-								<RotateCcw className="size-4" />
-							)}
-							<span>{isResetting ? "恢复中" : "恢复默认"}</span>
-						</Button>
-						<Button
-							type="button"
-							variant="destructive"
-							onClick={confirmRemove}
-							disabled={!selectedSkill || !canDelete || isDeleting}
-						>
-							<Trash2 className="size-4" />
-							<span>{isDeleting ? "删除中" : "删除"}</span>
-						</Button>
+						{!selectedPackReadonly ? (
+							<>
+								<Button type="button" onClick={openEditDialog} disabled={!selectedSkill}>
+									<Pencil className="size-4" />
+									<span>编辑</span>
+								</Button>
+								<Button
+									type="button"
+									variant="outline"
+									onClick={confirmReset}
+									disabled={!selectedSkill || !canReset || isResetting}
+								>
+									{isResetting ? (
+										<Loader2 className="size-4 animate-spin" />
+									) : (
+										<RotateCcw className="size-4" />
+									)}
+									<span>{isResetting ? "恢复中" : "恢复默认"}</span>
+								</Button>
+								<Button
+									type="button"
+									variant="destructive"
+									onClick={confirmRemove}
+									disabled={!selectedSkill || !canDelete || isDeleting}
+								>
+									<Trash2 className="size-4" />
+									<span>{isDeleting ? "删除中" : "删除"}</span>
+								</Button>
+							</>
+						) : null}
 					</>
 				</PromptPackActions>
 			) : null}
@@ -314,7 +345,7 @@ export const SkillsEditorPanel: React.FC<{ showActions?: boolean }> = ({ showAct
 					isSaving={isSaving}
 					name={newSkillName}
 					packId={newSkillPackID}
-					packs={packs}
+					packs={editablePacks}
 					open={isCreating}
 					onCancel={cancelCreateSkill}
 					onNameChange={(value) => {
@@ -359,84 +390,112 @@ export const SkillsEditorPanel: React.FC<{ showActions?: boolean }> = ({ showAct
 				/>
 			) : null}
 
-			<div className="flex h-full min-h-0 flex-col px-5 py-5">
-				<div className="flex h-full min-h-0 flex-col gap-3">
-					{isLoading && skills.length === 0 ? (
-						<p className={skillMessageClassName}>正在加载技能。</p>
-					) : !selectedSkill && isSkillLoading ? (
-						<div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-							<Loader2 className="size-4 animate-spin" />
-							<span>加载中</span>
-						</div>
-					) : !selectedMeta ? (
-						<p className={skillMessageClassName}>没有可用技能。</p>
-					) : (
-						<>
-							<div className={settingsFormRowClassName}>
-								<Label htmlFor="skill-select" className="text-sm font-medium text-foreground">
-									当前 Skill
-								</Label>
-								<Select value={selectedMeta.name} onValueChange={setSelectedName}>
-									<SelectTrigger id="skill-select" className="rounded-md text-foreground">
-										<SelectValue placeholder="选择 Skill" />
-									</SelectTrigger>
-									<SelectContent align="start">
-										{orderedSkills.map((skill) => (
-											<SelectItem
-												key={skill.name}
-												value={skill.name}
-												textValue={skill.title || skill.name}
-											>
-												<span className="flex min-w-0 items-center gap-2">
-													<span className="min-w-0 flex-1 truncate">
-														{skill.title || skill.name}
-													</span>
-													<PromptPackMembershipBadge
-														className="max-w-40 shrink-0"
-														packId={skill.packId}
-														packs={packs}
-													/>
-												</span>
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+			<div className="flex h-full min-h-0 flex-col overflow-hidden px-5 py-5">
+				<div className="grid min-h-0 flex-1 grid-rows-[minmax(10rem,16rem)_minmax(0,1fr)] gap-3 md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-1">
+					<nav
+						aria-label="Skill 列表"
+						className="min-h-0 overflow-y-auto rounded-md border border-border"
+					>
+						{isLoading || isPacksLoading ? (
+							<div className="flex items-center gap-2 p-3 text-xs text-muted-foreground">
+								<Loader2 className="size-4 animate-spin" />
+								<span>加载中</span>
 							</div>
+						) : orderedSkills.length === 0 ? (
+							<p className="p-3 text-xs text-muted-foreground">没有可用技能。</p>
+						) : (
+							<>
+								{orderedSkills.map((skill) => {
+									const title = skill.title || skill.name;
+									const imported = Boolean(skill.packId && importedPackIDs.has(skill.packId));
+									const selected = selectedMeta?.name === skill.name;
+									return (
+										<button
+											key={skill.name}
+											type="button"
+											aria-label={`查看 Skill ${title}`}
+											aria-current={selected ? "page" : undefined}
+											disabled={imported}
+											className={cn(
+												"flex w-full items-center gap-3 border-l-2 px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-50",
+												selected
+													? "border-primary bg-ide-list-hover"
+													: "border-transparent enabled:hover:bg-ide-list-hover",
+											)}
+											onClick={() => setSelectedName(skill.name)}
+										>
+											<span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
+												{title}
+											</span>
+											<PromptPackMembershipBadge
+												className="max-w-24 shrink-0"
+												packId={skill.packId}
+												packs={packs}
+											/>
+										</button>
+									);
+								})}
+							</>
+						)}
+					</nav>
 
-							<div className={settingsFormRowClassName}>
-								<Label className="text-sm font-medium text-foreground">Skill 描述</Label>
-								<p className="py-2 text-sm leading-5 text-muted-foreground">
-									{selectedEntry?.description || "暂无描述。"}
-								</p>
+					<section
+						aria-label="Skill 详情"
+						className="flex min-h-0 min-w-0 flex-col overflow-y-auto rounded-md border border-border p-3"
+					>
+						{!selectedSkill && isSkillLoading ? (
+							<div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+								<Loader2 className="size-4 animate-spin" />
+								<span>加载中</span>
 							</div>
-
-							<div className={skillBodyRowClassName}>
-								<div className="flex items-center justify-between gap-2">
-									<Label
-										id="skill-body-content-label"
-										className="text-sm font-medium text-foreground"
-									>
-										Skill 内容
-									</Label>
-									<span className="flex items-center gap-1 text-xs text-muted-foreground">
-										<BookOpenCheck className="size-3.5" />
-										{countLines(bodyDraft)} 行
-									</span>
+						) : !selectedMeta ? (
+							<p className={skillMessageClassName}>请从左侧选择 Skill。</p>
+						) : (
+							<div className="flex h-full min-h-0 flex-col gap-3">
+								<div className="flex min-w-0 items-center gap-2 border-b border-border pb-3">
+									<h3 className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">
+										{selectedEntry?.title || selectedEntry?.name}
+									</h3>
+									<PromptPackMembershipBadge
+										className="max-w-48 shrink-0"
+										packId={selectedEntry?.packId}
+										packs={packs}
+									/>
 								</div>
-								{error ? (
-									<Alert variant="destructive" className="rounded-md">
-										<AlertDescription>{error}</AlertDescription>
-									</Alert>
-								) : null}
-								<SettingsMarkdownPreview
-									ariaLabelledBy="skill-body-content-label"
-									className="min-h-0 flex-1 overflow-y-auto"
-									placeholder="暂无 Skill 内容。"
-									value={bodyDraft}
-								/>
+								<div className={settingsFormRowClassName}>
+									<Label className="text-sm font-medium text-foreground">Skill 描述</Label>
+									<p className="py-2 text-sm leading-5 text-muted-foreground">
+										{selectedEntry?.description || "暂无描述。"}
+									</p>
+								</div>
+								<div className={skillBodyRowClassName}>
+									<div className="flex items-center justify-between gap-2">
+										<Label
+											id="skill-body-content-label"
+											className="text-sm font-medium text-foreground"
+										>
+											Skill 内容
+										</Label>
+										<span className="flex items-center gap-1 text-xs text-muted-foreground">
+											<BookOpenCheck className="size-3.5" />
+											{countLines(bodyDraft)} 行
+										</span>
+									</div>
+									{error ? (
+										<Alert variant="destructive" className="rounded-md">
+											<AlertDescription>{error}</AlertDescription>
+										</Alert>
+									) : null}
+									<SettingsMarkdownPreview
+										ariaLabelledBy="skill-body-content-label"
+										className="min-h-0 flex-1 overflow-y-auto"
+										placeholder="暂无 Skill 内容。"
+										value={bodyDraft}
+									/>
+								</div>
 							</div>
-						</>
-					)}
+						)}
+					</section>
 				</div>
 			</div>
 		</>

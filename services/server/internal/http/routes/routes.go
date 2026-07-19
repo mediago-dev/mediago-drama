@@ -68,6 +68,7 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.POST("/packs/install", handlers.PromptPacks.HandleInstallPack)
 	apiRoutes.POST("/packs/:id/fork", handlers.PromptPacks.HandleForkPack)
 	apiRoutes.GET("/packs/:id/contents", handlers.PromptPacks.HandleGetPackContents)
+	apiRoutes.PUT("/packs/:id/contents", handlers.PromptPacks.HandlePutPackContents)
 	apiRoutes.POST("/packs/:id/categories", handlers.PromptPacks.HandleCreatePackCategory)
 	apiRoutes.PUT("/packs/:id/categories/:categoryId", handlers.PromptPacks.HandleUpdatePackCategory)
 	apiRoutes.DELETE("/packs/:id/categories/:categoryId", handlers.PromptPacks.HandleDeletePackCategory)

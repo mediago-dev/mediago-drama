@@ -59,6 +59,13 @@ export interface PromptPackContents {
 	pack: PromptPack;
 	entries: PromptPackEntry[];
 	categories?: PromptPackCategory[];
+	revision?: string;
+}
+
+export interface SavePromptPackDraftInput {
+	baseRevision: string;
+	entries: PromptPackEntry[];
+	categories: PromptPackCategory[];
 }
 
 export interface PromptPackEntryReference {
@@ -113,6 +120,14 @@ export const promptPackContentsKey = (id: string) =>
 
 export const getPromptPackContents = async (id: string): Promise<PromptPackContents> => {
 	const response = await httpClient.get<PromptPackContents>(promptPackContentsKey(id));
+	return response.data;
+};
+
+export const savePromptPackDraft = async (
+	id: string,
+	input: SavePromptPackDraftInput,
+): Promise<PromptPackContents> => {
+	const response = await httpClient.put<PromptPackContents>(promptPackContentsKey(id), input);
 	return response.data;
 };
 
@@ -287,6 +302,19 @@ export const setPromptPackEnabled = async (id: string, enabled: boolean): Promis
 	const response = await httpClient.patch<PromptPack>(`/packs/${encodeURIComponent(id)}`, {
 		enabled,
 	});
+	return response.data;
+};
+
+export interface UpdatePromptPackMetadataInput {
+	description: string;
+	name: string;
+}
+
+export const updatePromptPackMetadata = async (
+	id: string,
+	input: UpdatePromptPackMetadataInput,
+): Promise<PromptPack> => {
+	const response = await httpClient.patch<PromptPack>(`/packs/${encodeURIComponent(id)}`, input);
 	return response.data;
 };
 
