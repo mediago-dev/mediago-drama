@@ -224,6 +224,7 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	if err != nil {
 		return generationMessageResponse{}, http.StatusBadRequest, err
 	}
+	payload.Model = generationModelForReferences(route, payload.Model, referenceURLs)
 
 	generationRequest := GenerationRequestFromMessage(payload, route, referenceURLs)
 	generationRequest.Prompt = workflow.providerPromptForGeneration(route, payload)

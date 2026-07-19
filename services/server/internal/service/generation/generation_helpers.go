@@ -269,6 +269,7 @@ func GenerationRequestFromMessage(
 	route coregeneration.ModelRoute,
 	referenceURLs []string,
 ) coregeneration.Request {
+	model := generationModelForReferences(route, payload.Model, referenceURLs)
 	if route.Kind == coregeneration.KindText {
 		return coregeneration.Request{
 			Kind:          coregeneration.Kind(payload.Kind),
@@ -279,7 +280,7 @@ func GenerationRequestFromMessage(
 			ProjectID:     payload.ProjectID,
 			ProjectName:   payload.ProjectName,
 			ModelID:       payload.ModelID,
-			Model:         payload.Model,
+			Model:         model,
 			Prompt:        payload.Prompt,
 			ReferenceURLs: referenceURLs,
 			Params:        providerGenerationParams(payload.Params),
@@ -296,7 +297,7 @@ func GenerationRequestFromMessage(
 			ProjectID:     payload.ProjectID,
 			ProjectName:   payload.ProjectName,
 			ModelID:       payload.ModelID,
-			Model:         payload.Model,
+			Model:         model,
 			Prompt:        payload.Prompt,
 			ReferenceURLs: referenceURLs,
 			Params:        providerGenerationParams(payload.Params),
@@ -313,7 +314,7 @@ func GenerationRequestFromMessage(
 		ProjectID:      payload.ProjectID,
 		ProjectName:    payload.ProjectName,
 		ModelID:        payload.ModelID,
-		Model:          payload.Model,
+		Model:          model,
 		Prompt:         payload.Prompt,
 		ReferenceURLs:  referenceURLs,
 		OutputFormat:   "png",
@@ -322,6 +323,23 @@ func GenerationRequestFromMessage(
 		Params:         providerGenerationParams(payload.Params),
 		Options:        generationRequestOptions(payload),
 	}
+}
+
+func generationModelForReferences(
+	route coregeneration.ModelRoute,
+	requestedModel string,
+	referenceURLs []string,
+) string {
+	if route.ID == coregeneration.RouteMediagoHappyHorse11 {
+		if len(CompactStrings(referenceURLs)) > 0 {
+			return coregeneration.ModelHappyHorse11R2V
+		}
+		return coregeneration.ModelHappyHorse11T2V
+	}
+	if model := strings.TrimSpace(requestedModel); model != "" {
+		return model
+	}
+	return strings.TrimSpace(route.Model)
 }
 
 func generationRequestOptions(payload GenerationMessageRequest) map[string]any {

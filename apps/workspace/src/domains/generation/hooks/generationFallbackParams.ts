@@ -850,7 +850,7 @@ export function nano25ParamCombos(): GenerationParamCombo[] {
 	];
 }
 
-export function openRouterImageParams(): GenerationParam[] {
+function chatImageParams(): GenerationParam[] {
 	return [
 		selectParam("aspectRatio", "画幅比例", "1:1", [
 			{ label: "1:1", value: "1:1" },
@@ -870,6 +870,14 @@ export function openRouterImageParams(): GenerationParam[] {
 			{ label: "4K", value: "4K" },
 		]),
 	];
+}
+
+export function mediagoChatImageParams(): GenerationParam[] {
+	return chatImageParams();
+}
+
+export function openRouterImageParams(): GenerationParam[] {
+	return chatImageParams();
 }
 
 export function dmxSeedanceParams(): GenerationParam[] {

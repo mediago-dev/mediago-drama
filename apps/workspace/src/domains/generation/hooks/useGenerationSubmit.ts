@@ -312,7 +312,7 @@ export const useGenerationSubmit = ({
 				: [];
 			const requestDetails = [
 				...(overrides.requestDetails ?? []),
-				...userRequestDetails(requestRoute, requestSelectedParams),
+				...userRequestDetails(requestRoute, requestSelectedParams, requestReferences.length),
 			];
 			const requestParams = generationParamsWithRequestDetails(
 				requestSelectedParams,

@@ -262,10 +262,19 @@ func mediagoModelUnavailableStatus(status string) bool {
 }
 
 func mediagoModelSetHasRoute(models map[string]struct{}, route coregeneration.ModelRoute) bool {
-	model := strings.TrimSpace(route.Model)
-	if model == "" {
-		return false
+	return len(mediagoMissingRouteModels(models, route)) == 0
+}
+
+func mediagoMissingRouteModels(models map[string]struct{}, route coregeneration.ModelRoute) []string {
+	requiredModels := coregeneration.RequiredMediagoModelIDs(route.ID, strings.TrimSpace(route.Model))
+	if len(requiredModels) == 0 {
+		return []string{"<unknown>"}
 	}
-	_, ok := models[model]
-	return ok
+	missing := make([]string, 0, len(requiredModels))
+	for _, model := range requiredModels {
+		if _, ok := models[model]; !ok {
+			missing = append(missing, model)
+		}
+	}
+	return missing
 }

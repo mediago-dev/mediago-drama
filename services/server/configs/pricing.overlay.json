@@ -438,7 +438,17 @@
       "unit": "external"
     },
     {
+      "routeId": "mediago.wan2.7-image-pro",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
       "routeId": "official.wan2.7-image",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "mediago.wan2.7-image",
       "currency": "CNY",
       "unit": "external"
     },
@@ -597,6 +607,11 @@
     },
     {
       "routeId": "official.happyhorse-1.1",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "mediago.happyhorse-1.1",
       "currency": "CNY",
       "unit": "external"
     },

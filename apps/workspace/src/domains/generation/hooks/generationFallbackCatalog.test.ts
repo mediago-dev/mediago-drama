@@ -255,6 +255,8 @@ describe("fallback generation catalog params", () => {
 			"background",
 		]);
 		expect(routeById("mediago.gpt-image-2")).toMatchObject({
+			adapter: "mediago.images",
+			docUrl: "https://mediago.torchstellar.com/account#apiKeys",
 			supportsReferenceUrls: true,
 			maxReferenceUrls: 4,
 		});
@@ -311,7 +313,7 @@ describe("fallback generation catalog params", () => {
 		expect(param("openrouter.gemini-3.1-flash-image-preview", "resolution").default).toBe("1K");
 		expect(routeById("mediago.gemini-3.1-flash-image")).toMatchObject({
 			status: "available",
-			adapter: "openrouter.chat.image",
+			adapter: "mediago.chat.image",
 			model: "gemini-3.1-flash-image",
 		});
 		expect(
@@ -345,7 +347,7 @@ describe("fallback generation catalog params", () => {
 		expect(routeCombos("mediago.gemini-3.1-flash-image")[0]?.outputs?.["9:21|1K"]).toBe(undefined);
 		expect(routeById("mediago.gemini-3-pro-image")).toMatchObject({
 			status: "available",
-			adapter: "openrouter.chat.image",
+			adapter: "mediago.chat.image",
 			model: "gemini-3-pro-image",
 		});
 		expect(routeParams("mediago.gemini-3-pro-image").map((item) => item.name)).toEqual([
