@@ -796,6 +796,26 @@ const MediagoConfigDialog: React.FC<{
 };
 
 const maxVisibleModelChips = 8;
+const pinnedMediagoModelChips = [
+	"Wan 2.7 Image",
+	"Wan 2.7 Image Pro",
+	"HappyHorse 1.1 Text to Video",
+	"HappyHorse 1.1 Reference to Video",
+];
+
+const visibleMediagoModelChips = (models: string[]) => {
+	const visibleModels = models.slice(0, maxVisibleModelChips);
+	const visibleSet = new Set(visibleModels);
+
+	for (const pinnedModel of pinnedMediagoModelChips) {
+		if (models.includes(pinnedModel) && !visibleSet.has(pinnedModel)) {
+			visibleModels.push(pinnedModel);
+			visibleSet.add(pinnedModel);
+		}
+	}
+
+	return visibleModels;
+};
 
 const MediagoModelChips: React.FC<{ modelGroups?: ModelPlatformModelGroup[] }> = ({
 	modelGroups,
@@ -803,7 +823,7 @@ const MediagoModelChips: React.FC<{ modelGroups?: ModelPlatformModelGroup[] }> =
 	const models = (modelGroups ?? []).flatMap((group) => group.models);
 	if (models.length === 0) return null;
 
-	const visibleModels = models.slice(0, maxVisibleModelChips);
+	const visibleModels = visibleMediagoModelChips(models);
 	const hiddenCount = models.length - visibleModels.length;
 
 	return (
