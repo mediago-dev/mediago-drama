@@ -6,13 +6,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,12 +45,11 @@ type protocolHeader struct {
 // Importer invokes a private helper process without exposing its authorization
 // or cryptographic implementation to this package.
 type Importer struct {
-	executable     string
-	expectedSHA256 string
+	executable string
 }
 
 // New returns a protected-pack process adapter for executable.
-func New(executable string, expectedSHA256 string) (*Importer, error) {
+func New(executable string) (*Importer, error) {
 	executable = strings.TrimSpace(executable)
 	if executable == "" {
 		return nil, fmt.Errorf("protected prompt pack importer path is required")
@@ -68,37 +65,7 @@ func New(executable string, expectedSHA256 string) (*Importer, error) {
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("protected prompt pack importer is not a regular file")
 	}
-	if err := verifyExecutableSHA256(absPath, expectedSHA256); err != nil {
-		return nil, err
-	}
-	return &Importer{
-		executable:     absPath,
-		expectedSHA256: strings.ToLower(strings.TrimSpace(expectedSHA256)),
-	}, nil
-}
-
-func verifyExecutableSHA256(path string, expected string) error {
-	expected = strings.ToLower(strings.TrimSpace(expected))
-	if expected == "" {
-		return fmt.Errorf("protected prompt pack importer sha256 is required")
-	}
-	expectedBytes, err := hex.DecodeString(expected)
-	if err != nil || len(expectedBytes) != sha256.Size {
-		return fmt.Errorf("protected prompt pack importer sha256 is invalid")
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("opening protected prompt pack importer: %w", err)
-	}
-	defer file.Close()
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return fmt.Errorf("hashing protected prompt pack importer: %w", err)
-	}
-	if subtle.ConstantTimeCompare(hash.Sum(nil), expectedBytes) != 1 {
-		return fmt.Errorf("protected prompt pack importer sha256 does not match")
-	}
-	return nil
+	return &Importer{executable: absPath}, nil
 }
 
 // Import delegates one opaque protected pack to the private helper.
@@ -113,14 +80,6 @@ func (importer *Importer) Import(
 	if ctx == nil {
 		return servicepromptpack.ProtectedImport{}, fmt.Errorf("protected prompt pack context is required")
 	}
-	if err := verifyExecutableSHA256(importer.executable, importer.expectedSHA256); err != nil {
-		return servicepromptpack.ProtectedImport{}, fmt.Errorf(
-			"%w: %v",
-			servicepromptpack.ErrProtectedPackUnavailable,
-			err,
-		)
-	}
-
 	command := exec.CommandContext(ctx, importer.executable, "import")
 	command.Stdin = bytes.NewReader(data)
 	stdout := boundedBuffer{maxBytes: 4 + maxProtocolHeaderBytes + int(servicepromptpack.MaxUploadBytes())}

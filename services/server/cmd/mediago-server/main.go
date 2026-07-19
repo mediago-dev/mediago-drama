@@ -27,10 +27,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/workspace"
 )
 
-var (
-	defaultPromptPackPolicy            = "marketplace"
-	defaultProtectedPackImporterSHA256 string
-)
+var defaultPromptPackPolicy = "marketplace"
 
 // @title MediaGo Drama API
 // @version 0.0.0
@@ -167,34 +164,33 @@ func run(args []string) error {
 		return err
 	}
 	appConfig := server.Config{
-		Host:                        config.Host,
-		Port:                        config.Port,
-		WorkspaceDir:                workspaceDir,
-		ACPCommand:                  config.ACPCommand,
-		AgentID:                     config.Agent.ID,
-		AgentBinDir:                 config.Agent.BinDir,
-		ModelPlatforms:              config.ModelPlatforms,
-		GenerationCLIs:              config.GenerationCLIs,
-		MediagoBaseURL:              config.MediagoBaseURL,
-		SidecarToken:                sidecarToken,
-		ProtectedPackImporterPath:   protectedPackImporterPath,
-		ProtectedPackImporterSHA256: defaultProtectedPackImporterSHA256,
-		AllowUnprotectedPackImport:  allowUnprotectedPackImport,
-		FFmpegPath:                  config.FFmpeg.Path,
-		FFmpegBinDir:                config.FFmpeg.BinDir,
-		JimengBinPath:               config.Jimeng.Path,
-		JimengBinDir:                config.Jimeng.BinDir,
-		LibTVBinPath:                config.LibTV.Path,
-		LibTVBinDir:                 config.LibTV.BinDir,
-		LibTVProjectID:              config.LibTV.ProjectID,
-		PippitBinPath:               config.Pippit.Path,
-		PippitBinDir:                config.Pippit.BinDir,
-		DocumentMCPConfigPath:       configPath,
-		AgentBridgeURL:              internalAPIURL + "/api/v1/internal/agent/spawn",
-		AgentBridgeToken:            bridgeToken,
-		PromptMaxSectionChars:       config.Prompt.MaxSectionChars,
-		PromptDelivery:              config.Prompt.InstructionDelivery,
-		BillingPrices:               billingPrices,
+		Host:                       config.Host,
+		Port:                       config.Port,
+		WorkspaceDir:               workspaceDir,
+		ACPCommand:                 config.ACPCommand,
+		AgentID:                    config.Agent.ID,
+		AgentBinDir:                config.Agent.BinDir,
+		ModelPlatforms:             config.ModelPlatforms,
+		GenerationCLIs:             config.GenerationCLIs,
+		MediagoBaseURL:             config.MediagoBaseURL,
+		SidecarToken:               sidecarToken,
+		ProtectedPackImporterPath:  protectedPackImporterPath,
+		AllowUnprotectedPackImport: allowUnprotectedPackImport,
+		FFmpegPath:                 config.FFmpeg.Path,
+		FFmpegBinDir:               config.FFmpeg.BinDir,
+		JimengBinPath:              config.Jimeng.Path,
+		JimengBinDir:               config.Jimeng.BinDir,
+		LibTVBinPath:               config.LibTV.Path,
+		LibTVBinDir:                config.LibTV.BinDir,
+		LibTVProjectID:             config.LibTV.ProjectID,
+		PippitBinPath:              config.Pippit.Path,
+		PippitBinDir:               config.Pippit.BinDir,
+		DocumentMCPConfigPath:      configPath,
+		AgentBridgeURL:             internalAPIURL + "/api/v1/internal/agent/spawn",
+		AgentBridgeToken:           bridgeToken,
+		PromptMaxSectionChars:      config.Prompt.MaxSectionChars,
+		PromptDelivery:             config.Prompt.InstructionDelivery,
+		BillingPrices:              billingPrices,
 	}
 	if err := configureEdition(&appConfig); err != nil {
 		return fmt.Errorf("configuring server edition: %w", err)

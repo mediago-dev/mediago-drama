@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 const platform = process.argv[2]?.trim() ?? "";
@@ -30,12 +29,7 @@ const serverBuildArgs = [
 	"-tags",
 	"workspace_dist",
 ];
-const serverLDFlags = [
-	`-X main.defaultPromptPackPolicy=${promptPackPolicy}`,
-	protectedPackRuntimeLDFlag(),
-]
-	.filter(Boolean)
-	.join(" ");
+const serverLDFlags = `-X main.defaultPromptPackPolicy=${promptPackPolicy}`;
 serverBuildArgs.push("-ldflags", serverLDFlags);
 serverBuildArgs.push(
 	"-o",
@@ -50,20 +44,6 @@ run("go", [
 	"./services/server/cmd/mediago-document-mcp",
 ]);
 
-function protectedPackRuntimeLDFlag() {
-	if (process.env.MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME !== "1") return "";
-	const runtimePath = join(
-		"packages",
-		"vendor",
-		"dist",
-		platform,
-		"tools",
-		"mediago-rights",
-		`mediago-rights${target.exe}`,
-	);
-	const digest = createHash("sha256").update(readFileSync(runtimePath)).digest("hex");
-	return `-X main.defaultProtectedPackImporterSHA256=${digest}`;
-}
 run("go", [
 	"build",
 	"-o",

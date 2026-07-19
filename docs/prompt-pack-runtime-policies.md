@@ -25,13 +25,13 @@ MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME=1
 
 The release inputs have deliberately separate scopes:
 
-| Name                                     | Scope                                          | Purpose                                                                                           |
-| ---------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `MEDIAGO_PRIVATE_ARTIFACT_TOKEN`         | GitHub `official-release` environment secret   | Lets only the dedicated download step read the private Release assets.                            |
-| `MEDIAGO_RIGHTS_RELEASE_TAG`             | GitHub `official-release` environment variable | Pins the private Release tag downloaded by the workflow.                                          |
-| `MEDIAGO_PROMPT_PACK_POLICY`             | Build-step environment                         | Embeds `marketplace` or `partner` into `mediago-server`; changing it after build has no effect.   |
-| `MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME` | Build-step environment                         | Requires the already staged Runtime to be hashed and copied into Electron resources.              |
-| `MEDIAGO_PROMPT_PACK_IMPORTER_PATH`      | Local development process only                 | Points a locally built server at a Runtime whose SHA-256 was embedded when that server was built. |
+| Name                                     | Scope                                          | Purpose                                                                                         |
+| ---------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `MEDIAGO_PRIVATE_ARTIFACT_TOKEN`         | GitHub `official-release` environment secret   | Lets only the dedicated download step read the private Release assets.                          |
+| `MEDIAGO_RIGHTS_RELEASE_TAG`             | GitHub `official-release` environment variable | Pins the private Release tag downloaded by the workflow.                                        |
+| `MEDIAGO_PROMPT_PACK_POLICY`             | Build-step environment                         | Embeds `marketplace` or `partner` into `mediago-server`; changing it after build has no effect. |
+| `MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME` | Build-step environment                         | Requires the already verified Runtime to be copied into Electron resources.                     |
+| `MEDIAGO_PROMPT_PACK_IMPORTER_PATH`      | Local development process only                 | Points a locally built server at a Runtime executable.                                          |
 
 None of these values are read by `Taskfile.yml`. The open-source Task tasks build
 the ordinary server and cannot download private repository assets.
@@ -45,11 +45,11 @@ the executable before the normal public build starts. The generic vendor tool
 preparer never receives private-repository credentials.
 
 The private release manifest pins the archive URL, size, SHA-256, binary path,
-version, and `marketplace` runtime policy. The server binary also embeds the
-expected SHA-256 of the staged `mediago-rights` executable. Importer
-initialization checks it before protected import is enabled, and every protected
-import checks it again. If initialization fails, the rest of the local server
-remains available while protected imports fail closed as Runtime unavailable.
+version, and `marketplace` runtime policy. Release preparation verifies those
+inputs before staging `mediago-rights`. Runtime initialization then checks that
+the configured path is a regular file. If initialization fails, the rest of the
+local server remains available while protected imports fail closed as Runtime
+unavailable.
 
 Store `MEDIAGO_PRIVATE_ARTIFACT_TOKEN` in the protected `official-release`
 GitHub environment, require a reviewer for that environment, and grant the
@@ -61,13 +61,18 @@ same protected environment. macOS signing requires `MEDIAGO_MAC_CSC_LINK` and
 `MEDIAGO_MAC_CSC_KEY_PASSWORD`. Local development builds do not require signing
 secrets.
 
-The desktop runtime does not maintain a separate sidecar checksum or signature
-manifest. On macOS, Electron Builder signs the application and
+The desktop runtime does not maintain a separate sidecar or protected-Runtime
+checksum/signature manifest. On macOS, Electron Builder signs the application and
 `forceCodeSigning` makes a signing failure fail the build. The application only
-checks that the server sidecar exists and reports the real process launch error
-if execution fails. Windows releases are currently unsigned and therefore do
-not claim a cryptographically verified publisher identity; add Authenticode
-verification when a Windows signing certificate becomes available.
+checks that packaged executables exist and reports the real initialization or
+process launch error if execution fails. Windows releases are currently
+unsigned and therefore do not claim a cryptographically verified publisher
+identity; add Authenticode verification when a Windows signing certificate
+becomes available.
+
+Official macOS CI recursively verifies the completed App bundle with
+`codesign --verify --deep --strict` before uploading release artifacts. This is
+a release-time gate; the installed application does not repeat it at runtime.
 
 For macOS direct distribution, create a `Developer ID Application` certificate
 in the Apple Developer account, install it together with its private key, and
@@ -137,15 +142,14 @@ a cooperation build by setting a launch environment variable.
 
 ## Local private Runtime
 
-For local integration testing, build `mediago-rights` in the private repository,
-embed its digest in a local server binary, and then run that binary directly:
+For local integration testing, build `mediago-rights` in the private repository
+and point a local server process at that executable:
 
 ```bash
 RUNTIME=/absolute/path/to/mediago-rights
-RUNTIME_SHA="$(shasum -a 256 "$RUNTIME" | awk '{print $1}')"
 
 go build \
-  -ldflags "-X main.defaultPromptPackPolicy=marketplace -X main.defaultProtectedPackImporterSHA256=$RUNTIME_SHA" \
+  -ldflags "-X main.defaultPromptPackPolicy=marketplace" \
   -o bin/mediago-server \
   ./services/server/cmd/mediago-server
 
@@ -153,11 +157,10 @@ MEDIAGO_PROMPT_PACK_IMPORTER_PATH="$RUNTIME" \
   bin/mediago-server --config services/server/configs/server.yaml
 ```
 
-The protected importer checks the embedded digest during initialization and
-again before each import. `task build:server` intentionally remains a plain
-open-source build and does not consume private Runtime settings. Official
-release builds stage the pinned GitHub Release asset and inject its digest via
-`scripts/build-server-target.mjs`.
+`task build:server` intentionally remains a plain open-source build and does not
+consume private Runtime settings. Official release builds verify and stage the
+pinned GitHub Release asset before Electron Builder applies the platform release
+signature.
 
 ## Seat terminology
 

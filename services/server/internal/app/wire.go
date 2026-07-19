@@ -252,13 +252,15 @@ func newAPIHandler(config Config) *apiHandler {
 	var protectedPackImporterErr error
 	if importerPath := strings.TrimSpace(config.ProtectedPackImporterPath); importerPath != "" {
 		var importer *platformprotectedpack.Importer
-		importer, protectedPackImporterErr = platformprotectedpack.New(
-			importerPath,
-			config.ProtectedPackImporterSHA256,
-		)
+		importer, protectedPackImporterErr = platformprotectedpack.New(importerPath)
 		if protectedPackImporterErr == nil {
 			promptPack.SetProtectedImporter(importer)
 		} else {
+			slog.Error(
+				"protected prompt pack importer initialization failed",
+				"path", importerPath,
+				"error", protectedPackImporterErr,
+			)
 			promptPack.SetProtectedImporterUnavailable(protectedPackImporterErr)
 		}
 	}

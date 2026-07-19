@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import { applyReleaseVersion } from "./apply-electron-release-version.ts";
 import { buildReleaseCreateArgs, collectReleaseArtifacts } from "./publish-electron-release.ts";
 import { findMissingVariables } from "./validate-electron-release-env.ts";
+import { resolveMacAppPath } from "./verify-macos-electron-release.ts";
 
 describe("applyReleaseVersion", () => {
   it("updates the workspace package and manifest without mutating its inputs", () => {
@@ -32,6 +33,17 @@ describe("applyReleaseVersion", () => {
 describe("findMissingVariables", () => {
   it("returns variables that are empty or absent", () => {
     assert.deepEqual(findMissingVariables(["A", "B", "C"], { A: "value", B: " " }), ["B", "C"]);
+  });
+});
+
+describe("resolveMacAppPath", () => {
+  it("resolves the final app bundle from the repository root", () => {
+    const repositoryRoot = join(tmpdir(), "mediago-drama");
+
+    assert.equal(
+      resolveMacAppPath("apps/workspace/release/mac-arm64/MediaGo Drama.app", repositoryRoot),
+      join(repositoryRoot, "apps/workspace/release/mac-arm64/MediaGo Drama.app"),
+    );
   });
 });
 

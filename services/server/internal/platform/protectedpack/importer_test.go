@@ -1,7 +1,6 @@
 package protectedpack
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -9,7 +8,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	servicepromptpack "github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
@@ -47,42 +45,22 @@ func TestParseFrame(t *testing.T) {
 	}
 }
 
-func TestNewVerifiesExecutableDigest(t *testing.T) {
+func TestNewAcceptsExecutableRegularFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mediago-rights")
-	contents := []byte("private runtime")
-	if err := os.WriteFile(path, contents, 0o755); err != nil {
+	if err := os.WriteFile(path, []byte("private runtime"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	digest := sha256.Sum256(contents)
-	if _, err := New(path, hex.EncodeToString(digest[:])); err != nil {
-		t.Fatalf("New(valid digest) error = %v", err)
-	}
-	if _, err := New(path, ""); err == nil {
-		t.Fatal("New(missing digest) error = nil")
-	}
-	if _, err := New(path, strings.Repeat("0", sha256.Size*2)); err == nil {
-		t.Fatal("New(mismatched digest) error = nil")
+	if _, err := New(path); err != nil {
+		t.Fatalf("New(regular file) error = %v", err)
 	}
 }
 
-func TestImportRechecksExecutableDigest(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "mediago-rights")
-	contents := []byte("private runtime")
-	if err := os.WriteFile(path, contents, 0o755); err != nil {
-		t.Fatal(err)
+func TestNewRejectsMissingOrNonRegularExecutable(t *testing.T) {
+	if _, err := New(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Fatal("New(missing file) error = nil")
 	}
-	digest := sha256.Sum256(contents)
-	importer, err := New(path, hex.EncodeToString(digest[:]))
-	if err != nil {
-		t.Fatalf("New(valid digest) error = %v", err)
-	}
-	if err := os.WriteFile(path, []byte("replaced runtime"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = importer.Import(context.Background(), "protected.mgpack", []byte("MGPK\x02opaque"))
-	if !errors.Is(err, servicepromptpack.ErrProtectedPackUnavailable) {
-		t.Fatalf("Import(replaced runtime) error = %v, want ErrProtectedPackUnavailable", err)
+	if _, err := New(t.TempDir()); err == nil {
+		t.Fatal("New(directory) error = nil")
 	}
 }
 
