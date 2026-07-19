@@ -67,6 +67,16 @@ const videoEntry = (): GenerationEntry => ({
 	assets: [{ kind: "video", url: "https://example.test/scene.mp4", mimeType: "video/mp4" }],
 });
 
+const failedVideoEntry = (): GenerationEntry => ({
+	id: "entry-failed-video",
+	kind: "video",
+	status: "failed",
+	content: "",
+	error: "生成失败",
+	prompt: "生成一个失败视频",
+	assets: [],
+});
+
 const audioEntry = (): GenerationEntry => ({
 	id: "entry-audio",
 	kind: "audio",
@@ -800,6 +810,40 @@ describe("HistoryGenerationList", () => {
 		fireEvent.click(within(menu).getByRole("menuitem", { name: "删除" }));
 		fireEvent.click(
 			within(screen.getByRole("alertdialog", { name: "删除这张图片？" })).getByRole("button", {
+				name: "删除",
+			}),
+		);
+
+		expect(onDeletePlaceholder).toHaveBeenCalledWith(entry, 0);
+		expect(onDeleteEntry).not.toHaveBeenCalled();
+	});
+
+	it("shows right-click delete for failed video placeholders", async () => {
+		const entry = failedVideoEntry();
+		const onDeleteEntry = vi.fn();
+		const onDeletePlaceholder = vi.fn();
+		render(
+			<HistoryGenerationList
+				activeEntryId="entry-failed-video"
+				deletingEntryIds={[]}
+				entries={[entry]}
+				kind="video"
+				selectedAssetKeys={[]}
+				variant="list"
+				onDeleteEntry={onDeleteEntry}
+				onDeletePlaceholder={onDeletePlaceholder}
+				onSelectEntry={vi.fn()}
+				onUsePrompt={vi.fn()}
+			/>,
+		);
+
+		fireEvent.contextMenu(screen.getByRole("img", { name: /生成失败/ }));
+
+		const menu = await screen.findByRole("menu");
+		expect(within(menu).queryByRole("menuitem", { name: "派生" })).toBeNull();
+		fireEvent.click(within(menu).getByRole("menuitem", { name: "删除" }));
+		fireEvent.click(
+			within(screen.getByRole("alertdialog", { name: "删除这个视频？" })).getByRole("button", {
 				name: "删除",
 			}),
 		);

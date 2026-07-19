@@ -257,6 +257,46 @@ describe("useGenerationTaskActions", () => {
 		expect(mutateTasks).toHaveBeenCalled();
 	});
 
+	it("persists hidden failed video slots for local entries backed by an orphan task", async () => {
+		vi.mocked(deleteGenerationTaskAsset).mockResolvedValue(
+			{} as Awaited<ReturnType<typeof deleteGenerationTaskAsset>>,
+		);
+		const { mutateProjectGenerationTasks, mutateTasks, result } = renderTaskActionsHook(
+			[
+				{
+					id: "local-123:prompt",
+					role: "user",
+					kind: "video",
+					content: "make a cat video",
+					createdAt: "2026-06-06T07:00:00.000Z",
+					updatedAt: "2026-06-06T07:00:00.000Z",
+				},
+				{
+					id: "local-123:error",
+					role: "assistant",
+					kind: "video",
+					status: "error",
+					content: "生成请求失败。",
+					createdAt: "2026-06-06T07:00:00.000Z",
+					updatedAt: "2026-06-06T07:00:00.000Z",
+				},
+			],
+			{
+				tasks: [
+					{ id: "generation-real", kind: "video", prompt: "make a cat video", status: "failed" },
+				] as GenerationTask[],
+			},
+		);
+
+		await act(async () => {
+			await result.current.deleteGenerationEntryAssetPlaceholder("local-123:error", 0);
+		});
+
+		expect(deleteGenerationTaskAsset).toHaveBeenCalledWith("generation-real", 0);
+		expect(mutateTasks).toHaveBeenCalled();
+		expect(mutateProjectGenerationTasks).toHaveBeenCalledWith("video");
+	});
+
 	it("deletes the orphan backend task when removing a client-local errored entry", async () => {
 		vi.mocked(deleteGenerationTask).mockResolvedValue({
 			tasks: [],

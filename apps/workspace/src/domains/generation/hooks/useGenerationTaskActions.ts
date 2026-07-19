@@ -178,7 +178,12 @@ export const useGenerationTaskActions = ({
 		async (entryId: string, assetIndex: number) => {
 			if (!entryId || assetIndex < 0) return false;
 
-			const taskId = taskIdForDeletion(entryId);
+			const taskId = await taskIdForAssetSlotDeletion({
+				conversationMessages,
+				entryId,
+				kind,
+				mutateTasks,
+			});
 			if (!taskId) return false;
 
 			const deletingKey = `${entryId}:${assetIndex}`;
@@ -212,12 +217,13 @@ export const useGenerationTaskActions = ({
 				return true;
 			} catch (err) {
 				void mutateTasks();
-				throw new Error(errorMessage(err, "生成图片删除失败。"));
+				throw new Error(errorMessage(err, `生成${generationKindLabel(kind)}删除失败。`));
 			} finally {
 				setDeletingAssetKeys((current) => current.filter((key) => key !== deletingKey));
 			}
 		},
 		[
+			conversationMessages,
 			kind,
 			mutateProjectGenerationTasks,
 			mutateTasks,
@@ -232,7 +238,12 @@ export const useGenerationTaskActions = ({
 		async (entryId: string, assetIndex: number) => {
 			if (!entryId || assetIndex < 0) return false;
 
-			const taskId = taskIdForDeletion(entryId);
+			const taskId = await taskIdForAssetSlotDeletion({
+				conversationMessages,
+				entryId,
+				kind,
+				mutateTasks,
+			});
 			if (!taskId) return false;
 
 			const deletingKey = `${entryId}:${assetIndex}`;
@@ -250,12 +261,19 @@ export const useGenerationTaskActions = ({
 				return true;
 			} catch (err) {
 				void mutateTasks();
-				throw new Error(errorMessage(err, "生成图片删除失败。"));
+				throw new Error(errorMessage(err, `生成${generationKindLabel(kind)}删除失败。`));
 			} finally {
 				setDeletingAssetKeys((current) => current.filter((key) => key !== deletingKey));
 			}
 		},
-		[kind, mutateProjectGenerationTasks, mutateTasks, resolvedConversationScopeId, setError],
+		[
+			conversationMessages,
+			kind,
+			mutateProjectGenerationTasks,
+			mutateTasks,
+			resolvedConversationScopeId,
+			setError,
+		],
 	);
 
 	useEffect(() => {
@@ -300,6 +318,24 @@ const taskIdForDeletion = (entryId: string) => {
 	return baseId && !baseId.startsWith("local-") && !baseId.startsWith("media-library:")
 		? baseId
 		: null;
+};
+
+const taskIdForAssetSlotDeletion = async ({
+	conversationMessages,
+	entryId,
+	kind,
+	mutateTasks,
+}: {
+	conversationMessages: ChatMessage[];
+	entryId: string;
+	kind: GenerationKind;
+	mutateTasks: KeyedMutator<GenerationTasksResponse>;
+}) => {
+	const taskId = taskIdForDeletion(entryId);
+	if (taskId) return taskId;
+
+	const latest = await mutateTasks();
+	return orphanTaskIdForLocalEntry(latest?.tasks ?? [], entryId, conversationMessages, kind);
 };
 
 // A client-local (optimistic or client-side-errored) entry has no task id, yet the submit may
@@ -368,3 +404,6 @@ const errorMessage = (error: unknown, fallback: string) => {
 
 	return fallback;
 };
+
+const generationKindLabel = (kind: GenerationKind) =>
+	kind === "video" ? "视频" : kind === "audio" ? "音频" : kind === "text" ? "文本" : "图片";
