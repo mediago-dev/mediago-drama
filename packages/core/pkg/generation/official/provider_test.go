@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
@@ -503,6 +504,183 @@ func TestGenerateVolcengineImage(t *testing.T) {
 	}
 	if got := response.Assets[0].URL; got != "https://example.test/image.png" {
 		t.Fatalf("asset url = %q, want image URL", got)
+	}
+}
+
+func TestGenerateAliyunWanImage(t *testing.T) {
+	var authHeader string
+	var payload aliyunWanRequest
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		authHeader = request.Header.Get("Authorization")
+		if request.URL.Path != aliyunWanGenerationPath {
+			t.Fatalf("path = %q, want %s", request.URL.Path, aliyunWanGenerationPath)
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{
+			"status_code":200,
+			"request_id":"wan-request-1",
+			"output":{"finished":true,"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":[
+				{"type":"image","image":"https://example.test/1.png"},
+				{"type":"image","image":"https://example.test/2.png"},
+				{"type":"image","image":"https://example.test/3.png"},
+				{"type":"image","image":"https://example.test/4.png"}
+			]}}]},
+			"usage":{"input_tokens":10,"output_tokens":8,"total_tokens":18,"image_count":4,"size":"4096*2304"}
+		}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(Config{AliyunBaseURL: server.URL, APIKey: "sk-aliyun"})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		Kind:    generation.KindImage,
+		RouteID: generation.RouteOfficialWan27ImagePro,
+		Prompt:  "make four images",
+		Params: map[string]any{
+			"aspectRatio": "16:9",
+			"resolution":  "4K",
+			"n":           float64(4),
+			"watermark":   true,
+			"seed":        float64(42),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if authHeader != "Bearer sk-aliyun" {
+		t.Fatalf("Authorization = %q, want Bearer sk-aliyun", authHeader)
+	}
+	if payload.Model != generation.ModelWan27ImagePro || payload.Parameters.Size != "4096*2304" || payload.Parameters.N != 4 {
+		t.Fatalf("payload = %#v", payload)
+	}
+	if payload.Parameters.EnableSequential || payload.Parameters.ThinkingMode == nil || !*payload.Parameters.ThinkingMode {
+		t.Fatalf("mode params = %#v", payload.Parameters)
+	}
+	if payload.Parameters.Seed == nil || *payload.Parameters.Seed != 42 {
+		t.Fatalf("seed = %#v, want 42", payload.Parameters.Seed)
+	}
+	if !payload.Parameters.Watermark {
+		t.Fatal("watermark = false, want retained backend watermark support")
+	}
+	if len(payload.Input.Messages) != 1 || len(payload.Input.Messages[0].Content) != 1 || payload.Input.Messages[0].Content[0].Text != "make four images" {
+		t.Fatalf("input = %#v", payload.Input)
+	}
+	if len(response.Assets) != 4 || response.Assets[3].URL != "https://example.test/4.png" {
+		t.Fatalf("assets = %#v", response.Assets)
+	}
+	if response.Usage.TotalTokens != 18 || response.Metadata["image_count"] != 4 {
+		t.Fatalf("response usage/metadata = %#v / %#v", response.Usage, response.Metadata)
+	}
+}
+
+func TestGenerateAliyunWanImageWithReferenceOmitsThinkingMode(t *testing.T) {
+	var payload aliyunWanRequest
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{
+			"status_code":200,
+			"request_id":"wan-edit-1",
+			"output":{"finished":true,"choices":[{"message":{"content":[{"type":"image","image":"https://example.test/edited.png"}]}}]},
+			"usage":{"image_count":1,"size":"1728*2368"}
+		}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(Config{AliyunBaseURL: server.URL, APIKey: "sk-aliyun"})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	_, err = provider.Generate(context.Background(), generation.Request{
+		Kind:          generation.KindImage,
+		RouteID:       generation.RouteOfficialWan27ImagePro,
+		Prompt:        "edit this image",
+		ReferenceURLs: []string{"https://example.test/reference.png"},
+		Params: map[string]any{
+			"aspectRatio": "3:4",
+			"resolution":  "2K",
+			"n":           float64(1),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if payload.Parameters.Size != "1728*2368" || payload.Parameters.ThinkingMode != nil {
+		t.Fatalf("parameters = %#v", payload.Parameters)
+	}
+	content := payload.Input.Messages[0].Content
+	if len(content) != 2 || content[0].Image != "https://example.test/reference.png" || content[1].Text != "edit this image" {
+		t.Fatalf("content = %#v", content)
+	}
+}
+
+func TestAliyunWanImageValidates4KModes(t *testing.T) {
+	tests := []struct {
+		name    string
+		request generation.Request
+		want    string
+	}{
+		{
+			name: "standard model",
+			request: generation.Request{
+				Model:  generation.ModelWan27Image,
+				Prompt: "image",
+				Params: map[string]any{"size": "4096*4096", "n": 1},
+			},
+			want: "does not support 4K",
+		},
+		{
+			name: "reference image",
+			request: generation.Request{
+				Model:         generation.ModelWan27ImagePro,
+				Prompt:        "edit",
+				ReferenceURLs: []string{"https://example.test/reference.png"},
+				Params:        map[string]any{"size": "4096*2304", "n": 1},
+			},
+			want: "requires no reference images",
+		},
+		{
+			name: "sequential mode",
+			request: generation.Request{
+				Model:  generation.ModelWan27ImagePro,
+				Prompt: "sequence",
+				Params: map[string]any{"size": "2048*2048", "n": 4, "enable_sequential": true},
+			},
+			want: "sequential image generation is not enabled",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateAliyunWanRequest(test.request)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("validateAliyunWanRequest() error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestAliyunWanImageAllowsLegacyNamedSize(t *testing.T) {
+	err := validateAliyunWanRequest(generation.Request{
+		Model:         generation.ModelWan27ImagePro,
+		Prompt:        "edit",
+		ReferenceURLs: []string{"https://example.test/reference.png"},
+		Params:        map[string]any{"size": "2K", "n": 1},
+	})
+	if err != nil {
+		t.Fatalf("validateAliyunWanRequest() error = %v, want legacy named size to remain supported", err)
 	}
 }
 

@@ -3,6 +3,7 @@ import {
 	filterImageGenerationSpecParams,
 	resolveImageGenerationSpec,
 	type ImageGenerationSpec,
+	type ImageGenerationSpecContext,
 } from "@/domains/generation/components/imageGenerationSpec";
 import {
 	resolveParamGroups,
@@ -25,12 +26,18 @@ export interface ResolvedGenerationRouteParamControls {
 export const resolveGenerationRouteParamControls = (
 	route: GenerationRoute,
 	selectedParams: Record<string, unknown>,
+	context?: ImageGenerationSpecContext,
 ): ResolvedGenerationRouteParamControls => {
 	const routeParamGroups = routeParamGroupsIncludingUngroupedParams(route);
 	const sizeGroupParams = routeParamGroups.find((group) => group.id === "size")?.params ?? [];
 	const countGroupParams = routeParamGroups.find((group) => group.id === "count")?.params ?? [];
 	const otherParamGroup = routeParamGroups.find((group) => group.id === "other") ?? null;
-	const imageSpec = resolveImageGenerationSpec(sizeGroupParams, selectedParams, route.paramCombos);
+	const imageSpec = resolveImageGenerationSpec(
+		sizeGroupParams,
+		selectedParams,
+		route.paramCombos,
+		context,
+	);
 	const generationCountParam =
 		countGroupParams.find((param) => param.name === "n" && param.type === "number") ?? null;
 	const primaryParamGroups = routeParamGroups.filter(

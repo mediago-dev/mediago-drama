@@ -10,6 +10,7 @@ import { updateGenerationPreferences } from "@/domains/generation/api/generation
 import type { StylePreset } from "@/domains/generation/api/prompt-presets";
 import {
 	catalogOrFallback,
+	declaredRouteParamValues,
 	defaultFamilyIds,
 	emptyGenerationModelSelection,
 	fallbackCatalog,
@@ -24,7 +25,6 @@ import {
 	preferredRoute,
 	readGenerationModelSelection,
 	readGenerationStylePresetId,
-	routeParamValues,
 	type StoredGenerationModelSelection,
 	writeGenerationModelSelection,
 	writeGenerationStylePresetId,
@@ -205,7 +205,7 @@ export const useGenerationModelSelection = ({
 		fallbackCatalog.routes[0];
 	const hasConfiguredRoutesForKind = configuredRoutesForKind.length > 0;
 	const selectedParams = useMemo(
-		() => routeParamValues(selectedRoute.params, routeParams[selectedRoute.id]),
+		() => declaredRouteParamValues(selectedRoute.params, routeParams[selectedRoute.id]),
 		[routeParams, selectedRoute],
 	);
 	const selectedStylePreset: StylePreset | undefined = useMemo(

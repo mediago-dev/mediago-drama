@@ -1,6 +1,7 @@
 export {
 	canUseAssetAsReference,
 	catalogOrFallback,
+	declaredRouteParamValues,
 	defaultFamilyIds,
 	defaultParamValues,
 	fallbackCatalog,

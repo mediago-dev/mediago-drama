@@ -28,6 +28,7 @@ import {
 import { GenerationModelRoutePicker } from "@/domains/generation/components/GenerationModelRoutePicker";
 import {
 	filterImageGenerationSpecParams,
+	imageGenerationSpecNormalizationUpdates,
 	resolveImageGenerationSpec,
 } from "@/domains/generation/components/imageGenerationSpec";
 import { displayGenerationLabelWithoutAlias } from "@/domains/generation/components/generationDisplayLabels";
@@ -189,9 +190,20 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 	);
 	const imageSpec = useMemo(
 		() =>
-			resolveImageGenerationSpec(sizeGroupParams, ws.selectedParams, ws.selectedRoute.paramCombos),
-		[sizeGroupParams, ws.selectedParams, ws.selectedRoute.paramCombos],
+			resolveImageGenerationSpec(sizeGroupParams, ws.selectedParams, ws.selectedRoute.paramCombos, {
+				referenceCount: ws.referenceCount,
+			}),
+		[sizeGroupParams, ws.referenceCount, ws.selectedParams, ws.selectedRoute.paramCombos],
 	);
+	const imageSpecNormalizationUpdates = useMemo(
+		() => imageGenerationSpecNormalizationUpdates(imageSpec, ws.selectedParams),
+		[imageSpec, ws.selectedParams],
+	);
+	useEffect(() => {
+		for (const update of imageSpecNormalizationUpdates) {
+			ws.updateParam(update.name, update.value);
+		}
+	}, [imageSpecNormalizationUpdates, ws.updateParam]);
 	const routeGenerationCountParam = countGroupParams.find(
 		(param) => param.name === "n" && param.type === "number",
 	);

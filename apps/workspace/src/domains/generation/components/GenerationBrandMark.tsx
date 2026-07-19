@@ -9,6 +9,7 @@ import type {
 	GenerationRoute,
 	GenerationVersion,
 } from "@/domains/generation/api/generation";
+import bailianIcon from "@lobehub/icons-static-svg/icons/bailian-color.svg";
 import chatGLMIcon from "@lobehub/icons-static-svg/icons/chatglm-color.svg";
 import githubCopilotIcon from "@lobehub/icons-static-svg/icons/githubcopilot.svg";
 import deepSeekIcon from "@lobehub/icons-static-svg/icons/deepseek-color.svg";
@@ -24,6 +25,7 @@ import volcengineIcon from "@lobehub/icons-static-svg/icons/volcengine-color.svg
 import { cn } from "@/shared/lib/utils";
 
 export type GenerationBrandKey =
+	| "aliyun"
 	| "copilot"
 	| "deepseek"
 	| "dmx"
@@ -49,6 +51,7 @@ interface BrandSpec {
 }
 
 const brandSpecs: Record<GenerationBrandKey, BrandSpec> = {
+	aliyun: { icon: bailianIcon, label: "阿里云百炼" },
 	copilot: { icon: githubCopilotIcon, label: "GitHub Copilot" },
 	deepseek: { icon: deepSeekIcon, label: "DeepSeek" },
 	dmx: { icon: dmxIcon, label: "DMXAPI" },
@@ -122,6 +125,8 @@ export const GenerationBrandStack: React.FC<{
 
 export const generationProviderBrand = (provider: string): GenerationBrandKey => {
 	switch (provider.trim().toLowerCase()) {
+		case "aliyun":
+			return "aliyun";
 		case "openai":
 			return "openai";
 		case "google":
@@ -190,6 +195,7 @@ const generationBrandFromTokens = (tokens: Array<string | undefined>): Generatio
 	if (/\bgpt\b|chatgpt|openai\/gpt|gpt-/.test(normalized)) return "gpt";
 	if (normalized.includes("gemini") || normalized.includes("nano-banana")) return "gemini";
 	if (normalized.includes("qwen")) return "qwen";
+	if (normalized.includes("wan2") || normalized.includes("万相")) return "aliyun";
 	if (normalized.includes("glm") || normalized.includes("zhipu") || normalized.includes("智谱")) {
 		return "glm";
 	}

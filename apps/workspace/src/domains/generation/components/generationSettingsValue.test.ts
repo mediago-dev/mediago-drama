@@ -232,6 +232,22 @@ describe("normalizeGenerationSettingsValue", () => {
 
 		expect(value.promptOptimization).toEqual({ enabled: false });
 	});
+
+	it("normalizes a reference-incompatible 4K selection to the route default", () => {
+		const withoutReference = normalizeGenerationSettingsValue(catalog, "image", {
+			params: { ratio: "16:9", resolution: "4k" },
+			referenceAssetIds: [],
+			routeId: "route-image",
+		});
+		const withReference = normalizeGenerationSettingsValue(catalog, "image", {
+			params: { ratio: "16:9", resolution: "4k" },
+			referenceAssetIds: ["asset-a"],
+			routeId: "route-image",
+		});
+
+		expect(withoutReference.params.resolution).toBe("4k");
+		expect(withReference.params.resolution).toBe("2k");
+	});
 });
 
 describe("resolveGenerationSettingsValue", () => {
@@ -447,6 +463,7 @@ function imageRoute(id: string, label: string) {
 			{
 				allowed: [
 					["16:9", "2k"],
+					["16:9", "4k"],
 					["3:4", "1k"],
 					["1:1", "1k"],
 				],
@@ -477,6 +494,7 @@ function imageRoute(id: string, label: string) {
 				options: [
 					{ label: "高清 1K", value: "1k" },
 					{ label: "高清 2K", value: "2k" },
+					{ label: "超清 4K", value: "4k", requiresNoReferenceUrls: true },
 				],
 				type: "select",
 			},

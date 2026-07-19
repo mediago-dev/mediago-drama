@@ -53,6 +53,7 @@ type Config struct {
 	MiniMaxBaseURL    string
 	DeepSeekBaseURL   string
 	VolcengineBaseURL string
+	AliyunBaseURL     string
 	JimengBinPath     string
 	JimengBinDir      string
 	LibTVBinPath      string
@@ -362,6 +363,7 @@ func (provider *Provider) officialProvider(ctx context.Context, route generation
 		provider.config.MiniMaxBaseURL,
 		provider.config.DeepSeekBaseURL,
 		provider.config.VolcengineBaseURL,
+		provider.config.AliyunBaseURL,
 	)
 	return provider.cachedProvider(cacheKey, func() (generation.Provider, error) {
 		return official.NewProvider(official.Config{
@@ -371,6 +373,7 @@ func (provider *Provider) officialProvider(ctx context.Context, route generation
 			MiniMaxBaseURL:    provider.config.MiniMaxBaseURL,
 			DeepSeekBaseURL:   provider.config.DeepSeekBaseURL,
 			VolcengineBaseURL: provider.config.VolcengineBaseURL,
+			AliyunBaseURL:     provider.config.AliyunBaseURL,
 			HTTPClient:        provider.config.HTTPClient,
 		})
 	})

@@ -271,6 +271,37 @@ describe("GenerationWorkspace image spec control", () => {
 		expect(screen.queryByText("图像尺寸")).toBeNull();
 	});
 
+	it("disables Wan Pro 4K with references and normalizes the selected resolution to 2K", async () => {
+		const updateParam = vi.fn();
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			referenceCount: 1,
+			selectedParams: {
+				...workspaceDefaults.selectedParams,
+				imageSize: "4K",
+			},
+			selectedRoute: {
+				...workspaceDefaults.selectedRoute,
+				model: "wan2.7-image-pro",
+				params: imageParams.map((param) =>
+					param.name === "imageSize"
+						? {
+								...param,
+								options: param.options?.map((option) =>
+									option.value === "4K" ? { ...option, requiresNoReferenceUrls: true } : option,
+								),
+							}
+						: param,
+				),
+			},
+			updateParam,
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		renderWorkspace();
+
+		await waitFor(() => expect(updateParam).toHaveBeenCalledWith("imageSize", "2K"));
+	});
+
 	it("opens the reference material library from the composer add button", () => {
 		vi.mocked(useGenerationWorkspace).mockReturnValue(
 			workspaceDefaults as unknown as ReturnType<typeof useGenerationWorkspace>,

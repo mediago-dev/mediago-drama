@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MediaAsset } from "@/domains/workspace/api/media";
 import type { GenerationParam, GenerationTask } from "@/domains/generation/api/generation";
 import {
+	declaredRouteParamValues,
 	filterMediaAssets,
 	filterGenerationTasksForScope,
 	formatBytes,
@@ -223,6 +224,17 @@ describe("generation workspace helpers", () => {
 		});
 		expect(routeParamValues(params, { duration: 10 })).toMatchObject({
 			duration: "10",
+		});
+		expect(
+			declaredRouteParamValues(params, {
+				duration: "10",
+				seed: 42,
+				watermark: true,
+			}),
+		).toEqual({
+			duration: "10",
+			seed: 42,
+			generateAudio: true,
 		});
 	});
 });

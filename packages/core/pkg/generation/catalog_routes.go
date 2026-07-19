@@ -94,6 +94,8 @@ const (
 	RouteOfficialGPTImage2                 = "official.gpt-image-2"
 	RouteOfficialNanoBanana31              = "official.gemini-3.1-flash-image-preview"
 	RouteOfficialNanoBanana25              = "official.gemini-2.5-flash-image"
+	RouteOfficialWan27ImagePro             = "official.wan2.7-image-pro"
+	RouteOfficialWan27Image                = "official.wan2.7-image"
 	RouteOfficialSeedance20Fast            = "official.seedance-2.0-fast"
 	RouteOfficialSeedance20Mini            = "official.seedance-2.0-mini"
 	RouteOfficialSeedance20                = "official.seedance-2.0"

@@ -398,8 +398,11 @@ export const useGenerationSettingsForm = ({
 		[selectedFamily.id, visibleFamilyRoutes, workspace.catalog.versions],
 	);
 	const routeParamControls = useMemo(
-		() => resolveGenerationRouteParamControls(selectedRoute, value.params),
-		[selectedRoute, value.params],
+		() =>
+			resolveGenerationRouteParamControls(selectedRoute, value.params, {
+				referenceCount: value.referenceAssetIds.length,
+			}),
+		[selectedRoute, value.params, value.referenceAssetIds.length],
 	);
 
 	const updateParam = useCallback(

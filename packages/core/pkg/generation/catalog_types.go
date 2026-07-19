@@ -120,8 +120,9 @@ type RouteParamGroup struct {
 
 // ParamOption is one option for a select-like model parameter.
 type ParamOption struct {
-	Label string `json:"label"`
-	Value string `json:"value"`
+	Label                   string `json:"label"`
+	Value                   string `json:"value"`
+	RequiresNoReferenceURLs bool   `json:"requiresNoReferenceUrls,omitempty"`
 }
 
 // ParamCombo lists the allowed value combinations of linked route params.

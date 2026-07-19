@@ -64,6 +64,14 @@ func CredentialSpecs() []CredentialSpec {
 			Description: "Seedream and Seedance official routes",
 		},
 		{
+			ID:              ProviderAliyun,
+			Label:           "阿里云百炼",
+			Description:     "阿里云百炼万相图像生成与编辑路由",
+			CredentialLabel: "百炼 API Key",
+			Placeholder:     "输入阿里云百炼 API Key",
+			Help:            "用于 wan2.7-image-pro 和 wan2.7-image 图像生成与编辑。",
+		},
+		{
 			ID:             ProviderJimeng,
 			Label:          "即梦",
 			Description:    "Jimeng CLI local OAuth session",

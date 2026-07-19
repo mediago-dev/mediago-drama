@@ -29,6 +29,7 @@ export interface ImageGenerationSpec {
 	allowedCombos?: SplitCombo;
 	controlledParamNames: string[];
 	mode: "split";
+	normalizesDisabledResolution?: boolean;
 	ratioOptions: SpecOption[];
 	resolutionOptions: SpecOption[];
 	selectedRatio: SpecOption | null;
@@ -43,12 +44,31 @@ export interface ImageGenerationSizePreview {
 	width?: number;
 }
 
+export interface ImageGenerationSpecContext {
+	referenceCount?: number;
+}
+
 export const resolveImageGenerationSpec = (
 	params: GenerationParam[],
 	values: Record<string, unknown>,
 	paramCombos?: GenerationParamCombo[],
+	context?: ImageGenerationSpecContext,
 ): ImageGenerationSpec | null => {
-	return resolveSplitImageGenerationSpec(params, values, paramCombos);
+	return resolveSplitImageGenerationSpec(params, values, paramCombos, context);
+};
+
+export const imageGenerationSpecNormalizationUpdates = (
+	spec: ImageGenerationSpec | null,
+	values: Record<string, unknown>,
+): SpecParamUpdate[] => {
+	if (!spec?.normalizesDisabledResolution || !spec.resolutionParam || !spec.selectedResolution) {
+		return [];
+	}
+
+	const currentValue = selectedParamValue(spec.resolutionParam, values);
+	if (currentValue === spec.selectedResolution.value) return [];
+
+	return [{ name: spec.resolutionParam.name, value: spec.selectedResolution.value }];
 };
 
 export const filterImageGenerationSpecParams = (
@@ -78,8 +98,10 @@ export const imageGenerationSpecUpdate = (
 			currentResolution &&
 			!isSplitComboAllowed(spec.allowedCombos, option.value, currentResolution.value)
 		) {
-			const nextResolution = spec.resolutionOptions.find((resolution) =>
-				isSplitComboAllowed(spec.allowedCombos, option.value, resolution.value),
+			const nextResolution = spec.resolutionOptions.find(
+				(resolution) =>
+					!resolution.disabled &&
+					isSplitComboAllowed(spec.allowedCombos, option.value, resolution.value),
 			);
 			if (nextResolution && nextResolution.value !== currentResolution.value) {
 				updates.push({ name: spec.resolutionParam.name, value: nextResolution.value });
@@ -94,6 +116,7 @@ const resolveSplitImageGenerationSpec = (
 	params: GenerationParam[],
 	values: Record<string, unknown>,
 	paramCombos?: GenerationParamCombo[],
+	context?: ImageGenerationSpecContext,
 ): ImageGenerationSpec | null => {
 	const ratioParam = params.find(isRatioParam);
 	const resolutionParam = params.find(isResolutionParam);
@@ -106,7 +129,13 @@ const resolveSplitImageGenerationSpec = (
 	);
 	const resolutionOptions = uniqueSpecOptions(
 		(resolutionParam.options ?? [])
-			.map((option) => resolutionSpecOption(option.value, paramOptionLabel(option.label)))
+			.map((option) =>
+				resolutionSpecOption(
+					option.value,
+					paramOptionLabel(option.label),
+					Boolean(option.requiresNoReferenceUrls && (context?.referenceCount ?? 0) > 0),
+				),
+			)
 			.filter(isPresent),
 	);
 	if (ratioOptions.length === 0 || resolutionOptions.length === 0) return null;
@@ -119,11 +148,24 @@ const resolveSplitImageGenerationSpec = (
 	let selectedResolution =
 		resolutionOptions.find((option) => option.value === selectedResolutionValue) ??
 		resolutionOptions[0];
-	if (!isSplitComboAllowed(allowedCombos, selectedRatio.value, selectedResolution.value)) {
+	const normalizesDisabledResolution = Boolean(selectedResolution.disabled);
+	if (
+		selectedResolution.disabled ||
+		!isSplitComboAllowed(allowedCombos, selectedRatio.value, selectedResolution.value)
+	) {
+		const defaultResolutionValue = String(resolutionParam.default ?? "");
 		selectedResolution =
-			resolutionOptions.find((option) =>
-				isSplitComboAllowed(allowedCombos, selectedRatio.value, option.value),
-			) ?? selectedResolution;
+			resolutionOptions.find(
+				(option) =>
+					option.value === defaultResolutionValue &&
+					!option.disabled &&
+					isSplitComboAllowed(allowedCombos, selectedRatio.value, option.value),
+			) ??
+			resolutionOptions.find(
+				(option) =>
+					!option.disabled && isSplitComboAllowed(allowedCombos, selectedRatio.value, option.value),
+			) ??
+			selectedResolution;
 	}
 	const orderedRatioOptions = orderRatioOptions(ratioOptions).map((option) => ({
 		...option,
@@ -131,13 +173,15 @@ const resolveSplitImageGenerationSpec = (
 	}));
 	const orderedResolutionOptions = orderResolutionOptions(resolutionOptions).map((option) => ({
 		...option,
-		disabled: !isSplitComboAllowed(allowedCombos, selectedRatio.value, option.value),
+		disabled:
+			option.disabled || !isSplitComboAllowed(allowedCombos, selectedRatio.value, option.value),
 	}));
 
 	return {
 		allowedCombos,
 		controlledParamNames: [ratioParam.name, resolutionParam.name],
 		mode: "split",
+		normalizesDisabledResolution,
 		ratioOptions: orderedRatioOptions,
 		resolutionOptions: orderedResolutionOptions,
 		selectedRatio,
@@ -232,11 +276,16 @@ const ratioSpecOption = (value: string, label: string): SpecOption | null => {
 	};
 };
 
-const resolutionSpecOption = (value: string, label: string): SpecOption | null => {
+const resolutionSpecOption = (
+	value: string,
+	label: string,
+	disabled = false,
+): SpecOption | null => {
 	const resolution = parseResolutionLabel(label, value) ?? parseResolutionLabel(value, label);
 	if (!resolution) return null;
 
 	return {
+		disabled,
 		id: `resolution:${value}`,
 		label,
 		resolution,
@@ -366,7 +415,7 @@ const comboOutputSizePreview = (
 	const output = combo?.outputs?.[`${ratioValue}|${resolutionValue}`];
 	if (!output) return null;
 
-	const match = output.match(/^(\d+)x(\d+)$/i);
+	const match = output.match(/^(\d+)[x*](\d+)$/i);
 	if (!match) return null;
 
 	const width = Number(match[1]);

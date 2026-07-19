@@ -433,6 +433,16 @@
       "unit": "external"
     },
     {
+      "routeId": "official.wan2.7-image-pro",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
+      "routeId": "official.wan2.7-image",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
       "routeId": "openrouter.gpt-5.4-image-2",
       "currency": "USD",
       "unit": "per_million_tokens",

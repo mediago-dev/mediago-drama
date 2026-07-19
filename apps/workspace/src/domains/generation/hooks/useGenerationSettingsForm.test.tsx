@@ -191,6 +191,29 @@ describe("useGenerationSettingsForm", () => {
 		expect(result.current.value.referenceAssetIds).toEqual([]);
 	});
 
+	it("disables_4k_and_normalizes_to_2k_after_adding_a_reference", async () => {
+		const { result } = renderHook(() => useGenerationSettingsForm({ kind: "image" }));
+		await waitFor(() => expect(result.current.isReady).toBe(true));
+
+		act(() => result.current.updateParam("resolution", "4k"));
+		expect(result.current.value.params.resolution).toBe("4k");
+		expect(
+			result.current.routeParamControls.imageSpec?.resolutionOptions.find(
+				(option) => option.value === "4k",
+			)?.disabled,
+		).toBe(false);
+
+		act(() => result.current.toggleReferenceAsset(imageAsset));
+
+		expect(result.current.value.referenceAssetIds).toEqual(["asset-image"]);
+		expect(result.current.value.params.resolution).toBe("2k");
+		expect(
+			result.current.routeParamControls.imageSpec?.resolutionOptions.find(
+				(option) => option.value === "4k",
+			)?.disabled,
+		).toBe(true);
+	});
+
 	it("reports_invalid_until_enabled_prompt_features_are_complete", async () => {
 		const { result } = renderHook(() => useGenerationSettingsForm({ kind: "image" }));
 		await waitFor(() => expect(result.current.isReady).toBe(true));
@@ -538,6 +561,7 @@ function imageRoute(id: string, label: string, supportsReferenceUrls: boolean): 
 			{
 				allowed: [
 					["16:9", "2k"],
+					["16:9", "4k"],
 					["3:4", "1k"],
 				],
 				params: ["ratio", "resolution"],
@@ -566,6 +590,7 @@ function imageRoute(id: string, label: string, supportsReferenceUrls: boolean): 
 				options: [
 					{ label: "高清 1K", value: "1k" },
 					{ label: "高清 2K", value: "2k" },
+					{ label: "超清 4K", value: "4k", requiresNoReferenceUrls: true },
 				],
 				type: "select",
 			},

@@ -26,6 +26,19 @@ describe("resolveGenerationRouteParamControls", () => {
 			"negativePrompt",
 		]);
 	});
+
+	it("disables reference-incompatible resolutions and falls back to the route default", () => {
+		const controls = resolveGenerationRouteParamControls(
+			route(),
+			{ aspectRatio: "16:9", resolution: "4K" },
+			{ referenceCount: 1 },
+		);
+
+		expect(controls.imageSpec?.selectedResolution?.value).toBe("2K");
+		expect(
+			controls.imageSpec?.resolutionOptions.find((option) => option.value === "4K")?.disabled,
+		).toBe(true);
+	});
 });
 
 const route = (): GenerationRoute =>
@@ -54,10 +67,11 @@ const route = (): GenerationRoute =>
 				name: "resolution",
 				label: "分辨率",
 				type: "select",
-				default: "1K",
+				default: "2K",
 				options: [
 					{ label: "1K", value: "1K" },
 					{ label: "2K", value: "2K" },
+					{ label: "4K", value: "4K", requiresNoReferenceUrls: true },
 				],
 			},
 			{ name: "n", label: "数量", type: "number", default: 1, min: 1, max: 4 },
