@@ -296,6 +296,16 @@ const videoEntry: GenerationEntry = {
 	assets: [{ kind: "video", url: "/api/v1/media-assets/video-a/content", mimeType: "video/mp4" }],
 };
 
+const failedVideoEntry: GenerationEntry = {
+	id: "local-123:error",
+	kind: "video",
+	status: "error",
+	content: "生成失败",
+	error: "生成失败",
+	prompt: "视频提示词",
+	assets: [],
+};
+
 const importedMaterialEntry: GenerationEntry = {
 	id: "media-library-1",
 	kind: "image",
@@ -2368,6 +2378,52 @@ describe("MediaGenerationWorkspace", () => {
 			expect(toastMocks.error).toHaveBeenCalledWith("删除失败", {
 				description: "找不到可删除的生成视频。",
 			});
+		});
+	});
+
+	it("deletes failed video placeholders through the placeholder slot action", async () => {
+		const deleteGenerationEntry = vi.fn();
+		const deleteGenerationEntryAsset = vi.fn();
+		const deleteGenerationEntryAssetPlaceholder = vi.fn().mockResolvedValue(true);
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			activeEntryId: "local-123:error",
+			deleteGenerationEntry,
+			deleteGenerationEntryAsset,
+			deleteGenerationEntryAssetPlaceholder,
+			kind: "video",
+			orderedGenerationEntries: [failedVideoEntry],
+			selectedRoute: {
+				...workspaceDefaults.selectedRoute,
+				kind: "video",
+			},
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="初始提示词"
+				kind="video"
+				viewMode="history"
+			/>,
+		);
+
+		fireEvent.contextMenu(screen.getByRole("img", { name: /生成失败/ }));
+		const menu = await screen.findByRole("menu");
+		fireEvent.click(within(menu).getByRole("menuitem", { name: "删除" }));
+		fireEvent.click(
+			within(screen.getByRole("alertdialog", { name: "删除这个视频？" })).getByRole("button", {
+				name: "删除",
+			}),
+		);
+
+		await waitFor(() => {
+			expect(deleteGenerationEntryAssetPlaceholder).toHaveBeenCalledWith("local-123:error", 0);
+		});
+		expect(deleteGenerationEntryAsset).not.toHaveBeenCalled();
+		expect(deleteGenerationEntry).not.toHaveBeenCalled();
+		expect(toastMocks.error).not.toHaveBeenCalledWith("删除失败", {
+			description: "找不到可删除的生成视频。",
 		});
 	});
 
