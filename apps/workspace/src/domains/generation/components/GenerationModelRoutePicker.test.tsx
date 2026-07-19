@@ -596,6 +596,27 @@ describe("GenerationModelRoutePicker", () => {
 		expect(screen.getByRole("button", { name: "OpenAI" })).toBeTruthy();
 		expect(screen.queryByRole("button", { name: "MediaGo" })).toBeNull();
 	});
+
+	it("debounces version changes when the pointer returns from the provider panel", () => {
+		vi.useFakeTimers();
+		renderRoutePicker();
+
+		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
+		const routePanel = screen.getByText("提供方").closest("section");
+		const crossedVersionButton = screen.getByRole("button", { name: "Gemini" });
+		expect(routePanel).toBeTruthy();
+
+		fireEvent.pointerLeave(routePanel as HTMLElement);
+		fireEvent.pointerEnter(crossedVersionButton, { clientX: 180, clientY: 136 });
+
+		expect(screen.getByRole("button", { name: "MediaGo" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "OpenAI" })).toBeNull();
+		act(() => vi.advanceTimersByTime(149));
+		expect(screen.getByRole("button", { name: "MediaGo" })).toBeTruthy();
+		act(() => vi.advanceTimersByTime(1));
+		expect(screen.getByRole("button", { name: "OpenAI" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "MediaGo" })).toBeNull();
+	});
 });
 
 describe("shouldKeepGenerationRoutePickerVersionActive", () => {

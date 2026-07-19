@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Editor } from "@tiptap/core";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
@@ -29,6 +29,7 @@ const slashItems: PromptInsertItem[] = [
 
 afterEach(() => {
 	cleanup();
+	vi.useRealTimers();
 	document.querySelectorAll(".prompt-slash-menu-layer").forEach((element) => element.remove());
 });
 
@@ -189,8 +190,94 @@ describe("PromptEditor", () => {
 		expect(screen.queryByText("角色多视图")).toBeNull();
 
 		const extraGroup = screen.getByRole("button", { name: "其他 1 项" });
-		fireEvent.mouseEnter(extraGroup);
+		fireEvent.pointerEnter(extraGroup);
 
 		expect(onHover).toHaveBeenCalledWith(1);
 	});
+
+	it("keeps the active slash group while the pointer crosses the forward safe triangle", () => {
+		vi.useFakeTimers();
+		const onHover = vi.fn();
+
+		render(
+			<PromptSlashMenu
+				items={slashItems}
+				position={{ left: 16, placement: "bottom", top: 16 }}
+				selectedIndex={0}
+				onHover={onHover}
+				onSelect={vi.fn()}
+			/>,
+		);
+
+		const activeGroup = screen.getByRole("button", { name: "风格 1 项" });
+		const crossedGroup = screen.getByRole("button", { name: "其他 1 项" });
+		const submenu = document.querySelector<HTMLElement>(".prompt-slash-secondary");
+		expect(submenu).toBeTruthy();
+		vi.spyOn(activeGroup, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 124, left: 20, right: 200, top: 80 }),
+		);
+		vi.spyOn(submenu as HTMLElement, "getBoundingClientRect").mockReturnValue(
+			testRect({ bottom: 260, left: 220, right: 520, top: 40 }),
+		);
+
+		fireEvent.pointerEnter(activeGroup, { clientX: 150, clientY: 96 });
+		fireEvent.pointerMove(activeGroup, { clientX: 160, clientY: 112 });
+		fireEvent.pointerEnter(crossedGroup, { clientX: 172, clientY: 136 });
+
+		expect(onHover).not.toHaveBeenCalled();
+		act(() => vi.advanceTimersByTime(179));
+		expect(onHover).not.toHaveBeenCalled();
+		act(() => vi.advanceTimersByTime(1));
+		expect(onHover).toHaveBeenCalledWith(1);
+	});
+
+	it("debounces slash group changes when the pointer returns from the submenu", () => {
+		vi.useFakeTimers();
+		const onHover = vi.fn();
+
+		render(
+			<PromptSlashMenu
+				items={slashItems}
+				position={{ left: 16, placement: "bottom", top: 16 }}
+				selectedIndex={0}
+				onHover={onHover}
+				onSelect={vi.fn()}
+			/>,
+		);
+
+		const submenu = document.querySelector<HTMLElement>(".prompt-slash-secondary");
+		const crossedGroup = screen.getByRole("button", { name: "其他 1 项" });
+		expect(submenu).toBeTruthy();
+
+		fireEvent.pointerLeave(submenu as HTMLElement);
+		fireEvent.pointerEnter(crossedGroup, { clientX: 180, clientY: 136 });
+
+		expect(onHover).not.toHaveBeenCalled();
+		act(() => vi.advanceTimersByTime(149));
+		expect(onHover).not.toHaveBeenCalled();
+		act(() => vi.advanceTimersByTime(1));
+		expect(onHover).toHaveBeenCalledWith(1);
+	});
+});
+
+const testRect = ({
+	bottom,
+	left,
+	right,
+	top,
+}: {
+	bottom: number;
+	left: number;
+	right: number;
+	top: number;
+}): DOMRect => ({
+	bottom,
+	height: bottom - top,
+	left,
+	right,
+	top,
+	width: right - left,
+	x: left,
+	y: top,
+	toJSON: () => ({}),
 });
