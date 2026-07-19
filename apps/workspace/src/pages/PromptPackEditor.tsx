@@ -1,4 +1,5 @@
 import {
+	Copy,
 	Download,
 	ExternalLink,
 	FolderOpen,
@@ -83,6 +84,7 @@ export const PromptPackEditor: React.FC = () => {
 	const [saveAsName, setSaveAsName] = useState("");
 	const [saveAsVersion, setSaveAsVersion] = useState("1.0.0");
 	const [saveAsDescription, setSaveAsDescription] = useState("");
+	const [saveAsShouldExport, setSaveAsShouldExport] = useState(false);
 	const [saveAsBusy, setSaveAsBusy] = useState(false);
 	const [saveAsError, setSaveAsError] = useState("");
 	const [isEditing, setIsEditing] = useState(false);
@@ -254,11 +256,21 @@ export const PromptPackEditor: React.FC = () => {
 		setSaveAsName(`${pack.name}副本`);
 		setSaveAsVersion(pack.version || "1.0.0");
 		setSaveAsDescription(pack.description || "");
+		setSaveAsShouldExport(true);
 		setSaveAsError("");
 		setSaveAsSourcePack(pack);
 	};
 
-	const saveAsAndExport = async () => {
+	const openCopyPack = (pack: PromptPack) => {
+		setSaveAsName(`${pack.name}副本`);
+		setSaveAsVersion(pack.version || "1.0.0");
+		setSaveAsDescription(pack.description || "");
+		setSaveAsShouldExport(false);
+		setSaveAsError("");
+		setSaveAsSourcePack(pack);
+	};
+
+	const saveAsPack = async () => {
 		if (!saveAsSourcePack || !saveAsName.trim() || !saveAsVersion.trim()) return;
 		setSaveAsBusy(true);
 		setSaveAsError("");
@@ -286,7 +298,11 @@ export const PromptPackEditor: React.FC = () => {
 		} catch (error) {
 			toast.error("刷新技能包列表失败", { description: errorMessage(error) });
 		}
-		await downloadPack(forked);
+		if (saveAsShouldExport) {
+			await downloadPack(forked);
+		} else {
+			toast.success("技能包已复制", { description: forked.name });
+		}
 		setSaveAsBusy(false);
 	};
 
@@ -449,6 +465,19 @@ export const PromptPackEditor: React.FC = () => {
 											<Pencil className="size-4" />
 											<span>编辑</span>
 										</Button>
+										<Button
+											type="button"
+											variant="outline"
+											disabled={
+												exportingPackID === selectedPack.id ||
+												deletingPackID === selectedPack.id ||
+												saveAsBusy
+											}
+											onClick={() => openCopyPack(selectedPack)}
+										>
+											<Copy className="size-4" />
+											<span>复制技能包</span>
+										</Button>
 										{selectedPack.source !== "local" ? (
 											<Button
 												type="button"
@@ -535,13 +564,14 @@ export const PromptPackEditor: React.FC = () => {
 				busy={saveAsBusy}
 				description={saveAsDescription}
 				error={saveAsError}
+				exportAfterCopy={saveAsShouldExport}
 				name={saveAsName}
 				onDescriptionChange={setSaveAsDescription}
 				onNameChange={setSaveAsName}
 				onOpenChange={(open) => {
 					if (!open && !saveAsBusy) setSaveAsSourcePack(undefined);
 				}}
-				onSubmit={() => void saveAsAndExport()}
+				onSubmit={() => void saveAsPack()}
 				onVersionChange={setSaveAsVersion}
 				open={Boolean(saveAsSourcePack)}
 				version={saveAsVersion}
@@ -554,6 +584,7 @@ const PromptPackSaveAsDialog: React.FC<{
 	busy: boolean;
 	description: string;
 	error: string;
+	exportAfterCopy: boolean;
 	name: string;
 	onDescriptionChange: (value: string) => void;
 	onNameChange: (value: string) => void;
@@ -566,6 +597,7 @@ const PromptPackSaveAsDialog: React.FC<{
 	busy,
 	description,
 	error,
+	exportAfterCopy,
 	name,
 	onDescriptionChange,
 	onNameChange,
@@ -585,9 +617,11 @@ const PromptPackSaveAsDialog: React.FC<{
 				}}
 			>
 				<AlertDialogHeader>
-					<AlertDialogTitle>另存为并导出</AlertDialogTitle>
+					<AlertDialogTitle>{exportAfterCopy ? "另存为并导出" : "复制技能包"}</AlertDialogTitle>
 					<AlertDialogDescription>
-						默认技能包将复制为具有独立 ID 的本地技能包，然后导出。
+						{exportAfterCopy
+							? "默认技能包将复制为具有独立 ID 的本地技能包，然后导出。"
+							: "当前技能包将复制为具有独立 ID、可单独编辑的本地技能包。"}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				{error ? (
@@ -624,8 +658,14 @@ const PromptPackSaveAsDialog: React.FC<{
 				<AlertDialogFooter>
 					<AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
 					<Button type="submit" disabled={busy || !name.trim() || !version.trim()}>
-						{busy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
-						<span>{busy ? "创建中" : "创建并导出"}</span>
+						{busy ? (
+							<Loader2 className="size-4 animate-spin" />
+						) : exportAfterCopy ? (
+							<Download className="size-4" />
+						) : (
+							<Copy className="size-4" />
+						)}
+						<span>{busy ? "复制中" : exportAfterCopy ? "创建并导出" : "复制"}</span>
 					</Button>
 				</AlertDialogFooter>
 			</form>

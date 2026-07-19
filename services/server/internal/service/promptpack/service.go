@@ -450,7 +450,7 @@ func (store *Service) CreatePack(ctx context.Context, pack Pack) (Pack, error) {
 	return store.GetPack(ctx, pack.ID)
 }
 
-// ForkPack snapshots the resolved default pack into a standalone local authoring pack.
+// ForkPack snapshots a resolved installed pack into a standalone local authoring pack.
 func (store *Service) ForkPack(ctx context.Context, sourcePackID string, input ForkPackInput) (Pack, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return Pack{}, err
@@ -459,8 +459,8 @@ func (store *Service) ForkPack(ctx context.Context, sourcePackID string, input F
 	input.Name = strings.TrimSpace(input.Name)
 	input.Version = strings.TrimSpace(input.Version)
 	input.Description = strings.TrimSpace(input.Description)
-	if sourcePackID != DefaultPackID {
-		return Pack{}, fmt.Errorf("%w: only the default pack can be saved as a new pack", ErrInvalidPack)
+	if sourcePackID == "" {
+		return Pack{}, fmt.Errorf("%w: source pack id is required", ErrInvalidPack)
 	}
 	if input.Version == "" {
 		input.Version = "1.0.0"
@@ -480,9 +480,6 @@ func (store *Service) ForkPack(ctx context.Context, sourcePackID string, input F
 		}
 		if err != nil {
 			return err
-		}
-		if normalizePackSource(source.Source, source.ID) != packSourceDefault {
-			return fmt.Errorf("%w: source pack is not the default pack", ErrInvalidPack)
 		}
 		if _, err := tx.GetPack(packID); err == nil {
 			return fmt.Errorf("%w: %s", ErrPackExists, packID)

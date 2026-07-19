@@ -121,8 +121,8 @@ func (handler PromptPacks) HandleCreatePack(context *gin.Context) {
 }
 
 // HandleForkPack godoc
-// @Summary 另存默认技能包
-// @Description 将默认技能包当前解析后的内容复制为一个具有随机 ID 的本地技能包。
+// @Summary 复制技能包
+// @Description 将技能包当前解析后的内容复制为一个具有随机 ID 的本地技能包。
 // @Tags Skill Packs
 // @Accept json
 // @Produce json

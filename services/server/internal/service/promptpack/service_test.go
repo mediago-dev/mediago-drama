@@ -1117,6 +1117,36 @@ func TestServiceForksDefaultPackAsImportableMGPack(t *testing.T) {
 	}
 }
 
+func TestServiceForksLocalPackAsIndependentLocalCopy(t *testing.T) {
+	ctx := context.Background()
+	store := newTestService(t)
+	source, err := store.CreatePack(ctx, Pack{
+		ID:          "local.copy-source",
+		Name:        "Copy Source",
+		Version:     "2.0.0",
+		Author:      "MediaGo",
+		Description: "Original description",
+	})
+	if err != nil {
+		t.Fatalf("CreatePack() error = %v", err)
+	}
+
+	copied, err := store.ForkPack(ctx, source.ID, ForkPackInput{
+		Name:        "Copy Source Copy",
+		Version:     "2.1.0",
+		Description: "Independent copy",
+	})
+	if err != nil {
+		t.Fatalf("ForkPack(local) error = %v", err)
+	}
+	if !strings.HasPrefix(copied.ID, "local.") || copied.ID == source.ID || copied.Source != packSourceLocal {
+		t.Fatalf("copied = %#v, want independent local pack", copied)
+	}
+	if copied.Name != "Copy Source Copy" || copied.Version != "2.1.0" || copied.Description != "Independent copy" || copied.Author != source.Author {
+		t.Fatalf("copied metadata = %#v, want requested metadata and source author", copied)
+	}
+}
+
 func TestServiceExportsDefaultPackWithUserUnicodeCategory(t *testing.T) {
 	ctx := context.Background()
 	source := newTestService(t)

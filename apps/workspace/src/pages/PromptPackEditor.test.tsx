@@ -378,6 +378,35 @@ describe("PromptPackEditor", () => {
 		expect(screen.getByRole("button", { name: `打开技能包 ${localPack.name}` })).toBeEnabled();
 	});
 
+	it("copies the selected pack from the header without exporting it", async () => {
+		const copiedPack = {
+			...localPack,
+			id: "local.copied-pack",
+			name: "本地草稿副本",
+		};
+		vi.mocked(forkPromptPack).mockResolvedValue(copiedPack);
+		renderEditor("/prompt-pack-editor?packId=local.test-pack");
+
+		fireEvent.click(await screen.findByRole("button", { name: "复制技能包" }));
+		expect(await screen.findByRole("heading", { name: "复制技能包" })).toBeInTheDocument();
+		expect(screen.getByLabelText("名称")).toHaveValue("本地草稿副本");
+		fireEvent.click(screen.getByRole("button", { name: "复制" }));
+
+		await waitFor(() =>
+			expect(forkPromptPack).toHaveBeenCalledWith(localPack.id, {
+				description: "",
+				name: "本地草稿副本",
+				version: localPack.version,
+			}),
+		);
+		expect(exportPromptPack).not.toHaveBeenCalled();
+		await waitFor(() =>
+			expect(toastSuccess).toHaveBeenCalledWith("技能包已复制", {
+				description: copiedPack.name,
+			}),
+		);
+	});
+
 	it("saves the default pack as a local pack before exporting", async () => {
 		const defaultPack = {
 			...localPack,
