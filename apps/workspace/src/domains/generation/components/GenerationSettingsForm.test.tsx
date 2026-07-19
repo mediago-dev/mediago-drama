@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -56,7 +56,10 @@ describe("GenerationSettingsForm", () => {
 		onValueChange.mockClear();
 	});
 
-	afterEach(cleanup);
+	afterEach(() => {
+		cleanup();
+		vi.useRealTimers();
+	});
 
 	it("renders_sections_in_batch_form_order without a modal shell or footer", async () => {
 		render(<Harness />);
@@ -119,6 +122,28 @@ describe("GenerationSettingsForm", () => {
 				}),
 			),
 		);
+	});
+
+	it("debounces prompt pack group changes when returning from the item panel", async () => {
+		render(<Harness />);
+		await screen.findByRole("combobox", { name: "模型名称" });
+		fireEvent.click(screen.getByRole("checkbox", { name: "生成时追加" }));
+		fireEvent.click(screen.getByRole("button", { name: "补充技能包" }));
+		vi.useFakeTimers();
+
+		const itemPanel = screen.getByRole("listbox", { name: "技能包列表" }).closest("section");
+		const crossedGroup = screen.getByRole("button", { name: "镜头 1 项" });
+		expect(itemPanel).toBeTruthy();
+
+		fireEvent.pointerLeave(itemPanel as HTMLElement);
+		fireEvent.pointerEnter(crossedGroup, { clientX: 180, clientY: 136 });
+
+		expect(screen.getByRole("option", { name: "用户自定义风格" })).toBeTruthy();
+		expect(screen.queryByRole("option", { name: "推进镜头" })).toBeNull();
+		act(() => vi.advanceTimersByTime(149));
+		expect(screen.queryByRole("option", { name: "推进镜头" })).toBeNull();
+		act(() => vi.advanceTimersByTime(1));
+		expect(screen.getByRole("option", { name: "推进镜头" })).toBeTruthy();
 	});
 
 	it("requires_prompt_pack_and_text_route_for_optimization", async () => {

@@ -14,11 +14,10 @@ import { Button } from "@/shared/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
 import { cn } from "@/shared/lib/utils";
 import {
-	type CascadedPickerPoint,
 	type CascadedPickerSafeTriangleInput,
-	pointerEventPoint,
 	scrollCascadedPickerListOnWheel,
 	shouldKeepCascadedPickerSourceActive,
+	useCascadedPickerHoverIntent,
 } from "./cascadedPickerSafeTriangle";
 import { displayGenerationLabelWithoutAlias } from "./generationDisplayLabels";
 
@@ -41,16 +40,8 @@ export const GenerationModelRoutePicker: React.FC<{
 }) => {
 	const [open, setOpen] = useState(false);
 	const [activeVersionId, setActiveVersionId] = useState(selectedVersion.id);
-	const [suppressedVersionHoverId, setSuppressedVersionHoverId] = useState<string | null>(null);
-	const versionButtonRefs = useRef(new Map<string, HTMLButtonElement>());
 	const versionListRef = useRef<HTMLDivElement | null>(null);
-	const routePanelRef = useRef<HTMLElement | null>(null);
 	const routeListRef = useRef<HTMLDivElement | null>(null);
-	const safeTriangleOriginRef = useRef<{
-		point: CascadedPickerPoint;
-		versionId: string;
-	} | null>(null);
-	const versionActivationIntentTimerRef = useRef<number | null>(null);
 	const [versionListCanScrollDown, setVersionListCanScrollDown] = useState(false);
 	const [routeListCanScrollDown, setRouteListCanScrollDown] = useState(false);
 	const routesByVersion = useMemo(() => {
@@ -77,6 +68,22 @@ export const GenerationModelRoutePicker: React.FC<{
 		visibleVersions.find((version) => version.id === selectedVersion.id) ??
 		visibleVersions[0];
 	const activeRoutes = activeVersion ? (routesByVersion.get(activeVersion.id) ?? []) : [];
+	const {
+		activateSource: activateVersion,
+		clearHoverIntent,
+		handleSourcePanePointerEnter,
+		handleSourcePointerEnter,
+		handleSourcePointerMove,
+		handleSubmenuPointerLeave,
+		registerSourceButton,
+		sourcePaneRef,
+		submenuRef: routePanelRef,
+		suppressedSourceHoverId: suppressedVersionHoverId,
+	} = useCascadedPickerHoverIntent({
+		activeSourceId: activeVersion?.id,
+		forwardDelayMs: GENERATION_ROUTE_PICKER_SAFE_TRIANGLE_HOVER_INTENT_MS,
+		onActivateSource: setActiveVersionId,
+	});
 	const selectedProvider = providerLabel(selectedRoute.provider);
 	const selectedVersionLabel = displayGenerationLabelWithoutAlias(selectedVersion.label);
 	const selectedLabel = selectedVersion.label
@@ -144,114 +151,6 @@ export const GenerationModelRoutePicker: React.FC<{
 		return () => window.cancelAnimationFrame(frame);
 	}, [activeVersion?.id, activeRoutes.length, open, updateRouteListScrollHint]);
 
-	useEffect(() => {
-		return () => {
-			const timer = versionActivationIntentTimerRef.current;
-			if (timer !== null) {
-				window.clearTimeout(timer);
-				versionActivationIntentTimerRef.current = null;
-			}
-		};
-	}, []);
-
-	const clearVersionActivationIntent = () => {
-		const timer = versionActivationIntentTimerRef.current;
-		if (timer !== null) {
-			window.clearTimeout(timer);
-			versionActivationIntentTimerRef.current = null;
-		}
-	};
-
-	const clearSafeTriangle = () => {
-		clearVersionActivationIntent();
-		safeTriangleOriginRef.current = null;
-		setSuppressedVersionHoverId(null);
-	};
-
-	const rememberActiveVersionPointer = (versionId: string, point: CascadedPickerPoint) => {
-		clearVersionActivationIntent();
-		safeTriangleOriginRef.current = { point, versionId };
-		setSuppressedVersionHoverId(null);
-	};
-
-	const suppressVersionHover = (versionId: string) => {
-		setSuppressedVersionHoverId((currentId) => (currentId === versionId ? currentId : versionId));
-	};
-
-	const activateVersion = (versionId: string) => {
-		setActiveVersionId(versionId);
-		clearSafeTriangle();
-	};
-
-	const activateVersionFromPointer = (versionId: string, point: CascadedPickerPoint) => {
-		setActiveVersionId(versionId);
-		rememberActiveVersionPointer(versionId, point);
-	};
-
-	const scheduleVersionActivationIntent = (versionId: string, point: CascadedPickerPoint) => {
-		suppressVersionHover(versionId);
-		clearVersionActivationIntent();
-		versionActivationIntentTimerRef.current = window.setTimeout(() => {
-			versionActivationIntentTimerRef.current = null;
-			activateVersionFromPointer(versionId, point);
-		}, GENERATION_ROUTE_PICKER_SAFE_TRIANGLE_HOVER_INTENT_MS);
-	};
-
-	const shouldPreserveActiveVersion = (point: CascadedPickerPoint) => {
-		const currentActiveVersionId = activeVersion?.id ?? "";
-		const activeButton = currentActiveVersionId
-			? versionButtonRefs.current.get(currentActiveVersionId)
-			: null;
-		const origin =
-			safeTriangleOriginRef.current?.versionId === currentActiveVersionId
-				? safeTriangleOriginRef.current.point
-				: null;
-
-		return shouldKeepGenerationRoutePickerVersionActive({
-			activeRect: activeButton?.getBoundingClientRect(),
-			origin,
-			point,
-			submenuRect: routePanelRef.current?.getBoundingClientRect(),
-		});
-	};
-
-	const handleVersionPointerEnter = (
-		versionId: string,
-		event: React.PointerEvent<HTMLButtonElement>,
-	) => {
-		const point = pointerEventPoint(event);
-		const currentActiveVersionId = activeVersion?.id ?? "";
-		if (versionId === currentActiveVersionId) {
-			rememberActiveVersionPointer(versionId, point);
-			return;
-		}
-
-		if (shouldPreserveActiveVersion(point)) {
-			scheduleVersionActivationIntent(versionId, point);
-			return;
-		}
-
-		activateVersionFromPointer(versionId, point);
-	};
-
-	const handleVersionPointerMove = (
-		versionId: string,
-		event: React.PointerEvent<HTMLButtonElement>,
-	) => {
-		const point = pointerEventPoint(event);
-		if (versionId === activeVersion?.id) {
-			rememberActiveVersionPointer(versionId, point);
-			return;
-		}
-
-		if (shouldPreserveActiveVersion(point)) {
-			scheduleVersionActivationIntent(versionId, point);
-			return;
-		}
-
-		activateVersionFromPointer(versionId, point);
-	};
-
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
@@ -281,9 +180,13 @@ export const GenerationModelRoutePicker: React.FC<{
 				aria-label="模型版本和供应商"
 				className="grid h-[var(--generation-route-picker-menu-height)] max-h-[var(--generation-popover-max-block)] w-fit max-w-[var(--generation-popover-max-inline)] grid-cols-[fit-content(var(--generation-model-popover-version-column-max-width))_minmax(var(--generation-model-popover-provider-column-min-width),max-content)] overflow-hidden rounded-[var(--generation-popover-radius)] border-border bg-popover p-0 text-popover-foreground shadow-xl"
 				style={routePickerMenuStyle}
-				onPointerLeave={clearSafeTriangle}
+				onPointerLeave={clearHoverIntent}
 			>
-				<section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden p-[var(--generation-popover-padding)]">
+				<section
+					ref={sourcePaneRef}
+					className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden p-[var(--generation-popover-padding)]"
+					onPointerEnter={handleSourcePanePointerEnter}
+				>
 					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">模型</p>
 					<div className="relative min-h-0 flex-1 overflow-hidden">
 						<div
@@ -304,13 +207,7 @@ export const GenerationModelRoutePicker: React.FC<{
 									<button
 										key={version.id}
 										type="button"
-										ref={(node) => {
-											if (node) {
-												versionButtonRefs.current.set(version.id, node);
-											} else {
-												versionButtonRefs.current.delete(version.id);
-											}
-										}}
+										ref={(node) => registerSourceButton(version.id, node)}
 										className={cn(
 											"flex h-[var(--generation-model-popover-option-height)] min-w-0 items-center gap-1.5 rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] text-left text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
 											selected
@@ -319,8 +216,8 @@ export const GenerationModelRoutePicker: React.FC<{
 													? "text-foreground"
 													: "text-foreground hover:bg-muted",
 										)}
-										onPointerEnter={(event) => handleVersionPointerEnter(version.id, event)}
-										onPointerMove={(event) => handleVersionPointerMove(version.id, event)}
+										onPointerEnter={(event) => handleSourcePointerEnter(version.id, event)}
+										onPointerMove={(event) => handleSourcePointerMove(version.id, event)}
 										onFocus={() => activateVersion(version.id)}
 										onClick={() => activateVersion(version.id)}
 									>
@@ -351,7 +248,8 @@ export const GenerationModelRoutePicker: React.FC<{
 				<section
 					ref={routePanelRef}
 					className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-l border-border bg-muted/40 p-[var(--generation-popover-padding)]"
-					onPointerEnter={clearSafeTriangle}
+					onPointerEnter={clearHoverIntent}
+					onPointerLeave={handleSubmenuPointerLeave}
 				>
 					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">提供方</p>
 					<div className="relative min-h-0 flex-1 overflow-hidden">

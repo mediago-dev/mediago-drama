@@ -37,10 +37,8 @@ import type { PromptInsertItem } from "./PromptSlashCommand";
 import { ReferencePreviewStrip } from "./ReferencePreviewStrip";
 import { ReferenceSelectionDialog, type ReferenceKindFilter } from "./ReferenceSelectionDialog";
 import {
-	type CascadedPickerPoint,
-	pointerEventPoint,
 	scrollCascadedPickerListOnWheel,
-	shouldKeepCascadedPickerSourceActive,
+	useCascadedPickerHoverIntent,
 } from "./cascadedPickerSafeTriangle";
 
 export interface GenerationSettingsFormProps {
@@ -439,26 +437,24 @@ const PromptPackSelect: React.FC<{
 					: "选择技能包"
 				: (items.find((item) => item.id === primarySelectedId)?.name ?? "选择技能包");
 	const [activeGroupId, setActiveGroupId] = useState(selectedGroup?.id ?? groups[0]?.id ?? "");
-	const [suppressedGroupHoverId, setSuppressedGroupHoverId] = useState<string | null>(null);
-	const groupButtonRefs = useRef(new Map<string, HTMLButtonElement>());
-	const itemPanelRef = useRef<HTMLElement | null>(null);
-	const safeTriangleOriginRef = useRef<{
-		groupId: string;
-		point: CascadedPickerPoint;
-	} | null>(null);
-	const groupActivationIntentTimerRef = useRef<number | null>(null);
 	const activeGroup =
 		groups.find((group) => group.id === activeGroupId) ?? selectedGroup ?? groups[0] ?? null;
-
-	useEffect(() => {
-		return () => {
-			const timer = groupActivationIntentTimerRef.current;
-			if (timer !== null) {
-				window.clearTimeout(timer);
-				groupActivationIntentTimerRef.current = null;
-			}
-		};
-	}, []);
+	const {
+		activateSource: activateGroup,
+		clearHoverIntent,
+		handleSourcePanePointerEnter,
+		handleSourcePointerEnter,
+		handleSourcePointerMove,
+		handleSubmenuPointerLeave,
+		registerSourceButton,
+		sourcePaneRef,
+		submenuRef: itemPanelRef,
+		suppressedSourceHoverId: suppressedGroupHoverId,
+	} = useCascadedPickerHoverIntent({
+		activeSourceId: activeGroup?.id,
+		forwardDelayMs: PROMPT_PACK_PICKER_SAFE_TRIANGLE_HOVER_INTENT_MS,
+		onActivateSource: setActiveGroupId,
+	});
 
 	useEffect(() => {
 		if (disabled && open) setOpen(false);
@@ -489,67 +485,6 @@ const PromptPackSelect: React.FC<{
 		if (!multiple) setOpen(false);
 	};
 	const popoverOpen = open && !disabled;
-	const clearGroupActivationIntent = () => {
-		const timer = groupActivationIntentTimerRef.current;
-		if (timer !== null) {
-			window.clearTimeout(timer);
-			groupActivationIntentTimerRef.current = null;
-		}
-	};
-	const clearSafeTriangle = () => {
-		clearGroupActivationIntent();
-		safeTriangleOriginRef.current = null;
-		setSuppressedGroupHoverId(null);
-	};
-	const rememberActiveGroupPointer = (groupId: string, point: CascadedPickerPoint) => {
-		clearGroupActivationIntent();
-		safeTriangleOriginRef.current = { groupId, point };
-		setSuppressedGroupHoverId(null);
-	};
-	const activateGroup = (groupId: string) => {
-		setActiveGroupId(groupId);
-		clearSafeTriangle();
-	};
-	const activateGroupFromPointer = (groupId: string, point: CascadedPickerPoint) => {
-		setActiveGroupId(groupId);
-		rememberActiveGroupPointer(groupId, point);
-	};
-	const scheduleGroupActivationIntent = (groupId: string, point: CascadedPickerPoint) => {
-		setSuppressedGroupHoverId((currentId) => (currentId === groupId ? currentId : groupId));
-		clearGroupActivationIntent();
-		groupActivationIntentTimerRef.current = window.setTimeout(() => {
-			groupActivationIntentTimerRef.current = null;
-			activateGroupFromPointer(groupId, point);
-		}, PROMPT_PACK_PICKER_SAFE_TRIANGLE_HOVER_INTENT_MS);
-	};
-	const shouldPreserveActiveGroup = (point: CascadedPickerPoint) => {
-		const currentActiveGroupId = activeGroup?.id ?? "";
-		const activeButton = currentActiveGroupId
-			? groupButtonRefs.current.get(currentActiveGroupId)
-			: null;
-		const origin =
-			safeTriangleOriginRef.current?.groupId === currentActiveGroupId
-				? safeTriangleOriginRef.current.point
-				: null;
-		return shouldKeepCascadedPickerSourceActive({
-			activeRect: activeButton?.getBoundingClientRect(),
-			origin,
-			point,
-			submenuRect: itemPanelRef.current?.getBoundingClientRect(),
-		});
-	};
-	const handleGroupPointer = (groupId: string, event: React.PointerEvent<HTMLButtonElement>) => {
-		const point = pointerEventPoint(event);
-		if (groupId === activeGroup?.id) {
-			rememberActiveGroupPointer(groupId, point);
-			return;
-		}
-		if (shouldPreserveActiveGroup(point)) {
-			scheduleGroupActivationIntent(groupId, point);
-			return;
-		}
-		activateGroupFromPointer(groupId, point);
-	};
 
 	return (
 		<Popover open={popoverOpen} onOpenChange={setOpen}>
@@ -575,9 +510,13 @@ const PromptPackSelect: React.FC<{
 				aria-label={`${ariaLabel}选择`}
 				className="grid h-[var(--batch-prompt-pack-picker-menu-height)] max-h-[var(--generation-popover-max-block)] w-fit max-w-[var(--generation-popover-max-inline)] grid-cols-[fit-content(var(--generation-model-popover-version-column-max-width))_minmax(14rem,max-content)] overflow-hidden rounded-[var(--generation-popover-radius)] border-border bg-popover p-0 text-popover-foreground shadow-xl"
 				style={promptPackSelectMenuStyle}
-				onPointerLeave={clearSafeTriangle}
+				onPointerLeave={clearHoverIntent}
 			>
-				<section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden p-[var(--generation-popover-padding)]">
+				<section
+					ref={sourcePaneRef}
+					className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden p-[var(--generation-popover-padding)]"
+					onPointerEnter={handleSourcePanePointerEnter}
+				>
 					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">分类</p>
 					<div
 						className="grid min-h-0 auto-rows-min gap-1 overflow-y-auto overscroll-contain pr-1"
@@ -591,10 +530,7 @@ const PromptPackSelect: React.FC<{
 								<button
 									key={group.id}
 									type="button"
-									ref={(node) => {
-										if (node) groupButtonRefs.current.set(group.id, node);
-										else groupButtonRefs.current.delete(group.id);
-									}}
+									ref={(node) => registerSourceButton(group.id, node)}
 									aria-label={`${group.label} ${group.items.length} 项`}
 									className={cn(
 										"flex h-[var(--generation-model-popover-option-height)] min-w-0 items-center gap-1.5 rounded-[var(--generation-control-radius)] px-[var(--generation-control-padding-x)] text-left text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -604,8 +540,8 @@ const PromptPackSelect: React.FC<{
 												? "text-foreground"
 												: "text-foreground hover:bg-muted",
 									)}
-									onPointerEnter={(event) => handleGroupPointer(group.id, event)}
-									onPointerMove={(event) => handleGroupPointer(group.id, event)}
+									onPointerEnter={(event) => handleSourcePointerEnter(group.id, event)}
+									onPointerMove={(event) => handleSourcePointerMove(group.id, event)}
 									onFocus={() => activateGroup(group.id)}
 									onClick={() => activateGroup(group.id)}
 								>
@@ -626,7 +562,8 @@ const PromptPackSelect: React.FC<{
 				<section
 					ref={itemPanelRef}
 					className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-l border-border bg-muted/40 p-[var(--generation-popover-padding)]"
-					onPointerEnter={clearSafeTriangle}
+					onPointerEnter={clearHoverIntent}
+					onPointerLeave={handleSubmenuPointerLeave}
 				>
 					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">技能包</p>
 					<div

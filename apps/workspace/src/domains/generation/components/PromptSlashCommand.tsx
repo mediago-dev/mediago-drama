@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import "@/styles/tiptap-prompt-slash.css";
 import type { GenerationContentSourceRef } from "@/domains/generation/api/generation";
+import { useCascadedPickerHoverIntent } from "./cascadedPickerSafeTriangle";
 
 export interface PromptInsertItem {
 	id: string;
@@ -106,9 +107,31 @@ const PromptSlashOptions: React.FC<{
 	selectedGroupIndex: number;
 	selectedIndex: number;
 }> = ({ activeGroup, groups, onHover, onSelect, selectedGroupIndex, selectedIndex }) => {
+	const {
+		clearHoverIntent,
+		handleSourcePanePointerEnter,
+		handleSourcePointerEnter,
+		handleSourcePointerMove,
+		handleSubmenuPointerLeave,
+		registerSourceButton,
+		sourcePaneRef,
+		submenuRef,
+		suppressedSourceHoverId,
+	} = useCascadedPickerHoverIntent({
+		activeSourceId: activeGroup?.id,
+		onActivateSource: (groupId) => {
+			const group = groups.find((candidate) => candidate.id === groupId);
+			onHover(group?.items[0]?.index ?? 0);
+		},
+	});
+
 	return (
-		<div className="prompt-slash-cascader">
-			<div className="prompt-slash-pane prompt-slash-primary">
+		<div className="prompt-slash-cascader" onPointerLeave={clearHoverIntent}>
+			<div
+				ref={sourcePaneRef as React.RefObject<HTMLDivElement | null>}
+				className="prompt-slash-pane prompt-slash-primary"
+				onPointerEnter={handleSourcePanePointerEnter}
+			>
 				<div className="prompt-slash-pane-label">分类</div>
 				{groups.map((group, index) => {
 					const Icon = group.icon;
@@ -116,14 +139,17 @@ const PromptSlashOptions: React.FC<{
 					return (
 						<button
 							key={group.id}
+							ref={(node) => registerSourceButton(group.id, node)}
 							aria-label={`${group.label} ${group.meta}`}
 							className="prompt-slash-source"
+							data-hover-suppressed={group.id === suppressedSourceHoverId ? "true" : "false"}
 							data-selected={index === selectedGroupIndex ? "true" : "false"}
 							onMouseDown={(event) => {
 								event.preventDefault();
 								event.stopPropagation();
 							}}
-							onMouseEnter={() => onHover(group.items[0]?.index ?? 0)}
+							onPointerEnter={(event) => handleSourcePointerEnter(group.id, event)}
+							onPointerMove={(event) => handleSourcePointerMove(group.id, event)}
 							onClick={stopPromptSlashEvent}
 							type="button"
 						>
@@ -137,7 +163,13 @@ const PromptSlashOptions: React.FC<{
 					);
 				})}
 			</div>
-			<div className="prompt-slash-pane prompt-slash-secondary" role="listbox">
+			<div
+				ref={submenuRef as React.RefObject<HTMLDivElement | null>}
+				className="prompt-slash-pane prompt-slash-secondary"
+				role="listbox"
+				onPointerEnter={clearHoverIntent}
+				onPointerLeave={handleSubmenuPointerLeave}
+			>
 				<div className="prompt-slash-pane-label">提示词</div>
 				{activeGroup?.items.map(({ index, item }) => {
 					const selected = index === selectedIndex;
