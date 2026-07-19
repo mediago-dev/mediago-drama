@@ -200,15 +200,26 @@ func TestServiceReturnsAndManagesPackScopedCategories(t *testing.T) {
 		t.Fatalf("pack categories leaked across packs: local=%#v default=%#v", contents.Categories, defaultContents.Categories)
 	}
 	packageCategory := defaultContents.Categories[0]
-	if _, err := store.UpdatePackCategory(ctx, DefaultPackID, packageCategory.ID, Category{
+	updatedPackageCategory, err := store.UpdatePackCategory(ctx, DefaultPackID, packageCategory.ID, Category{
 		Label: packageCategory.Label + " changed",
 		Order: packageCategory.Order,
-	}); !errors.Is(err, ErrPackReadonly) {
-		t.Fatalf("UpdatePackCategory(package) error = %v, want ErrPackReadonly", err)
+	})
+	if err != nil {
+		t.Fatalf("UpdatePackCategory(package) error = %v", err)
+	}
+	if updatedPackageCategory.Label != packageCategory.Label+" changed" || updatedPackageCategory.Source != entrySourcePack {
+		t.Fatalf("updated package category = %#v, want editable package-backed category", updatedPackageCategory)
 	}
 	replacementCategory := defaultContents.Categories[1]
-	if err := store.DeletePackCategory(ctx, DefaultPackID, packageCategory.ID, replacementCategory.ID); !errors.Is(err, ErrPackReadonly) {
-		t.Fatalf("DeletePackCategory(package) error = %v, want ErrPackReadonly", err)
+	if err := store.DeletePackCategory(ctx, DefaultPackID, packageCategory.ID, replacementCategory.ID); err != nil {
+		t.Fatalf("DeletePackCategory(package) error = %v", err)
+	}
+	defaultContents, err = store.GetPackContents(ctx, DefaultPackID)
+	if err != nil {
+		t.Fatalf("GetPackContents(default after delete) error = %v", err)
+	}
+	if hasCategory(defaultContents.Categories, packageCategory.ID, updatedPackageCategory.Label) {
+		t.Fatalf("categories after package delete = %#v, want %q removed", defaultContents.Categories, packageCategory.ID)
 	}
 }
 

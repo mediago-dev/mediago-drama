@@ -1274,9 +1274,6 @@ func (store *Service) UpdatePackCategory(
 	if err != nil {
 		return Category{}, err
 	}
-	if normalizeLegacyEntrySource(model.Source) != entrySourceUser {
-		return Category{}, fmt.Errorf("%w: package category %s cannot be changed", ErrPackReadonly, categoryID)
-	}
 	category := categoryFromModel(model)
 	category.Label = strings.TrimSpace(update.Label)
 	category.Order = update.Order
@@ -1314,14 +1311,11 @@ func (store *Service) DeletePackCategory(
 		if err != nil {
 			return err
 		}
-		categoryModel, err := tx.GetCategory(packID, categoryID)
+		_, err = tx.GetCategory(packID, categoryID)
 		if repository.IsRecordNotFound(err) {
 			return fmt.Errorf("%w: %s", ErrCategoryNotFound, categoryID)
 		} else if err != nil {
 			return err
-		}
-		if normalizeLegacyEntrySource(categoryModel.Source) != entrySourceUser {
-			return fmt.Errorf("%w: package category %s cannot be deleted", ErrPackReadonly, categoryID)
 		}
 		if _, err := tx.GetCategory(packID, replacementCategoryID); repository.IsRecordNotFound(err) {
 			return fmt.Errorf("%w: %s", ErrCategoryNotFound, replacementCategoryID)

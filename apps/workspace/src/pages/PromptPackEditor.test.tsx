@@ -933,8 +933,22 @@ describe("PromptPackEditor", () => {
 
 	it("creates, renames, and deletes prompt groups from group management", async () => {
 		const categories = [
-			{ id: "style", label: "风格", order: 0, packId: localPack.id, source: "user" as const },
-			{ id: "extra", label: "其他", order: 1, packId: localPack.id, source: "user" as const },
+			{
+				builtin: true,
+				id: "style",
+				label: "风格",
+				order: 0,
+				packId: localPack.id,
+				source: "pack" as const,
+			},
+			{
+				builtin: true,
+				id: "extra",
+				label: "其他",
+				order: 1,
+				packId: localPack.id,
+				source: "pack" as const,
+			},
 		];
 		vi.mocked(getPromptPackContents).mockResolvedValue({
 			pack: localPack,
@@ -959,11 +973,17 @@ describe("PromptPackEditor", () => {
 		fireEvent.click(await screen.findByRole("tab", { name: "提示词 0" }));
 		fireEvent.click(screen.getByRole("button", { name: "分组管理" }));
 		expect(await screen.findByRole("heading", { name: "提示词分组管理" })).toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "新建分组" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "拖动分组 风格" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "修改分组 风格" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "删除分组 风格" })).not.toBeInTheDocument();
 		expect(
 			screen.queryByText("管理当前技能包已有的提示词分类、显示顺序和删除迁移规则。"),
 		).not.toBeInTheDocument();
 		expect(screen.queryByText("ID：style")).not.toBeInTheDocument();
 		expect(screen.queryByText("ID：extra")).not.toBeInTheDocument();
+
+		fireEvent.click(screen.getByRole("button", { name: "编辑" }));
 
 		fireEvent.click(screen.getByRole("button", { name: "新建分组" }));
 		expect(await screen.findByRole("heading", { name: "新建提示词分组" })).toBeInTheDocument();

@@ -427,7 +427,7 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 		};
 
 		const createCategoryRecord = async (label: string): Promise<PromptPackCategory | undefined> => {
-			if (!selectedPack || blockWhileEditing()) return undefined;
+			if (!selectedPack) return undefined;
 			try {
 				const created = await createPromptPackCategory(selectedPack.id, {
 					id: `category-${globalThis.crypto.randomUUID()}`,
@@ -443,13 +443,14 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 			}
 		};
 
-		const createCategory = async (label: string) => Boolean(await createCategoryRecord(label));
+		const createCategory = async (label: string) =>
+			isEditing && Boolean(await createCategoryRecord(label));
 
 		const updateCategory = async (
 			category: PromptPackCategory,
 			input: { label: string; order: number },
 		) => {
-			if (!selectedPack || blockWhileEditing()) return false;
+			if (!selectedPack || !isEditing) return false;
 			try {
 				await updatePromptPackCategory(selectedPack.id, category.id, input);
 				await refreshContents();
@@ -462,7 +463,7 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 		};
 
 		const reorderCategory = async (category: PromptPackCategory, target: PromptPackCategory) => {
-			if (!selectedPack || blockWhileEditing()) return false;
+			if (!selectedPack || !isEditing) return false;
 			const ordered = [...categories].sort(compareCategories);
 			const currentIndex = ordered.findIndex((item) => item.id === category.id);
 			const targetIndex = ordered.findIndex((item) => item.id === target.id);
@@ -476,7 +477,7 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 				await Promise.all(
 					nextOrder.flatMap((item, index) => {
 						const order = orderSlots[index] ?? index;
-						if (item.source !== "user" || item.order === order) return [];
+						if (item.order === order) return [];
 						return [
 							updatePromptPackCategory(selectedPack.id, item.id, {
 								label: item.label,
@@ -494,7 +495,7 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 		};
 
 		const deleteCategory = async (category: PromptPackCategory, replacementCategoryID: string) => {
-			if (!selectedPack || blockWhileEditing()) return false;
+			if (!selectedPack || !isEditing) return false;
 			try {
 				await deletePromptPackCategory(selectedPack.id, category.id, replacementCategoryID);
 				await refreshContents();
@@ -582,6 +583,7 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 							) : view.type === "categories" ? (
 								<PromptCategoryManager
 									categories={categories}
+									isEditing={isEditing}
 									onCreate={createCategory}
 									onDelete={deleteCategory}
 									onReorder={reorderCategory}
@@ -1340,8 +1342,9 @@ const PromptCategorySortableCard: React.FC<{
 	category: PromptPackCategory;
 	children: React.ReactNode;
 	disabled: boolean;
+	isEditing: boolean;
 	onKeyboardMove: (direction: -1 | 1) => void;
-}> = ({ category, children, disabled, onKeyboardMove }) => {
+}> = ({ category, children, disabled, isEditing, onKeyboardMove }) => {
 	const {
 		attributes,
 		isDragging,
@@ -1368,25 +1371,27 @@ const PromptCategorySortableCard: React.FC<{
 			)}
 		>
 			<div className="flex items-start gap-3">
-				<Button
-					ref={setActivatorNodeRef}
-					type="button"
-					variant="ghost"
-					size="icon"
-					className="size-8 shrink-0 cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
-					disabled={disabled}
-					{...attributes}
-					{...listeners}
-					aria-label={`拖动分组 ${category.label}`}
-					title={disabled ? "该分组不可调整顺序" : "拖动调整顺序"}
-					onKeyDown={(event) => {
-						if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-						event.preventDefault();
-						onKeyboardMove(event.key === "ArrowUp" ? -1 : 1);
-					}}
-				>
-					<GripVertical className="size-4" />
-				</Button>
+				{isEditing ? (
+					<Button
+						ref={setActivatorNodeRef}
+						type="button"
+						variant="ghost"
+						size="icon"
+						className="size-8 shrink-0 cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
+						disabled={disabled}
+						{...attributes}
+						{...listeners}
+						aria-label={`拖动分组 ${category.label}`}
+						title={disabled ? "该分组不可调整顺序" : "拖动调整顺序"}
+						onKeyDown={(event) => {
+							if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+							event.preventDefault();
+							onKeyboardMove(event.key === "ArrowUp" ? -1 : 1);
+						}}
+					>
+						<GripVertical className="size-4" />
+					</Button>
+				) : null}
 				<div className="min-w-0 flex-1">{children}</div>
 			</div>
 		</div>
@@ -1395,6 +1400,7 @@ const PromptCategorySortableCard: React.FC<{
 
 const PromptCategoryManager: React.FC<{
 	categories: PromptPackCategory[];
+	isEditing: boolean;
 	onCreate: (label: string) => Promise<boolean>;
 	onDelete: (category: PromptPackCategory, replacementCategoryID: string) => Promise<boolean>;
 	onReorder: (category: PromptPackCategory, target: PromptPackCategory) => Promise<boolean>;
@@ -1403,7 +1409,7 @@ const PromptCategoryManager: React.FC<{
 		input: { label: string; order: number },
 	) => Promise<boolean>;
 	prompts: PromptPackEntry[];
-}> = ({ categories, onCreate, onDelete, onReorder, onUpdate, prompts }) => {
+}> = ({ categories, isEditing, onCreate, onDelete, onReorder, onUpdate, prompts }) => {
 	const [createDialogOpen, setCreateDialogOpen] = useState(false);
 	const [deletingCategoryID, setDeletingCategoryID] = useState("");
 	const [editingCategoryID, setEditingCategoryID] = useState("");
@@ -1473,12 +1479,7 @@ const PromptCategoryManager: React.FC<{
 	};
 
 	const reorder = async (category: PromptPackCategory, target: PromptPackCategory) => {
-		if (
-			category.id === target.id ||
-			category.source !== "user" ||
-			target.source !== "user" ||
-			busyID
-		) {
+		if (category.id === target.id || busyID) {
 			return;
 		}
 		const previousOrder = orderedCategories.map((item) => item.id);
@@ -1521,10 +1522,12 @@ const PromptCategoryManager: React.FC<{
 			<div className="mx-auto w-full max-w-4xl px-10 py-8 xl:px-14">
 				<div className="flex items-center justify-between gap-4">
 					<h2 className="text-2xl font-semibold text-foreground">提示词分组管理</h2>
-					<Button type="button" onClick={() => setCreateDialogOpen(true)}>
-						<Plus className="size-4" />
-						<span>新建分组</span>
-					</Button>
+					{isEditing ? (
+						<Button type="button" onClick={() => setCreateDialogOpen(true)}>
+							<Plus className="size-4" />
+							<span>新建分组</span>
+						</Button>
+					) : null}
 				</div>
 
 				<AlertDialog
@@ -1714,12 +1717,13 @@ const PromptCategoryManager: React.FC<{
 									(prompt) => promptCategoryID(prompt) === category.id,
 								).length;
 								const busy = busyID === category.id;
-								const readOnly = category.source !== "user";
+								const builtIn = category.source !== "user";
 								return (
 									<PromptCategorySortableCard
 										key={category.id}
 										category={category}
-										disabled={Boolean(busyID) || readOnly}
+										disabled={!isEditing || Boolean(busyID)}
+										isEditing={isEditing}
 										onKeyboardMove={(direction) => {
 											const target = orderedCategories[index + direction];
 											if (target) void reorder(category, target);
@@ -1731,12 +1735,12 @@ const PromptCategoryManager: React.FC<{
 													{category.label}
 												</p>
 												<p className="mt-1 text-xs text-muted-foreground">
-													{readOnly ? "技能包内置 · " : ""}
+													{builtIn ? "技能包内置 · " : ""}
 													{promptCount} 条提示词
 												</p>
 											</div>
 											<div className="flex shrink-0 items-center gap-2">
-												{!readOnly ? (
+												{isEditing ? (
 													<Button
 														type="button"
 														variant="outline"
@@ -1751,7 +1755,7 @@ const PromptCategoryManager: React.FC<{
 														<span>修改</span>
 													</Button>
 												) : null}
-												{!readOnly && categories.length > 1 ? (
+												{isEditing && categories.length > 1 ? (
 													<Button
 														type="button"
 														variant="destructive"
