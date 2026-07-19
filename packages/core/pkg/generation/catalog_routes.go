@@ -1,29 +1,30 @@
 package generation
 
-import mediagocatalog "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/mediago"
-
 const (
 	RouteDMXSeedream5Lite                  = "dmx.seedream-5-lite"
 	RouteOfficialMiniMaxSpeech28HD         = "official.minimax-speech-2.8-hd"
 	RouteOfficialMiniMaxSpeech28Turbo      = "official.minimax-speech-2.8-turbo"
-	RouteMediagoGPT41MiniText              = mediagocatalog.RouteGPT41MiniText
-	RouteMediagoGPT5MiniText               = mediagocatalog.RouteGPT5MiniText
-	RouteMediagoGPT55Text                  = mediagocatalog.RouteGPT55Text
-	RouteMediagoGPT54Text                  = mediagocatalog.RouteGPT54Text
-	RouteMediagoGPT54MiniText              = mediagocatalog.RouteGPT54MiniText
-	RouteMediagoGemini35FlashText          = mediagocatalog.RouteGemini35FlashText
-	RouteMediagoGemini31ProText            = mediagocatalog.RouteGemini31ProText
-	RouteMediagoGemini31FlashLiteText      = mediagocatalog.RouteGemini31FlashLiteText
-	RouteMediagoMiniMaxM3Text              = mediagocatalog.RouteMiniMaxM3Text
-	RouteMediagoMiniMaxM27Text             = mediagocatalog.RouteMiniMaxM27Text
-	RouteMediagoMiniMaxM27HighspeedText    = mediagocatalog.RouteMiniMaxM27HighspeedText
-	RouteMediagoDeepSeekV4FlashText        = mediagocatalog.RouteDeepSeekV4FlashText
-	RouteMediagoDeepSeekV4ProText          = mediagocatalog.RouteDeepSeekV4ProText
-	RouteMediagoSeedream5Lite              = mediagocatalog.RouteSeedream5Lite
-	RouteMediagoGPTImage2                  = mediagocatalog.RouteGPTImage2
-	RouteMediagoNanoBanana31               = mediagocatalog.RouteNanoBanana31
-	RouteMediagoNanoBananaPro              = mediagocatalog.RouteNanoBananaPro
-	RouteMediagoNanoBanana25               = mediagocatalog.RouteNanoBanana25
+	RouteMediagoGPT41MiniText              = "mediago.gpt-4.1-mini-text"
+	RouteMediagoGPT5MiniText               = "mediago.gpt-5-mini-text"
+	RouteMediagoGPT55Text                  = "mediago.gpt-5.5-text"
+	RouteMediagoGPT54Text                  = "mediago.gpt-5.4-text"
+	RouteMediagoGPT54MiniText              = "mediago.gpt-5.4-mini-text"
+	RouteMediagoGemini35FlashText          = "mediago.gemini-3.5-flash-text"
+	RouteMediagoGemini31ProText            = "mediago.gemini-3.1-pro-preview-text"
+	RouteMediagoGemini31FlashLiteText      = "mediago.gemini-3.1-flash-lite-text"
+	RouteMediagoMiniMaxM3Text              = "mediago.minimax-m3-text"
+	RouteMediagoMiniMaxM27Text             = "mediago.minimax-m2.7-text"
+	RouteMediagoMiniMaxM27HighspeedText    = "mediago.minimax-m2.7-highspeed-text"
+	RouteMediagoDeepSeekV4FlashText        = "mediago.deepseek-v4-flash-text"
+	RouteMediagoDeepSeekV4ProText          = "mediago.deepseek-v4-pro-text"
+	RouteMediagoSeedream5Lite              = "mediago.seedream-5-lite"
+	RouteMediagoGPTImage2                  = "mediago.gpt-image-2"
+	RouteMediagoNanoBanana31               = "mediago.gemini-3.1-flash-image"
+	RouteMediagoNanoBananaPro              = "mediago.gemini-3-pro-image"
+	RouteMediagoNanoBanana25               = "mediago.gemini-2.5-flash-image"
+	RouteMediagoWan27ImagePro              = "mediago.wan2.7-image-pro"
+	RouteMediagoWan27Image                 = "mediago.wan2.7-image"
+	RouteMediagoHappyHorse11               = "mediago.happyhorse-1.1"
 	RouteDMXGPT41MiniText                  = "dmx.gpt-4.1-mini-text"
 	RouteDMXGPT55Text                      = "dmx.gpt-5.5-text"
 	RouteDMXGPT54Text                      = "dmx.gpt-5.4-text"

@@ -36,6 +36,76 @@ func nanoBanana25Params() RouteParamConfig {
 	return withRouteParamCombos(config, []ParamCombo{nanoBanana25SizeParamCombo()})
 }
 
+func mediagoNanoBanana31Params() RouteParamConfig {
+	return mediagoNanoBananaParams(
+		[]ParamOption{
+			{Label: "1:1", Value: "1:1"},
+			{Label: "1:4", Value: "1:4"},
+			{Label: "1:8", Value: "1:8"},
+			{Label: "2:3", Value: "2:3"},
+			{Label: "3:2", Value: "3:2"},
+			{Label: "3:4", Value: "3:4"},
+			{Label: "4:1", Value: "4:1"},
+			{Label: "4:3", Value: "4:3"},
+			{Label: "4:5", Value: "4:5"},
+			{Label: "5:4", Value: "5:4"},
+			{Label: "8:1", Value: "8:1"},
+			{Label: "9:16", Value: "9:16"},
+			{Label: "16:9", Value: "16:9"},
+			{Label: "21:9", Value: "21:9"},
+		},
+		resolutionOptions("1K", "2K", "4K"),
+	)
+}
+
+func mediagoNanoBananaProParams() RouteParamConfig {
+	return mediagoNanoBananaParams(
+		nanoBanana25AspectRatioOptions(),
+		resolutionOptions("1K", "2K", "4K"),
+	)
+}
+
+func mediagoNanoBananaParams(ratios []ParamOption, resolutions []ParamOption) RouteParamConfig {
+	params := []RouteParam{
+		selectRouteParam(ParamAspectRatio, "1:1", ratios),
+		selectRouteParam(ParamResolution, "1K", resolutions),
+		numberRouteParam(ParamN, 1, 1, 4),
+	}
+	config := routeParamConfig(params, ParamTranslation{
+		Moves: []ParamMove{
+			{From: ParamAspectRatio},
+			{From: ParamResolution, To: "imageSize"},
+			{From: ParamN},
+		},
+	})
+	return withRouteParamCombos(config, []ParamCombo{nanoBananaSizeParamComboForRatios(ratios, resolutions)})
+}
+
+func nanoBananaSizeParamComboForRatios(ratios []ParamOption, resolutions []ParamOption) ParamCombo {
+	base := nanoBananaSizeParamCombo(resolutions)
+	ratioSet := make(map[string]bool, len(ratios))
+	for _, ratio := range ratios {
+		ratioSet[ratio.Value] = true
+	}
+	allowed := make([][]string, 0, len(base.Allowed))
+	outputs := make(map[string]string, len(base.Outputs))
+	for _, values := range base.Allowed {
+		if len(values) != 2 || !ratioSet[values[0]] {
+			continue
+		}
+		allowed = append(allowed, values)
+		key := values[0] + "|" + values[1]
+		if output, ok := base.Outputs[key]; ok {
+			outputs[key] = output
+		}
+	}
+	return ParamCombo{
+		Params:  cloneStrings(base.Params),
+		Allowed: allowed,
+		Outputs: outputs,
+	}
+}
+
 func nanoBananaParamsWithResolutions(resolutionOptions []ParamOption) RouteParamConfig {
 	params := []RouteParam{
 		selectRouteParam(ParamAspectRatio, "1:1", nanoBananaAspectRatioOptions()),

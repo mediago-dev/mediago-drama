@@ -2,32 +2,15 @@ package openrouter
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"errors"
-	"net/http"
-	"net/url"
 	"strings"
-	"time"
 
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
-	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/mediago"
-)
-
-const imageResultRecoveryHeader = "Idempotency-Key"
-
-// Overridable in tests; production values tolerate multi-minute generations.
-var (
-	imageResultRecoveryInterval = 5 * time.Second
-	imageResultRecoveryWindow   = 3 * time.Minute
 )
 
 func (provider *Provider) generateImage(ctx context.Context, request generation.Request) (generation.Response, error) {
 	imageConfig := map[string]any{
 		"aspect_ratio": firstNonEmpty(paramString(request.Params, "aspectRatio"), "1:1"),
-	}
-	if !provider.omitChatImageSize(request) {
-		imageConfig["image_size"] = firstNonEmpty(paramString(request.Params, "imageSize"), "1K")
+		"image_size":   firstNonEmpty(paramString(request.Params, "imageSize"), "1K"),
 	}
 
 	payload := chatCompletionRequest{
@@ -57,84 +40,14 @@ func (provider *Provider) generateImages(ctx context.Context, request generation
 		OutputCompression: paramIntPointer(request.Params, "outputCompression"),
 		Background:        paramString(request.Params, "background"),
 		InputReferences:   imageURLObjects(request.ReferenceURLs),
-		Provider:          provider.imageProviderOptions(request.Params),
+		Provider:          openAIProviderOptions(request.Params),
 	}
-
-	recoveryKey := ""
-	var headers map[string]string
-	if mediago.SupportsImageResultRecovery(provider.providerName) {
-		if key, err := newImageRecoveryKey(); err == nil {
-			recoveryKey = key
-			headers = map[string]string{imageResultRecoveryHeader: key}
-		}
-	}
-
 	var payloadResponse imagesResponse
-	if err := provider.postJSONWithHeaders(ctx, "/images", payload, headers, &payloadResponse); err != nil {
-		recovered, ok := provider.recoverImagesResult(ctx, recoveryKey, err)
-		if !ok {
-			return generation.Response{}, err
-		}
-		payloadResponse = recovered
+	if err := provider.postJSON(ctx, "/images", payload, &payloadResponse); err != nil {
+		return generation.Response{}, err
 	}
 
 	return payloadResponse.toGenerationResponse(request.Model, payload.OutputFormat), nil
-}
-
-// recoverImagesResult polls the aggregation platform's buffered-result
-// endpoint after a transport failure (client timeout, dropped connection).
-// The generation usually keeps running — and stays billed — upstream, so a
-// short polling window can still deliver the paid-for image instead of
-// failing the task.
-func (provider *Provider) recoverImagesResult(ctx context.Context, key string, cause error) (imagesResponse, bool) {
-	if key == "" || !isTransportError(cause) {
-		return imagesResponse{}, false
-	}
-
-	deadline := time.Now().Add(imageResultRecoveryWindow)
-	for time.Now().Before(deadline) {
-		select {
-		case <-ctx.Done():
-			return imagesResponse{}, false
-		case <-time.After(imageResultRecoveryInterval):
-		}
-
-		var recovered imagesResponse
-		status, err := provider.getJSONStatus(ctx, "/images/results/"+url.PathEscape(key), &recovered)
-		if err != nil {
-			if status == http.StatusOK {
-				return imagesResponse{}, false // 200 with an undecodable body
-			}
-			continue // transient poll failure — keep trying inside the window
-		}
-		switch status {
-		case http.StatusOK:
-			return recovered, true
-		case http.StatusAccepted:
-			// Still generating upstream — keep waiting.
-		default:
-			// 404 = unknown/expired key (or the endpoint is not deployed);
-			// nothing recoverable behind any other status either.
-			return imagesResponse{}, false
-		}
-	}
-	return imagesResponse{}, false
-}
-
-// isTransportError reports whether err came from the transport layer (client
-// timeout, dropped connection) rather than an HTTP-level error response. Only
-// transport failures leave a completed result stranded on the server.
-func isTransportError(err error) bool {
-	var urlErr *url.Error
-	return errors.As(err, &urlErr) || errors.Is(err, context.DeadlineExceeded)
-}
-
-func newImageRecoveryKey() (string, error) {
-	buf := make([]byte, 16)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return "imgreq_" + hex.EncodeToString(buf), nil
 }
 
 type chatCompletionRequest struct {
@@ -290,17 +203,6 @@ func openAIProviderOptions(params map[string]any) map[string]any {
 			},
 		},
 	}
-}
-
-func (provider *Provider) imageProviderOptions(params map[string]any) map[string]any {
-	if mediago.SuppressOpenAIProviderOptions(provider.providerName) {
-		return nil
-	}
-	return openAIProviderOptions(params)
-}
-
-func (provider *Provider) omitChatImageSize(request generation.Request) bool {
-	return mediago.OmitChatImageSize(provider.providerName, request.Model)
 }
 
 func imageMIMEType(outputFormat string) string {

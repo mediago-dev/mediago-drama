@@ -2,6 +2,12 @@ package generation
 
 const wan27DocURL = "https://help.aliyun.com/zh/model-studio/wan-image-generation-and-editing-api-reference"
 
+func mediagoWan27Params(include4K bool) RouteParamConfig {
+	config := wan27Params(include4K)
+	config.Translation.Consts = nil
+	return config
+}
+
 func wan27Params(include4K bool) RouteParamConfig {
 	resolutionOptions := []ParamOption{
 		{Label: "1K", Value: "1K"},

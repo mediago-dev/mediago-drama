@@ -1,35 +1,33 @@
 package generation
 
-import (
-	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/internal/catalog"
-	mediagocatalog "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/mediago"
-)
+const mediagoDocsURL = "https://mediago.torchstellar.com/account#apiKeys"
 
-func mediagoRoutesForFamily(familyID string) []ModelRoute {
-	specs := mediagocatalog.RoutesForFamily(familyID)
-	routes := make([]ModelRoute, 0, len(specs))
-	for _, spec := range specs {
-		routes = append(routes, mediagoRouteFromSpec(spec))
-	}
-	return routes
-}
-
-func mediagoRouteFromSpec(spec catalog.RouteSpec) ModelRoute {
-	params := routeParamConfigFromCatalog(spec.Params)
-	kind := Kind(spec.Kind)
-	return ModelRoute{
-		ID:                    spec.ID,
-		FamilyID:              spec.FamilyID,
-		VersionID:             spec.VersionID,
-		Label:                 spec.Label,
+// MediaGo route metadata belongs to the model-family-first root catalog.
+// Package generation/mediago owns only the HTTP execution protocols.
+func mediagoRoute(
+	id string,
+	familyID string,
+	versionID string,
+	kind Kind,
+	model string,
+	adapter string,
+	params RouteParamConfig,
+	async bool,
+	supportsReferenceURLs bool,
+	options ...routeOption,
+) ModelRoute {
+	route := ModelRoute{
+		ID:                    id,
+		FamilyID:              familyID,
+		VersionID:             versionID,
+		Label:                 "MediaGo",
 		Kind:                  kind,
 		Provider:              ProviderMediago,
-		Model:                 spec.Model,
-		Adapter:               spec.Adapter,
-		DocURL:                spec.DocURL,
-		Async:                 spec.Async,
-		SupportsReferenceURLs: spec.SupportsReferenceURLs,
-		MaxReferenceURLs:      spec.MaxReferenceURLs,
+		Model:                 model,
+		Adapter:               adapter,
+		DocURL:                mediagoDocsURL,
+		Async:                 async,
+		SupportsReferenceURLs: supportsReferenceURLs,
 		Status:                RouteStatusAvailable,
 		AuthKeys:              []string{ProviderMediago},
 		Params:                routeParamSpecs(kind, params.CanonicalParams),
@@ -38,99 +36,53 @@ func mediagoRouteFromSpec(spec catalog.RouteSpec) ModelRoute {
 		CanonicalParams:       params.CanonicalParams,
 		Translation:           params.Translation,
 	}
+	applyRouteOptions(&route, options...)
+	return route
 }
 
-func routeParamConfigFromCatalog(config catalog.ParamConfig) RouteParamConfig {
-	return RouteParamConfig{
-		CanonicalParams: routeParamsFromCatalog(config.CanonicalParams),
-		Translation:     paramTranslationFromCatalog(config.Translation),
-		Combos:          paramCombosFromCatalog(config.Combos),
-	}
+func mediagoTextRoute(id string, familyID string, versionID string, model string) ModelRoute {
+	return mediagoRoute(
+		id,
+		familyID,
+		versionID,
+		KindText,
+		model,
+		AdapterMediagoText,
+		textParams(),
+		false,
+		false,
+	)
 }
 
-func routeParamsFromCatalog(params []catalog.RouteParam) []RouteParam {
-	result := make([]RouteParam, 0, len(params))
-	for _, param := range params {
-		result = append(result, RouteParam{
-			ID:      ParamID(param.ID),
-			Default: param.Default,
-			Options: paramOptionsFromCatalog(param.Options),
-			Min:     cloneFloatPointer(param.Min),
-			Max:     cloneFloatPointer(param.Max),
-			Help:    param.Help,
-		})
-	}
-	return result
+func mediagoChatImageParams() RouteParamConfig {
+	return routeParamConfig([]RouteParam{
+		selectRouteParam(ParamAspectRatio, "1:1", nanoBanana25AspectRatioOptions()),
+		selectRouteParam(ParamResolution, "1K", resolutionOptions("1K", "2K", "4K")),
+	}, ParamTranslation{
+		Moves: []ParamMove{
+			{From: ParamAspectRatio},
+			{From: ParamResolution, To: "imageSize"},
+		},
+	})
 }
 
-func paramOptionsFromCatalog(options []catalog.ParamOption) []ParamOption {
-	result := make([]ParamOption, 0, len(options))
-	for _, option := range options {
-		result = append(result, ParamOption{
-			Label: option.Label,
-			Value: option.Value,
-		})
+func resolutionOptions(values ...string) []ParamOption {
+	options := make([]ParamOption, 0, len(values))
+	for _, value := range values {
+		options = append(options, ParamOption{Label: value, Value: value})
 	}
-	return result
+	return options
 }
 
-func paramTranslationFromCatalog(translation catalog.ParamTranslation) ParamTranslation {
-	return ParamTranslation{
-		Moves:  paramMovesFromCatalog(translation.Moves),
-		Joins:  paramJoinsFromCatalog(translation.Joins),
-		Consts: vendorConstsFromCatalog(translation.Consts),
+// RequiredMediagoModelIDs returns every MediaGo upstream model needed by one route.
+func RequiredMediagoModelIDs(routeID string, model string) []string {
+	if routeID == RouteMediagoHappyHorse11 {
+		return []string{ModelHappyHorse11T2V, ModelHappyHorse11R2V}
 	}
-}
-
-func paramMovesFromCatalog(moves []catalog.ParamMove) []ParamMove {
-	result := make([]ParamMove, 0, len(moves))
-	for _, move := range moves {
-		result = append(result, ParamMove{
-			From:   ParamID(move.From),
-			To:     move.To,
-			Values: cloneStringMap(move.Values),
-		})
+	if model == "" {
+		return nil
 	}
-	return result
-}
-
-func paramJoinsFromCatalog(joins []catalog.ParamJoin) []ParamJoin {
-	result := make([]ParamJoin, 0, len(joins))
-	for _, join := range joins {
-		from := make([]ParamID, 0, len(join.From))
-		for _, id := range join.From {
-			from = append(from, ParamID(id))
-		}
-		result = append(result, ParamJoin{
-			From:  from,
-			To:    join.To,
-			Table: cloneStringMap(join.Table),
-		})
-	}
-	return result
-}
-
-func vendorConstsFromCatalog(consts []catalog.VendorConst) []VendorConst {
-	result := make([]VendorConst, 0, len(consts))
-	for _, item := range consts {
-		result = append(result, VendorConst{
-			To:    item.To,
-			Value: item.Value,
-		})
-	}
-	return result
-}
-
-func paramCombosFromCatalog(combos []catalog.ParamCombo) []ParamCombo {
-	result := make([]ParamCombo, 0, len(combos))
-	for _, combo := range combos {
-		result = append(result, ParamCombo{
-			Params:  cloneStrings(combo.Params),
-			Allowed: cloneStringMatrix(combo.Allowed),
-			Outputs: cloneStringMap(combo.Outputs),
-		})
-	}
-	return result
+	return []string{model}
 }
 
 func concatModelRoutes(groups ...[]ModelRoute) []ModelRoute {

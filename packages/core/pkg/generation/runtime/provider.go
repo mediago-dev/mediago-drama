@@ -13,6 +13,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/dmx"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/jimeng"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/libtv"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/mediago"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/official"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/openrouter"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/pippit"
@@ -277,9 +278,7 @@ func (provider *Provider) mediagoProvider(ctx context.Context) (generation.Provi
 	if baseURL == "" {
 		return nil, fmt.Errorf("mediago generation base URL is not configured")
 	}
-
 	cacheKey := provider.cacheKey(
-		generation.ProviderMediago,
 		generation.ProviderMediago,
 		apiKey,
 		baseURL,
@@ -287,13 +286,12 @@ func (provider *Provider) mediagoProvider(ctx context.Context) (generation.Provi
 		provider.config.OpenRouterAppName,
 	)
 	return provider.cachedProvider(cacheKey, func() (generation.Provider, error) {
-		return openrouter.NewProvider(openrouter.Config{
-			BaseURL:      baseURL,
-			APIKey:       apiKey,
-			AppURL:       provider.config.OpenRouterAppURL,
-			AppTitle:     provider.config.OpenRouterAppName,
-			ProviderName: generation.ProviderMediago,
-			HTTPClient:   provider.config.HTTPClient,
+		return mediago.NewProvider(mediago.Config{
+			BaseURL:    baseURL,
+			APIKey:     apiKey,
+			AppURL:     provider.config.OpenRouterAppURL,
+			AppTitle:   provider.config.OpenRouterAppName,
+			HTTPClient: provider.config.HTTPClient,
 		})
 	})
 }

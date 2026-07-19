@@ -16,31 +16,26 @@ import (
 )
 
 const (
-	defaultBaseURL = "https://openrouter.ai/api/v1"
-	// Image generations routed through MediaGo regularly take 60-160s upstream;
-	// 90s used to cut them off mid-flight (paid but result lost). Match the DMX
-	// adapter's generous cap and rely on per-request contexts for tighter bounds.
+	defaultBaseURL    = "https://openrouter.ai/api/v1"
 	defaultHTTPClient = 1000 * time.Second
 )
 
 // Config controls the OpenRouter provider.
 type Config struct {
-	BaseURL      string
-	APIKey       string
-	AppURL       string
-	AppTitle     string
-	ProviderName string
-	HTTPClient   *http.Client
+	BaseURL    string
+	APIKey     string
+	AppURL     string
+	AppTitle   string
+	HTTPClient *http.Client
 }
 
 // Provider calls OpenRouter image and video generation endpoints.
 type Provider struct {
-	baseURL      string
-	apiKey       string
-	appURL       string
-	appTitle     string
-	providerName string
-	client       *http.Client
+	baseURL  string
+	apiKey   string
+	appURL   string
+	appTitle string
+	client   *http.Client
 }
 
 // NewProvider creates an OpenRouter generation provider.
@@ -53,29 +48,23 @@ func NewProvider(config Config) (*Provider, error) {
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
-	providerName := strings.TrimSpace(config.ProviderName)
-	if providerName == "" {
-		providerName = generation.ProviderOpenRouter
-	}
-
 	client := config.HTTPClient
 	if client == nil {
 		client = &http.Client{Timeout: defaultHTTPClient}
 	}
 
 	return &Provider{
-		baseURL:      baseURL,
-		apiKey:       config.APIKey,
-		appURL:       config.AppURL,
-		appTitle:     config.AppTitle,
-		providerName: providerName,
-		client:       client,
+		baseURL:  baseURL,
+		apiKey:   config.APIKey,
+		appURL:   config.AppURL,
+		appTitle: config.AppTitle,
+		client:   client,
 	}, nil
 }
 
 // Name returns the provider name.
 func (provider *Provider) Name() string {
-	return provider.providerName
+	return generation.ProviderOpenRouter
 }
 
 // Generate dispatches OpenRouter image or video generation.
@@ -116,7 +105,7 @@ func (provider *Provider) resolveRequest(request *generation.Request) (string, e
 		Kind:     request.Kind,
 		RouteID:  request.RouteID,
 		ModelID:  request.ModelID,
-		Provider: provider.providerName,
+		Provider: generation.ProviderOpenRouter,
 	})
 	if err != nil {
 		return "", err
@@ -129,10 +118,6 @@ func (provider *Provider) resolveRequest(request *generation.Request) (string, e
 }
 
 func (provider *Provider) postJSON(ctx context.Context, endpoint string, payload any, result any) error {
-	return provider.postJSONWithHeaders(ctx, endpoint, payload, nil, result)
-}
-
-func (provider *Provider) postJSONWithHeaders(ctx context.Context, endpoint string, payload any, headers map[string]string, result any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -144,9 +129,6 @@ func (provider *Provider) postJSONWithHeaders(ctx context.Context, endpoint stri
 	}
 	request.Header.Set("Content-Type", "application/json")
 	provider.setHeaders(request)
-	for name, value := range headers {
-		request.Header.Set(name, value)
-	}
 
 	return provider.doJSON(request, result)
 }
@@ -184,29 +166,6 @@ func (provider *Provider) getJSON(ctx context.Context, endpoint string, result a
 	provider.setHeaders(request)
 
 	return provider.doJSON(request, result)
-}
-
-// getJSONStatus is like getJSON but hands back the HTTP status code so callers
-// can branch on non-2xx replies (e.g. 202 pending) without parsing error text.
-// The body is decoded into result only on 200.
-func (provider *Provider) getJSONStatus(ctx context.Context, endpoint string, result any) (int, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, provider.baseURL+endpoint, nil)
-	if err != nil {
-		return 0, err
-	}
-	provider.setHeaders(request)
-
-	response, err := provider.client.Do(request)
-	if err != nil {
-		return 0, err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode == http.StatusOK && result != nil {
-		return response.StatusCode, json.NewDecoder(response.Body).Decode(result)
-	}
-	_, _ = io.Copy(io.Discard, response.Body)
-	return response.StatusCode, nil
 }
 
 func (provider *Provider) setHeaders(request *http.Request) {
@@ -278,5 +237,5 @@ func normalizeVideoStatus(status string) string {
 }
 
 func (provider *Provider) readHTTPError(response *http.Response) error {
-	return generation.HTTPErrorFromResponse(provider.providerName, response)
+	return generation.HTTPErrorFromResponse(generation.ProviderOpenRouter, response)
 }

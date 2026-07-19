@@ -4,6 +4,10 @@ const (
 	happyHorse11DocURL = "https://help.aliyun.com/zh/model-studio/video-generate-edit-model/"
 )
 
+func mediagoHappyHorse11Params() RouteParamConfig {
+	return identityRouteParamConfig(cloneRouteParams(happyHorse11Params().CanonicalParams))
+}
+
 func happyHorse11Params() RouteParamConfig {
 	params := []RouteParam{
 		selectRouteParam(ParamAspectRatio, "16:9", []ParamOption{
