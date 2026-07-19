@@ -1194,8 +1194,8 @@ func TestServiceExportsAndImportsFullMGPack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExportPack() error = %v", err)
 	}
-	if exported.FileName != "Test Pack-v1.0.0.mgpack" {
-		t.Fatalf("exported filename = %q, want readable pack name and version", exported.FileName)
+	if exported.FileName != "Test Pack.mgpack" {
+		t.Fatalf("exported filename = %q, want readable pack name without version", exported.FileName)
 	}
 	archive, err := codec.Decode(exported.Data)
 	if err != nil {
@@ -1259,16 +1259,15 @@ func TestReadablePackFileNamePreservesNameAndSanitizesPathCharacters(t *testing.
 		name     string
 		packName string
 		packID   string
-		version  string
 		want     string
 	}{
-		{name: "Chinese name", packName: "测试风格", packID: "local.uuid", version: "1.0.0", want: "测试风格-v1.0.0.mgpack"},
-		{name: "path characters", packName: "角色/场景:套装", packID: "local.uuid", version: "v2.1.0", want: "角色-场景-套装-v2.1.0.mgpack"},
-		{name: "fallback to id", packID: "local.readable", version: "1.0.0", want: "local.readable-v1.0.0.mgpack"},
+		{name: "Chinese name", packName: "测试风格", packID: "local.uuid", want: "测试风格.mgpack"},
+		{name: "path characters", packName: "角色/场景:套装", packID: "local.uuid", want: "角色-场景-套装.mgpack"},
+		{name: "fallback to id", packID: "local.readable", want: "local.readable.mgpack"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := readablePackFileName(test.packName, test.packID, test.version); got != test.want {
+			if got := readablePackFileName(test.packName, test.packID); got != test.want {
 				t.Fatalf("readablePackFileName() = %q, want %q", got, test.want)
 			}
 		})
