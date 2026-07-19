@@ -258,6 +258,20 @@ var familySpecs = []familySpec{
 	},
 	{
 		Family: ModelFamily{
+			ID:          FamilyHappyHorse,
+			Label:       "HappyHorse",
+			Kind:        KindVideo,
+			Description: "阿里云百炼 HappyHorse 1.1 有声视频生成模型",
+		},
+		Versions: []ModelVersion{
+			version(VersionHappyHorse11, FamilyHappyHorse, "HappyHorse 1.1", KindVideo, ModelHappyHorse11, true, true),
+		},
+		Routes: []ModelRoute{
+			officialRoute(RouteOfficialHappyHorse11, FamilyHappyHorse, VersionHappyHorse11, KindVideo, "阿里云百炼", ModelHappyHorse11, AdapterOfficialAliyunHappyHorseVideo, happyHorse11DocURL, []string{ProviderAliyun}, happyHorse11Params(), true, true, withReferenceURLLimit(9)),
+		},
+	},
+	{
+		Family: ModelFamily{
 			ID:          FamilyMiniMaxSpeech,
 			Label:       "MiniMax 国内 Speech",
 			Kind:        KindAudio,

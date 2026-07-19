@@ -263,6 +263,60 @@ func TestImageCatalogIncludesOfficialWan27Routes(t *testing.T) {
 	}
 }
 
+func TestVideoCatalogIncludesOfficialHappyHorseRoute(t *testing.T) {
+	for _, routeID := range []string{
+		"official.happyhorse-1.1-i2v",
+		"official.happyhorse-1.1-r2v",
+		"official.happyhorse-1.1-t2v",
+	} {
+		if _, ok := FindRoute(routeID); ok {
+			t.Fatalf("legacy HappyHorse route %q should not be exposed", routeID)
+		}
+	}
+
+	route := mustRoute(t, RouteOfficialHappyHorse11)
+	if route.Provider != ProviderAliyun || route.Model != ModelHappyHorse11 {
+		t.Fatalf("provider/model = %q/%q", route.Provider, route.Model)
+	}
+	if !route.SupportsReferenceURLs || route.MaxReferenceURLs != 9 {
+		t.Fatalf("references = %v/%d", route.SupportsReferenceURLs, route.MaxReferenceURLs)
+	}
+	if route.Adapter != AdapterOfficialAliyunHappyHorseVideo || !route.Async {
+		t.Fatalf("adapter/async = %q/%v", route.Adapter, route.Async)
+	}
+	assertHasParams(t, route, "aspectRatio", "resolution", "duration")
+	assertNoParams(t, route, "watermark", "seed")
+
+	assertOptionValues(t, mustParam(t, route, "resolution"), []string{"720p", "1080p"})
+	assertParamDefault(t, route, "resolution", "720p")
+	assertParamDefault(t, route, "duration", "5")
+	translated, err := TranslateRouteParams(route, map[string]any{
+		"aspectRatio": "9:16",
+		"resolution":  "1080p",
+		"duration":    "6",
+	})
+	if err != nil {
+		t.Fatalf("TranslateRouteParams() error = %v", err)
+	}
+	if translated["ratio"] != "9:16" || translated["resolution"] != "1080P" || translated["duration"] != "6" {
+		t.Fatalf("translated params = %#v", translated)
+	}
+
+	versionCount := 0
+	for _, version := range Catalog().Versions {
+		if version.FamilyID != FamilyHappyHorse {
+			continue
+		}
+		versionCount++
+		if version.ID != VersionHappyHorse11 || version.Label != "HappyHorse 1.1" {
+			t.Fatalf("HappyHorse version = %#v", version)
+		}
+	}
+	if versionCount != 1 {
+		t.Fatalf("HappyHorse version count = %d, want 1", versionCount)
+	}
+}
+
 func TestLibTVImageCatalogIncludesRequestedRoutes(t *testing.T) {
 	cases := []struct {
 		id            string
@@ -700,22 +754,26 @@ func TestDefaultRoutes(t *testing.T) {
 	}
 }
 
-func TestVideoCatalogOnlyExposesSeedance(t *testing.T) {
+func TestVideoCatalogOnlyExposesKnownFamilies(t *testing.T) {
+	videoFamilies := map[string]bool{
+		FamilySeedance:   true,
+		FamilyHappyHorse: true,
+	}
 	for _, family := range Families() {
-		if family.Kind == KindVideo && family.ID != FamilySeedance {
-			t.Fatalf("video family = %q, want only %q", family.ID, FamilySeedance)
+		if family.Kind == KindVideo && !videoFamilies[family.ID] {
+			t.Fatalf("unexpected video family %q", family.ID)
 		}
 	}
 
 	for _, version := range Versions() {
-		if version.Kind == KindVideo && version.FamilyID != FamilySeedance {
-			t.Fatalf("video version %q family = %q, want %q", version.ID, version.FamilyID, FamilySeedance)
+		if version.Kind == KindVideo && !videoFamilies[version.FamilyID] {
+			t.Fatalf("video version %q has unexpected family %q", version.ID, version.FamilyID)
 		}
 	}
 
 	for _, route := range Routes() {
-		if route.Kind == KindVideo && route.FamilyID != FamilySeedance {
-			t.Fatalf("video route %q family = %q, want %q", route.ID, route.FamilyID, FamilySeedance)
+		if route.Kind == KindVideo && !videoFamilies[route.FamilyID] {
+			t.Fatalf("video route %q has unexpected family %q", route.ID, route.FamilyID)
 		}
 	}
 }

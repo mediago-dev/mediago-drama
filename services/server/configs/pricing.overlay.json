@@ -596,6 +596,11 @@
       "perCallPrice": 5
     },
     {
+      "routeId": "official.happyhorse-1.1",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
       "routeId": "openrouter.seedance-2.0-fast",
       "currency": "USD",
       "unit": "per_call",

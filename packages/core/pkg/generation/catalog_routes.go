@@ -99,4 +99,5 @@ const (
 	RouteOfficialSeedance20Fast            = "official.seedance-2.0-fast"
 	RouteOfficialSeedance20Mini            = "official.seedance-2.0-mini"
 	RouteOfficialSeedance20                = "official.seedance-2.0"
+	RouteOfficialHappyHorse11              = "official.happyhorse-1.1"
 )

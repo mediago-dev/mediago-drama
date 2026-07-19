@@ -44,6 +44,11 @@ describe("generation brand marks", () => {
 				version: { id: "wan2.7-image-pro", label: "Wan 2.7 Image Pro" },
 			}),
 		).toBe("aliyun");
+		expect(
+			generationModelBrand({
+				version: { id: "happyhorse-1.1", label: "HappyHorse 1.1" },
+			}),
+		).toBe("aliyun");
 	});
 
 	it("uses the Bailian product icon for the Aliyun provider", () => {
