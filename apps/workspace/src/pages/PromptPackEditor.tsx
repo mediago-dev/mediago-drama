@@ -373,9 +373,7 @@ export const PromptPackEditor: React.FC = () => {
 											</span>
 											<Switch
 												checked={selectedPack.enabled}
-												disabled={
-													selectedPack.source === "default" || togglingPackID === selectedPack.id
-												}
+												disabled={togglingPackID === selectedPack.id}
 												aria-label={`${selectedPack.enabled ? "停用" : "启用"}技能包 ${selectedPack.name}`}
 												onCheckedChange={(enabled) => void togglePack(selectedPack, enabled)}
 											/>
@@ -399,44 +397,38 @@ export const PromptPackEditor: React.FC = () => {
 												<span>{resettingPackID === selectedPack.id ? "恢复中" : "恢复默认"}</span>
 											</Button>
 										) : null}
+										<Button
+											type="button"
+											variant="outline"
+											disabled={
+												exportingPackID === selectedPack.id || deletingPackID === selectedPack.id
+											}
+											onClick={() => void exportPack(selectedPack)}
+										>
+											{exportingPackID === selectedPack.id ? (
+												<Loader2 className="size-4 animate-spin" />
+											) : (
+												<Download className="size-4" />
+											)}
+											<span>导出</span>
+										</Button>
 										{selectedPack.source !== "default" ? (
-											<>
-												<Button
-													type="button"
-													variant="outline"
-													disabled={
-														exportingPackID === selectedPack.id ||
-														deletingPackID === selectedPack.id
-													}
-													onClick={() => void exportPack(selectedPack)}
-												>
-													{exportingPackID === selectedPack.id ? (
-														<Loader2 className="size-4 animate-spin" />
-													) : (
-														<Download className="size-4" />
-													)}
-													<span>导出</span>
-												</Button>
-												<Button
-													type="button"
-													variant="outline"
-													className="text-destructive hover:bg-error-surface hover:text-error-foreground"
-													disabled={
-														deletingPackID === selectedPack.id ||
-														exportingPackID === selectedPack.id
-													}
-													onClick={() => confirmDeletePack(selectedPack)}
-												>
-													{deletingPackID === selectedPack.id ? (
-														<Loader2 className="size-4 animate-spin" />
-													) : (
-														<Trash2 className="size-4" />
-													)}
-													<span>
-														{selectedPack.source === "local" ? "删除技能包" : "卸载技能包"}
-													</span>
-												</Button>
-											</>
+											<Button
+												type="button"
+												variant="outline"
+												className="text-destructive hover:bg-error-surface hover:text-error-foreground"
+												disabled={
+													deletingPackID === selectedPack.id || exportingPackID === selectedPack.id
+												}
+												onClick={() => confirmDeletePack(selectedPack)}
+											>
+												{deletingPackID === selectedPack.id ? (
+													<Loader2 className="size-4 animate-spin" />
+												) : (
+													<Trash2 className="size-4" />
+												)}
+												<span>{selectedPack.source === "local" ? "删除技能包" : "卸载技能包"}</span>
+											</Button>
 										) : null}
 									</>
 								)}

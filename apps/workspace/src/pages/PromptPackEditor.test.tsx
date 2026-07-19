@@ -366,6 +366,36 @@ describe("PromptPackEditor", () => {
 		await waitFor(() => expect(setPromptPackEnabled).toHaveBeenCalledWith(localPack.id, false));
 	});
 
+	it("allows disabling and exporting the default pack without allowing uninstall", async () => {
+		const defaultPack = {
+			...localPack,
+			id: "builtin",
+			name: "默认技能包",
+			source: "default" as const,
+		};
+		vi.mocked(listPromptPacks).mockResolvedValue([defaultPack]);
+		vi.mocked(getPromptPackContents).mockResolvedValue({ pack: defaultPack, entries: [] });
+		vi.mocked(setPromptPackEnabled).mockResolvedValue({ ...defaultPack, enabled: false });
+		vi.mocked(exportPromptPack).mockResolvedValue({
+			blob: new Blob(["MGPK"]),
+			fileName: "builtin.mgpack",
+		});
+		renderEditor("/prompt-pack-editor?packId=builtin");
+
+		const enabledSwitch = await screen.findByRole("switch", {
+			name: "停用技能包 默认技能包",
+		});
+		expect(enabledSwitch).toBeEnabled();
+		fireEvent.click(enabledSwitch);
+
+		await waitFor(() => expect(setPromptPackEnabled).toHaveBeenCalledWith(defaultPack.id, false));
+		expect(screen.queryByRole("button", { name: "卸载技能包" })).not.toBeInTheDocument();
+
+		fireEvent.click(screen.getByRole("button", { name: "导出" }));
+
+		await waitFor(() => expect(exportPromptPack).toHaveBeenCalledWith(defaultPack.id));
+	});
+
 	it("restores an exact package-backed entry from the dedicated window", async () => {
 		const defaultPack = {
 			...localPack,

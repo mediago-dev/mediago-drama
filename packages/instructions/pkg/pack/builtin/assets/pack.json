@@ -1,6 +1,6 @@
 {
   "id": "builtin",
-  "name": "MediaGo Drama Built-in Prompts",
+  "name": "默认技能包",
   "version": "1.0.0",
   "author": "MediaGo Drama",
   "description": "Default agent skills, reusable prompt presets, and visual styles.",
