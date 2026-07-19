@@ -104,6 +104,37 @@ describe("Settings API key page", () => {
 		expect(screen.getByText("GLM 4.7")).toBeInTheDocument();
 	});
 
+	it("keeps Wan and supported HappyHorse variants visible after the model chip limit", async () => {
+		vi.mocked(getModelPlatforms).mockResolvedValue(
+			modelPlatformsResponse({
+				mediagoModels: [
+					"GPT Image 2",
+					"Gemini 2.5 Flash Image",
+					"Gemini 3.1 Flash Lite Image",
+					"Gemini 3 Pro Image",
+					"Gemini 2.5 Flash",
+					"Gemini 3.1 Flash Image",
+					"Gemini 3.5 Flash",
+					"Gemini 3.1 Pro Preview",
+					"Wan 2.7 Image",
+					"Wan 2.7 Image Pro",
+					"HappyHorse 1.1 Text to Video",
+					"HappyHorse 1.1 Image to Video",
+					"HappyHorse 1.1 Reference to Video",
+				],
+			}),
+		);
+
+		renderSettings();
+
+		expect(await screen.findByText("Wan 2.7 Image")).toBeInTheDocument();
+		expect(screen.getByText("Wan 2.7 Image Pro")).toBeInTheDocument();
+		expect(screen.getByText("HappyHorse 1.1 Text to Video")).toBeInTheDocument();
+		expect(screen.getByText("HappyHorse 1.1 Reference to Video")).toBeInTheDocument();
+		expect(screen.queryByText("HappyHorse 1.1 Image to Video")).not.toBeInTheDocument();
+		expect(screen.getByText("等 13 个模型")).toBeInTheDocument();
+	});
+
 	it("expands other providers on demand", async () => {
 		renderSettings();
 
@@ -515,8 +546,10 @@ const apiKeysResponse = ({
 
 const modelPlatformsResponse = ({
 	cliProviderIDs = ["jimeng"],
+	mediagoModels = ["MiniMax M3", "GLM 4.7", "Qwen3.5"],
 }: {
 	cliProviderIDs?: string[];
+	mediagoModels?: string[];
 } = {}): ModelPlatformsResponse => ({
 	platforms: [
 		{
@@ -528,7 +561,7 @@ const modelPlatformsResponse = ({
 			modelGroups: [
 				{
 					label: "文本模型",
-					models: ["MiniMax M3", "GLM 4.7", "Qwen3.5"],
+					models: mediagoModels,
 				},
 			],
 		},
