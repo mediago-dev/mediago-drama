@@ -1,7 +1,5 @@
 package generation
 
-import mediagocatalog "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/mediago"
-
 const (
 	ProviderOpenAI     = "openai"
 	ProviderGoogle     = "google"
@@ -9,7 +7,7 @@ const (
 	ProviderDeepSeek   = "deepseek"
 	ProviderVolcengine = "volcengine"
 	ProviderAliyun     = "aliyun"
-	ProviderMediago    = mediagocatalog.Provider
+	ProviderMediago    = "mediago"
 	ProviderDMX        = "dmx"
 	ProviderOpenRouter = "openrouter"
 	ProviderJimeng     = "jimeng"
@@ -32,6 +30,10 @@ const (
 	AdapterOpenRouterChatImage           = "openrouter.chat.image"
 	AdapterOpenRouterChatText            = "openrouter.chat.text"
 	AdapterOpenRouterVideo               = "openrouter.video"
+	AdapterMediagoChatImage              = "mediago.chat.image"
+	AdapterMediagoImages                 = "mediago.images"
+	AdapterMediagoText                   = "mediago.text"
+	AdapterMediagoVideo                  = "mediago.video"
 	AdapterDMXChatText                   = "dmx.chat.text"
 	AdapterDMXResponsesImage             = "dmx.responses.image"
 	AdapterDMXImagesGenerations          = "dmx.images.generations"

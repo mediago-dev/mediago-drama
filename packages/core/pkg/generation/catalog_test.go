@@ -126,6 +126,9 @@ func TestTextCatalogIncludesExpandedRoutes(t *testing.T) {
 		if len(route.AuthKeys) != 1 || route.AuthKeys[0] != tc.provider {
 			t.Fatalf("route %q auth keys = %#v, want provider key %q", tc.id, route.AuthKeys, tc.provider)
 		}
+		if tc.provider == ProviderMediago && route.Adapter != AdapterMediagoText {
+			t.Fatalf("route %q adapter = %q, want %q", tc.id, route.Adapter, AdapterMediagoText)
+		}
 	}
 }
 
@@ -140,11 +143,11 @@ func TestImageCatalogIncludesMediagoRoutes(t *testing.T) {
 		status       RouteStatus
 		reasonPrefix string
 	}{
-		{RouteMediagoSeedream5Lite, FamilySeedream, VersionSeedream5Lite, "doubao-seedream-5-0-lite", AdapterOpenRouterChatImage, false, RouteStatusAvailable, ""},
-		{RouteMediagoGPTImage2, FamilyGPTImage, VersionGPTImage2, "gpt-image-2", AdapterOpenRouterImages, true, RouteStatusAvailable, ""},
-		{RouteMediagoNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "gemini-3.1-flash-image", AdapterOpenRouterChatImage, true, RouteStatusAvailable, ""},
-		{RouteMediagoNanoBananaPro, FamilyNanoBanana, VersionNanoBananaPro, "gemini-3-pro-image", AdapterOpenRouterChatImage, true, RouteStatusAvailable, ""},
-		{RouteMediagoNanoBanana25, FamilyNanoBanana, VersionNanoBanana25, "gemini-2.5-flash-image", AdapterOpenRouterChatImage, true, RouteStatusAvailable, ""},
+		{RouteMediagoSeedream5Lite, FamilySeedream, VersionSeedream5Lite, "doubao-seedream-5-0-lite", AdapterMediagoChatImage, false, RouteStatusAvailable, ""},
+		{RouteMediagoGPTImage2, FamilyGPTImage, VersionGPTImage2, "gpt-image-2", AdapterMediagoImages, true, RouteStatusAvailable, ""},
+		{RouteMediagoNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "gemini-3.1-flash-image", AdapterMediagoChatImage, true, RouteStatusAvailable, ""},
+		{RouteMediagoNanoBananaPro, FamilyNanoBanana, VersionNanoBananaPro, "gemini-3-pro-image", AdapterMediagoChatImage, true, RouteStatusAvailable, ""},
+		{RouteMediagoNanoBanana25, FamilyNanoBanana, VersionNanoBanana25, "gemini-2.5-flash-image", AdapterMediagoChatImage, true, RouteStatusAvailable, ""},
 	}
 
 	for _, tc := range cases {
@@ -263,6 +266,53 @@ func TestImageCatalogIncludesOfficialWan27Routes(t *testing.T) {
 	}
 }
 
+func TestImageCatalogIncludesMediagoWan27Routes(t *testing.T) {
+	pro := mustRoute(t, RouteMediagoWan27ImagePro)
+	if pro.Provider != ProviderMediago || pro.Model != ModelWan27ImagePro {
+		t.Fatalf("pro provider/model = %q/%q, want %q/%q", pro.Provider, pro.Model, ProviderMediago, ModelWan27ImagePro)
+	}
+	if pro.Adapter != AdapterMediagoImages || pro.MaxReferenceURLs != 9 {
+		t.Fatalf("pro adapter/max refs = %q/%d", pro.Adapter, pro.MaxReferenceURLs)
+	}
+	assertHasParams(t, pro, "aspectRatio", "resolution", "n")
+	assertOptionValues(t, mustParam(t, pro, "resolution"), []string{"1K", "2K", "4K"})
+	if !mustParam(t, pro, "resolution").Options[2].RequiresNoReferenceURLs {
+		t.Fatal("MediaGo Wan 2.7 Pro 4K should require no reference URLs")
+	}
+	translated, err := TranslateRouteParams(pro, map[string]any{
+		"aspectRatio": "16:9",
+		"resolution":  "4K",
+		"n":           float64(2),
+	})
+	if err != nil {
+		t.Fatalf("TranslateRouteParams() error = %v", err)
+	}
+	if translated["size"] != "4096*2304" || translated["n"] != float64(2) {
+		t.Fatalf("translated params = %#v", translated)
+	}
+	if _, ok := translated["thinking_mode"]; ok {
+		t.Fatalf("MediaGo Wan params should not contain direct-Bailian fields: %#v", translated)
+	}
+
+	standard := mustRoute(t, RouteMediagoWan27Image)
+	if standard.Provider != ProviderMediago || standard.Adapter != AdapterMediagoImages {
+		t.Fatalf("standard provider/adapter = %q/%q", standard.Provider, standard.Adapter)
+	}
+	assertOptionValues(t, mustParam(t, standard, "resolution"), []string{"1K", "2K"})
+
+	if err := ValidateRequestForRoute(Request{
+		Kind:          KindImage,
+		RouteID:       pro.ID,
+		ReferenceURLs: []string{"https://example.test/reference.png"},
+		Params: map[string]any{
+			"aspectRatio": "1:1",
+			"resolution":  "4K",
+		},
+	}, pro); err == nil || !strings.Contains(err.Error(), "requires no reference URLs") {
+		t.Fatalf("4K request with references error = %v", err)
+	}
+}
+
 func TestVideoCatalogIncludesOfficialHappyHorseRoute(t *testing.T) {
 	for _, routeID := range []string{
 		"official.happyhorse-1.1-i2v",
@@ -314,6 +364,53 @@ func TestVideoCatalogIncludesOfficialHappyHorseRoute(t *testing.T) {
 	}
 	if versionCount != 1 {
 		t.Fatalf("HappyHorse version count = %d, want 1", versionCount)
+	}
+}
+
+func TestVideoCatalogIncludesMediagoHappyHorseRoute(t *testing.T) {
+	route := mustRoute(t, RouteMediagoHappyHorse11)
+	if route.Provider != ProviderMediago || route.Model != ModelHappyHorse11T2V {
+		t.Fatalf("provider/model = %q/%q", route.Provider, route.Model)
+	}
+	if route.Adapter != AdapterMediagoVideo || !route.Async {
+		t.Fatalf("adapter/async = %q/%v", route.Adapter, route.Async)
+	}
+	if !route.SupportsReferenceURLs || route.MaxReferenceURLs != 9 {
+		t.Fatalf("references = %v/%d", route.SupportsReferenceURLs, route.MaxReferenceURLs)
+	}
+	assertHasParams(t, route, "aspectRatio", "resolution", "duration")
+	translated, err := TranslateRouteParams(route, map[string]any{
+		"aspectRatio": "9:16",
+		"resolution":  "1080p",
+		"duration":    "6",
+	})
+	if err != nil {
+		t.Fatalf("TranslateRouteParams() error = %v", err)
+	}
+	if translated["aspectRatio"] != "9:16" || translated["resolution"] != "1080p" || translated["duration"] != "6" {
+		t.Fatalf("translated params = %#v", translated)
+	}
+}
+
+func TestMediagoWanAndHappyHorseRoutesKeepOfficialRouteFirst(t *testing.T) {
+	tests := []struct {
+		versionID string
+		want      []string
+	}{
+		{versionID: VersionWan27ImagePro, want: []string{RouteOfficialWan27ImagePro, RouteMediagoWan27ImagePro}},
+		{versionID: VersionWan27Image, want: []string{RouteOfficialWan27Image, RouteMediagoWan27Image}},
+		{versionID: VersionHappyHorse11, want: []string{RouteOfficialHappyHorse11, RouteMediagoHappyHorse11}},
+	}
+	for _, test := range tests {
+		routeIDs := []string{}
+		for _, route := range Routes() {
+			if route.VersionID == test.versionID {
+				routeIDs = append(routeIDs, route.ID)
+			}
+		}
+		if !reflect.DeepEqual(routeIDs, test.want) {
+			t.Fatalf("version %q routes = %#v, want %#v", test.versionID, routeIDs, test.want)
+		}
 	}
 }
 

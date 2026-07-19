@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -68,6 +69,67 @@ func TestProviderDispatchesByRouteProvider(t *testing.T) {
 	}
 	if response.Status != "completed" || len(response.Assets) != 1 {
 		t.Fatalf("response = %#v, want completed image asset", response)
+	}
+}
+
+func TestProviderDispatchesMediagoTextThroughNativeClient(t *testing.T) {
+	var credentialKey string
+	var authHeader string
+	var payload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		authHeader = request.Header.Get("Authorization")
+		if request.URL.Path != "/chat/completions" {
+			t.Fatalf("path = %q, want /chat/completions", request.URL.Path)
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"hello \"}}]}\n\n"))
+		_, _ = writer.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"MediaGo\"}}]}\n\n"))
+		_, _ = writer.Write([]byte("data: {\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":3,\"total_tokens\":5}}\n\n"))
+		_, _ = writer.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(Config{
+		MediagoBaseURL: server.URL,
+		Credentials: CredentialResolverFunc(func(_ context.Context, key string) (string, error) {
+			credentialKey = key
+			return "mgak-text", nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+
+	response, err := provider.Generate(context.Background(), generation.Request{
+		RouteID: generation.RouteMediagoGPT54MiniText,
+		Prompt:  "say hello",
+		Params: map[string]any{
+			"temperature": 0.2,
+			"maxTokens":   128,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	if credentialKey != generation.ProviderMediago {
+		t.Fatalf("credential key = %q, want %q", credentialKey, generation.ProviderMediago)
+	}
+	if authHeader != "Bearer mgak-text" {
+		t.Fatalf("Authorization = %q, want Bearer mgak-text", authHeader)
+	}
+	if payload["model"] != "gpt-5.4-mini" || payload["stream"] != true {
+		t.Fatalf("payload = %#v", payload)
+	}
+	if payload["temperature"] != 0.2 || payload["max_tokens"] != float64(128) {
+		t.Fatalf("text params = %#v", payload)
+	}
+	if response.Text != "hello MediaGo" || response.Usage.TotalTokens != 5 {
+		t.Fatalf("response = %#v", response)
 	}
 }
 
@@ -292,6 +354,163 @@ func TestProviderDispatchesMediagoGeminiProImageRoute(t *testing.T) {
 	}
 	if response.Status != "completed" || len(response.Assets) != 1 || response.Assets[0].URL != "https://example.test/mediago-pro.png" {
 		t.Fatalf("response = %#v, want completed MediaGo Pro image asset", response)
+	}
+}
+
+func TestProviderDispatchesMediagoWanThroughNativeClient(t *testing.T) {
+	var credentialKey string
+	var payload map[string]any
+	client := &http.Client{Transport: runtimeRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.Method != http.MethodPost || request.URL.Path != "/api/v1/images" {
+			t.Fatalf("request = %s %s, want POST /api/v1/images", request.Method, request.URL.Path)
+		}
+		if request.Header.Get("Authorization") != "Bearer mgak-test" {
+			t.Fatalf("Authorization = %q", request.Header.Get("Authorization"))
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		return jsonHTTPResponse(http.StatusOK, `{
+			"id":"img_1",
+			"model":"wan2.7-image-pro",
+			"data":[{"url":"https://example.test/wan.png","revised_prompt":"polished"}],
+			"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}
+		}`), nil
+	})}
+	provider, err := NewProvider(Config{
+		MediagoBaseURL: "https://mediago.test/api/v1",
+		HTTPClient:     client,
+		Credentials: CredentialResolverFunc(func(_ context.Context, key string) (string, error) {
+			credentialKey = key
+			return "mgak-test", nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+	response, err := provider.Generate(context.Background(), generation.Request{
+		RouteID: generation.RouteMediagoWan27ImagePro,
+		Prompt:  "paint a city",
+		Params: map[string]any{
+			"aspectRatio": "16:9",
+			"resolution":  "4K",
+			"n":           2,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if credentialKey != generation.ProviderMediago {
+		t.Fatalf("credential key = %q", credentialKey)
+	}
+	if payload["model"] != "wan2.7-image-pro" || payload["size"] != "4096*2304" || payload["n"] != float64(2) {
+		t.Fatalf("payload = %#v", payload)
+	}
+	if _, ok := payload["provider"]; ok {
+		t.Fatalf("MediaGo native payload must not contain OpenRouter provider options: %#v", payload)
+	}
+	if response.Status != "completed" || response.Model != "wan2.7-image-pro" || len(response.Assets) != 1 {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestProviderDispatchesMediagoHappyHorseThroughNativeClient(t *testing.T) {
+	var postPayloads []map[string]any
+	client := &http.Client{Transport: runtimeRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		switch {
+		case request.Method == http.MethodPost && request.URL.Path == "/api/v1/videos":
+			var payload map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+				t.Fatalf("Decode() error = %v", err)
+			}
+			postPayloads = append(postPayloads, payload)
+			id := "video_text"
+			if len(postPayloads) == 2 {
+				id = "video_reference"
+			}
+			return jsonHTTPResponse(http.StatusOK, `{"id":"`+id+`","status":"pending"}`), nil
+		case request.Method == http.MethodGet && request.URL.Path == "/api/v1/videos/video_reference":
+			return jsonHTTPResponse(http.StatusOK, `{
+				"id":"video_reference",
+				"status":"completed",
+				"unsigned_urls":["https://example.test/happyhorse.mp4"]
+			}`), nil
+		default:
+			t.Fatalf("unexpected request = %s %s", request.Method, request.URL.Path)
+			return nil, nil
+		}
+	})}
+	provider, err := NewProvider(Config{
+		MediagoBaseURL: "https://mediago.test/api/v1",
+		HTTPClient:     client,
+		Credentials: CredentialResolverFunc(func(context.Context, string) (string, error) {
+			return "mgak-test", nil
+		}),
+	})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+	params := map[string]any{"aspectRatio": "9:16", "resolution": "1080p", "duration": "6"}
+	textResponse, err := provider.Generate(context.Background(), generation.Request{
+		RouteID: generation.RouteMediagoHappyHorse11,
+		Prompt:  "make a video",
+		Params:  params,
+	})
+	if err != nil {
+		t.Fatalf("text Generate() error = %v", err)
+	}
+	referenceResponse, err := provider.Generate(context.Background(), generation.Request{
+		RouteID:       generation.RouteMediagoHappyHorse11,
+		Prompt:        "animate the characters",
+		Params:        params,
+		ReferenceURLs: []string{"https://example.test/reference.png"},
+	})
+	if err != nil {
+		t.Fatalf("reference Generate() error = %v", err)
+	}
+	if len(postPayloads) != 2 {
+		t.Fatalf("POST payload count = %d", len(postPayloads))
+	}
+	if postPayloads[0]["model"] != "happyhorse-1.1-t2v" {
+		t.Fatalf("text payload = %#v", postPayloads[0])
+	}
+	if _, ok := postPayloads[0]["input_references"]; ok {
+		t.Fatalf("text payload should omit references: %#v", postPayloads[0])
+	}
+	if postPayloads[1]["model"] != "happyhorse-1.1-r2v" || postPayloads[1]["aspect_ratio"] != "9:16" {
+		t.Fatalf("reference payload = %#v", postPayloads[1])
+	}
+	references, ok := postPayloads[1]["input_references"].([]any)
+	if !ok || len(references) != 1 {
+		t.Fatalf("input_references = %#v", postPayloads[1]["input_references"])
+	}
+	firstReference, _ := references[0].(map[string]any)
+	if firstReference["type"] != "image" || firstReference["url"] != "https://example.test/reference.png" {
+		t.Fatalf("reference = %#v", firstReference)
+	}
+	if textResponse.ID != generation.RouteMediagoHappyHorse11+":video_text" || referenceResponse.ID != generation.RouteMediagoHappyHorse11+":video_reference" {
+		t.Fatalf("task ids = %q/%q", textResponse.ID, referenceResponse.ID)
+	}
+	completed, err := provider.Get(context.Background(), referenceResponse.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if completed.Status != "completed" || len(completed.Assets) != 1 || completed.Assets[0].URL != "https://example.test/happyhorse.mp4" {
+		t.Fatalf("completed = %#v", completed)
+	}
+}
+
+type runtimeRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function runtimeRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
+}
+
+func jsonHTTPResponse(status int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
 	}
 }
 

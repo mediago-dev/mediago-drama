@@ -23,8 +23,8 @@ var familySpecs = []familySpec{
 			[]ModelRoute{
 				dmxRoute(RouteDMXSeedream5Lite, FamilySeedream, VersionSeedream5Lite, "DMX", "doubao-seedream-5.0-lite", AdapterDMXResponsesImage, "https://doc.dmxapi.cn/doubao-seedream-5.0-lite-Multi-image-fusion.html", seedreamParams(), false, true, ModelSeedream5Lite),
 				officialRoute(RouteOfficialSeedream5Lite, FamilySeedream, VersionSeedream5Lite, KindImage, "Volcengine official", "doubao-seedream-5-0-260128", AdapterOfficialVolcengineImage, "https://www.volcengine.com/docs/82379/1541523", []string{"volcengine"}, seedreamParams(), false, true),
+				mediagoRoute(RouteMediagoSeedream5Lite, FamilySeedream, VersionSeedream5Lite, KindImage, "doubao-seedream-5-0-lite", AdapterMediagoChatImage, mediagoChatImageParams(), false, false),
 			},
-			mediagoRoutesForFamily(FamilySeedream),
 			[]ModelRoute{
 				libTVRoute(RouteLibTVSeedream5Lite, FamilySeedream, VersionSeedream5Lite, "LibTV", "Seedream 5.0 Lite", AdapterLibTVCLIImage, "https://www.liblib.tv/cli", libTVSeedreamParams(), false, true, "", withReferenceURLLimit(6)),
 				jimengRoute(RouteJimengSeedream50, FamilySeedream, VersionSeedream5Lite, "即梦", "5.0", AdapterJimengCLIImage, "https://bytedance.larkoffice.com/wiki/FVTwwm0bGiishxkKOoScdHR2nsg", jimengSeedreamParams(), false, true, ModelSeedream50),
@@ -53,8 +53,12 @@ var familySpecs = []familySpec{
 				dmxRoute(RouteDMXGPT55Text, FamilyGPTText, VersionGPT55Text, "DMX", "gpt-5.5", AdapterDMXChatText, dmxChatDocs, textParams(), false, false, ""),
 				dmxRoute(RouteDMXGPT54Text, FamilyGPTText, VersionGPT54Text, "DMX", "gpt-5.4", AdapterDMXChatText, dmxChatDocs, textParams(), false, false, ""),
 				dmxRoute(RouteDMXGPT54MiniText, FamilyGPTText, VersionGPT54MiniText, "DMX", "gpt-5.4-mini", AdapterDMXChatText, dmxChatDocs, textParams(), false, false, ""),
+				mediagoTextRoute(RouteMediagoGPT41MiniText, FamilyGPTText, VersionGPT41MiniText, "gpt-4.1-mini"),
+				mediagoTextRoute(RouteMediagoGPT5MiniText, FamilyGPTText, VersionGPT5MiniText, "gpt-5-mini"),
+				mediagoTextRoute(RouteMediagoGPT55Text, FamilyGPTText, VersionGPT55Text, "gpt-5.5"),
+				mediagoTextRoute(RouteMediagoGPT54Text, FamilyGPTText, VersionGPT54Text, "gpt-5.4"),
+				mediagoTextRoute(RouteMediagoGPT54MiniText, FamilyGPTText, VersionGPT54MiniText, "gpt-5.4-mini"),
 			},
-			mediagoRoutesForFamily(FamilyGPTText),
 			[]ModelRoute{
 				officialRoute(RouteOfficialGPT55Text, FamilyGPTText, VersionGPT55Text, KindText, "OpenAI official", "gpt-5.5", AdapterOfficialOpenAIChatText, openAIChatDocs, []string{ProviderOpenAI}, textParams(), false, false),
 				officialRoute(RouteOfficialGPT54Text, FamilyGPTText, VersionGPT54Text, KindText, "OpenAI official", "gpt-5.4", AdapterOfficialOpenAIChatText, openAIChatDocs, []string{ProviderOpenAI}, textParams(), false, false),
@@ -86,8 +90,10 @@ var familySpecs = []familySpec{
 				dmxRoute(RouteDMXGemini35FlashText, FamilyGeminiText, VersionGemini35FlashText, "DMX", "gemini-3.5-flash", AdapterDMXChatText, dmxChatDocs, textParams(), false, false, ""),
 				dmxRoute(RouteDMXGemini31ProText, FamilyGeminiText, VersionGemini31ProText, "DMX", "gemini-3.1-pro-preview", AdapterDMXChatText, dmxChatDocs, textParams(), false, false, ""),
 				dmxRoute(RouteDMXGemini31FlashLiteText, FamilyGeminiText, VersionGemini31FlashLiteText, "DMX", "gemini-3.1-flash-lite", AdapterDMXChatText, dmxChatDocs, textParams(), false, false, ""),
+				mediagoTextRoute(RouteMediagoGemini35FlashText, FamilyGeminiText, VersionGemini35FlashText, "gemini-3.5-flash"),
+				mediagoTextRoute(RouteMediagoGemini31ProText, FamilyGeminiText, VersionGemini31ProText, "gemini-3.1-pro-preview"),
+				mediagoTextRoute(RouteMediagoGemini31FlashLiteText, FamilyGeminiText, VersionGemini31FlashLiteText, "gemini-3.1-flash-lite"),
 			},
-			mediagoRoutesForFamily(FamilyGeminiText),
 			[]ModelRoute{
 				officialRoute(RouteOfficialGemini35FlashText, FamilyGeminiText, VersionGemini35FlashText, KindText, "Google official", "gemini-3.5-flash", AdapterOfficialGoogleChatText, "https://ai.google.dev/gemini-api/docs/models", []string{ProviderGoogle}, textParams(), false, false),
 				officialRoute(RouteOfficialGemini31ProText, FamilyGeminiText, VersionGemini31ProText, KindText, "Google official", "gemini-3.1-pro-preview", AdapterOfficialGoogleChatText, "https://ai.google.dev/gemini-api/docs/models", []string{ProviderGoogle}, textParams(), false, false),
@@ -115,8 +121,10 @@ var familySpecs = []familySpec{
 				dmxRoute(RouteDMXMiniMaxM3Text, FamilyMiniMaxText, VersionMiniMaxM3Text, "DMX", "MiniMax-M3", AdapterDMXChatText, dmxChatDocs, textParams(), false, false, ""),
 				dmxRoute(RouteDMXMiniMaxM27Text, FamilyMiniMaxText, VersionMiniMaxM27Text, "DMX", "MiniMax-M2.7", AdapterDMXChatText, dmxChatDocs, textParams(), false, false, ""),
 				dmxRoute(RouteDMXMiniMaxM27HighspeedText, FamilyMiniMaxText, VersionMiniMaxM27HighspeedText, "DMX", "MiniMax-M2.7-highspeed", AdapterDMXChatText, dmxChatDocs, textParams(), false, false, ""),
+				mediagoTextRoute(RouteMediagoMiniMaxM3Text, FamilyMiniMaxText, VersionMiniMaxM3Text, "MiniMax-M3"),
+				mediagoTextRoute(RouteMediagoMiniMaxM27Text, FamilyMiniMaxText, VersionMiniMaxM27Text, "MiniMax-M2.7"),
+				mediagoTextRoute(RouteMediagoMiniMaxM27HighspeedText, FamilyMiniMaxText, VersionMiniMaxM27HighspeedText, "MiniMax-M2.7-highspeed"),
 			},
-			mediagoRoutesForFamily(FamilyMiniMaxText),
 			[]ModelRoute{
 				officialRoute(RouteOfficialMiniMaxM3Text, FamilyMiniMaxText, VersionMiniMaxM3Text, KindText, "MiniMax 国内", "MiniMax-M3", AdapterOfficialMiniMaxChatText, "https://platform.minimaxi.com/docs/api-reference/model/text-model", []string{ProviderMiniMax}, textParams(), false, false),
 				officialRoute(RouteOfficialMiniMaxM27Text, FamilyMiniMaxText, VersionMiniMaxM27Text, KindText, "MiniMax 国内", "MiniMax-M2.7", AdapterOfficialMiniMaxChatText, "https://platform.minimaxi.com/docs/api-reference/model/text-model", []string{ProviderMiniMax}, textParams(), false, false),
@@ -142,8 +150,9 @@ var familySpecs = []familySpec{
 			[]ModelRoute{
 				dmxRoute(RouteDMXDeepSeekV4FlashText, FamilyDeepSeekText, VersionDeepSeekV4FlashText, "DMX", "deepseek-v4-flash", AdapterDMXChatText, dmxChatDocs, textParams(), false, false, ""),
 				dmxRoute(RouteDMXDeepSeekV4ProText, FamilyDeepSeekText, VersionDeepSeekV4ProText, "DMX", "deepseek-v4-pro", AdapterDMXChatText, dmxChatDocs, textParams(), false, false, ""),
+				mediagoTextRoute(RouteMediagoDeepSeekV4FlashText, FamilyDeepSeekText, VersionDeepSeekV4FlashText, "deepseek-v4-flash"),
+				mediagoTextRoute(RouteMediagoDeepSeekV4ProText, FamilyDeepSeekText, VersionDeepSeekV4ProText, "deepseek-v4-pro"),
 			},
-			mediagoRoutesForFamily(FamilyDeepSeekText),
 			[]ModelRoute{
 				officialRoute(RouteOfficialDeepSeekV4FlashText, FamilyDeepSeekText, VersionDeepSeekV4FlashText, KindText, "DeepSeek official", "deepseek-v4-flash", AdapterOfficialDeepSeekChatText, "https://api-docs.deepseek.com/quick_start/pricing", []string{ProviderDeepSeek}, textParams(), false, false),
 				officialRoute(RouteOfficialDeepSeekV4ProText, FamilyDeepSeekText, VersionDeepSeekV4ProText, KindText, "DeepSeek official", "deepseek-v4-pro", AdapterOfficialDeepSeekChatText, "https://api-docs.deepseek.com/quick_start/pricing", []string{ProviderDeepSeek}, textParams(), false, false),
@@ -167,8 +176,8 @@ var familySpecs = []familySpec{
 			[]ModelRoute{
 				officialRoute(RouteOfficialGPTImage2, FamilyGPTImage, VersionGPTImage2, KindImage, "OpenAI official", "gpt-image-2", AdapterOfficialOpenAIImage, "https://platform.openai.com/docs/guides/image-generation", []string{"openai"}, officialGPTImageParams(), false, false),
 				dmxRoute(RouteDMXGPTImage2, FamilyGPTImage, VersionGPTImage2, "DMX", "gpt-image-2-ssvip", AdapterDMXImagesGenerations, "https://doc.dmxapi.cn/gpt-image-2-text-to-image.html", dmxGPTImageParams(), false, true, ModelGPTImage2, withReferenceURLLimit(4)),
+				mediagoRoute(RouteMediagoGPTImage2, FamilyGPTImage, VersionGPTImage2, KindImage, "gpt-image-2", AdapterMediagoImages, gptImageParamsWithBackground(), false, true, withReferenceURLLimit(4)),
 			},
-			mediagoRoutesForFamily(FamilyGPTImage),
 			[]ModelRoute{
 				libTVRoute(RouteLibTVGPTImage2, FamilyGPTImage, VersionGPTImage2, "LibTV", "Lib Image", AdapterLibTVCLIImage, "https://www.liblib.tv/cli", libTVGPTImageParams(), false, true, "", withReferenceURLLimit(10)),
 				openRouterRoute(RouteOpenRouterGPT54Image2, FamilyGPTImage, VersionGPT54Image2, KindImage, "OpenRouter", "openai/gpt-5.4-image-2", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, false),
@@ -186,10 +195,16 @@ var familySpecs = []familySpec{
 			version(VersionWan27ImagePro, FamilyWanImage, "Wan 2.7 Image Pro", KindImage, ModelWan27ImagePro, false, true),
 			version(VersionWan27Image, FamilyWanImage, "Wan 2.7 Image", KindImage, ModelWan27Image, false, true),
 		},
-		Routes: []ModelRoute{
-			officialRoute(RouteOfficialWan27ImagePro, FamilyWanImage, VersionWan27ImagePro, KindImage, "阿里云百炼", ModelWan27ImagePro, AdapterOfficialAliyunWanImage, wan27DocURL, []string{ProviderAliyun}, wan27Params(true), false, true, withReferenceURLLimit(9)),
-			officialRoute(RouteOfficialWan27Image, FamilyWanImage, VersionWan27Image, KindImage, "阿里云百炼", ModelWan27Image, AdapterOfficialAliyunWanImage, wan27DocURL, []string{ProviderAliyun}, wan27Params(false), false, true, withReferenceURLLimit(9)),
-		},
+		Routes: concatModelRoutes(
+			[]ModelRoute{
+				officialRoute(RouteOfficialWan27ImagePro, FamilyWanImage, VersionWan27ImagePro, KindImage, "阿里云百炼", ModelWan27ImagePro, AdapterOfficialAliyunWanImage, wan27DocURL, []string{ProviderAliyun}, wan27Params(true), false, true, withReferenceURLLimit(9)),
+				officialRoute(RouteOfficialWan27Image, FamilyWanImage, VersionWan27Image, KindImage, "阿里云百炼", ModelWan27Image, AdapterOfficialAliyunWanImage, wan27DocURL, []string{ProviderAliyun}, wan27Params(false), false, true, withReferenceURLLimit(9)),
+			},
+			[]ModelRoute{
+				mediagoRoute(RouteMediagoWan27ImagePro, FamilyWanImage, VersionWan27ImagePro, KindImage, ModelWan27ImagePro, AdapterMediagoImages, mediagoWan27Params(true), false, true, withReferenceURLLimit(9)),
+				mediagoRoute(RouteMediagoWan27Image, FamilyWanImage, VersionWan27Image, KindImage, ModelWan27Image, AdapterMediagoImages, mediagoWan27Params(false), false, true, withReferenceURLLimit(9)),
+			},
+		),
 	},
 	{
 		Family: ModelFamily{
@@ -208,8 +223,10 @@ var familySpecs = []familySpec{
 				officialRoute(RouteOfficialNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, KindImage, "Google official", "gemini-3.1-flash-image", AdapterOfficialGoogleImage, "https://ai.google.dev/gemini-api/docs/image-generation", []string{"google"}, officialNanoBanana31Params(), false, true),
 				officialRoute(RouteOfficialNanoBanana25, FamilyNanoBanana, VersionNanoBanana25, KindImage, "Google official", "gemini-2.5-flash-image", AdapterOfficialGoogleImage, "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-image", []string{"google"}, officialNanoBanana25Params(), false, true),
 				dmxRoute(RouteDMXNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "DMX", "gemini-3.1-flash-image", AdapterDMXGeminiGenerate, "https://doc.dmxapi.cn/gemini-3.1-flash-image-preview-edit.html", nanoBananaParams(), false, true, ModelNanoBanana, withReferenceURLLimit(4)),
+				mediagoRoute(RouteMediagoNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, KindImage, "gemini-3.1-flash-image", AdapterMediagoChatImage, mediagoNanoBanana31Params(), false, true, withReferenceURLLimit(4)),
+				mediagoRoute(RouteMediagoNanoBananaPro, FamilyNanoBanana, VersionNanoBananaPro, KindImage, "gemini-3-pro-image", AdapterMediagoChatImage, mediagoNanoBananaProParams(), false, true, withReferenceURLLimit(4)),
+				mediagoRoute(RouteMediagoNanoBanana25, FamilyNanoBanana, VersionNanoBanana25, KindImage, "gemini-2.5-flash-image", AdapterMediagoChatImage, nanoBanana25Params(), false, true, withReferenceURLLimit(4)),
 			},
-			mediagoRoutesForFamily(FamilyNanoBanana),
 			[]ModelRoute{
 				libTVRoute(RouteLibTVNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "LibTV", "Lib Navo 2", AdapterLibTVCLIImage, "https://www.liblib.tv/cli", libTVNanoBananaParams(), false, true, "", withReferenceURLLimit(7)),
 				openRouterRoute(RouteOpenRouterNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, KindImage, "OpenRouter", "google/gemini-3.1-flash-image-preview", AdapterOpenRouterChatImage, openRouterImageDocs, openRouterImageParams(), false, false),
@@ -266,9 +283,14 @@ var familySpecs = []familySpec{
 		Versions: []ModelVersion{
 			version(VersionHappyHorse11, FamilyHappyHorse, "HappyHorse 1.1", KindVideo, ModelHappyHorse11, true, true),
 		},
-		Routes: []ModelRoute{
-			officialRoute(RouteOfficialHappyHorse11, FamilyHappyHorse, VersionHappyHorse11, KindVideo, "阿里云百炼", ModelHappyHorse11, AdapterOfficialAliyunHappyHorseVideo, happyHorse11DocURL, []string{ProviderAliyun}, happyHorse11Params(), true, true, withReferenceURLLimit(9)),
-		},
+		Routes: concatModelRoutes(
+			[]ModelRoute{
+				officialRoute(RouteOfficialHappyHorse11, FamilyHappyHorse, VersionHappyHorse11, KindVideo, "阿里云百炼", ModelHappyHorse11, AdapterOfficialAliyunHappyHorseVideo, happyHorse11DocURL, []string{ProviderAliyun}, happyHorse11Params(), true, true, withReferenceURLLimit(9)),
+			},
+			[]ModelRoute{
+				mediagoRoute(RouteMediagoHappyHorse11, FamilyHappyHorse, VersionHappyHorse11, KindVideo, ModelHappyHorse11T2V, AdapterMediagoVideo, mediagoHappyHorse11Params(), true, true, withReferenceURLLimit(9)),
+			},
+		),
 	},
 	{
 		Family: ModelFamily{
