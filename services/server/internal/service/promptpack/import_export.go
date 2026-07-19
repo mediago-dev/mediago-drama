@@ -113,7 +113,7 @@ func (store *Service) exportPackSnapshot(ctx context.Context, packID string, ver
 		return ExportedPack{}, err
 	}
 	return ExportedPack{
-		FileName: readablePackFileName(bundle.Manifest.Name, bundle.Manifest.ID, bundle.Manifest.Version),
+		FileName: readablePackFileName(bundle.Manifest.Name, bundle.Manifest.ID),
 		Data:     data,
 		Pack:     pack,
 	}, nil
@@ -498,7 +498,7 @@ func safePackFileName(packID string, version string, sourceExt string) string {
 	return base + "-" + suffix + extension
 }
 
-func readablePackFileName(name string, packID string, version string) string {
+func readablePackFileName(name string, packID string) string {
 	base := sanitizeReadableFilePart(name)
 	if base == "" {
 		base = sanitizeReadableFilePart(packID)
@@ -506,13 +506,7 @@ func readablePackFileName(name string, packID string, version string) string {
 	if base == "" {
 		base = "prompt-pack"
 	}
-	version = strings.TrimSpace(version)
-	version = strings.TrimPrefix(strings.TrimPrefix(version, "v"), "V")
-	version = strings.ReplaceAll(sanitizeReadableFilePart(version), " ", "-")
-	if version == "" {
-		version = time.Now().UTC().Format("20060102150405")
-	}
-	return base + "-v" + version + ".mgpack"
+	return base + ".mgpack"
 }
 
 func sanitizeReadableFilePart(value string) string {

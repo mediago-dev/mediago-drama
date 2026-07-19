@@ -253,9 +253,7 @@ export interface ExportPromptPackResult {
 	fileName: string;
 }
 
-export const promptPackExportFileName = (
-	pack: Pick<PromptPack, "id" | "name" | "version">,
-): string => {
+export const promptPackExportFileName = (pack: Pick<PromptPack, "id" | "name">): string => {
 	const sanitizeSegment = (value: string, maxLength: number) => {
 		const withoutControls = Array.from(value, (character) => {
 			const code = character.charCodeAt(0);
@@ -269,8 +267,7 @@ export const promptPackExportFileName = (
 			.slice(0, maxLength);
 	};
 	const readableName = sanitizeSegment(pack.name.trim() || pack.id, 96);
-	const version = sanitizeSegment(pack.version.trim().replace(/^[vV]/, ""), 32) || "1.0.0";
-	return `${readableName || "prompt-pack"}-v${version}.mgpack`;
+	return `${readableName || "prompt-pack"}.mgpack`;
 };
 
 export const exportPromptPack = async (id: string): Promise<ExportPromptPackResult> => {

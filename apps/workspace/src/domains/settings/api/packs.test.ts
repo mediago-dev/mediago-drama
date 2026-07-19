@@ -14,14 +14,13 @@ vi.mock("@/shared/lib/http", () => ({
 afterEach(() => vi.unstubAllGlobals());
 
 describe("promptPackExportFileName", () => {
-	it("uses the readable pack name and version", () => {
+	it("uses the readable pack name without a version", () => {
 		expect(
 			promptPackExportFileName({
 				id: "local.e73c61d0-e311-438d-a939-2d0bc0609cf8",
 				name: "测试风格",
-				version: "1.0.0",
 			}),
-		).toBe("测试风格-v1.0.0.mgpack");
+		).toBe("测试风格.mgpack");
 	});
 
 	it("removes path characters from the suggested name", () => {
@@ -29,19 +28,17 @@ describe("promptPackExportFileName", () => {
 			promptPackExportFileName({
 				id: "local.test",
 				name: "角色/场景:套装",
-				version: "v2.1.0",
 			}),
-		).toBe("角色-场景-套装-v2.1.0.mgpack");
+		).toBe("角色-场景-套装.mgpack");
 	});
 
-	it("removes path characters from the version", () => {
+	it("falls back to the pack ID when the name is empty", () => {
 		expect(
 			promptPackExportFileName({
 				id: "local.test",
-				name: "风格包",
-				version: "v2/1:0",
+				name: " ",
 			}),
-		).toBe("风格包-v2-1-0.mgpack");
+		).toBe("local.test.mgpack");
 	});
 
 	it("falls back when the server returns a malformed UTF-8 filename", async () => {
