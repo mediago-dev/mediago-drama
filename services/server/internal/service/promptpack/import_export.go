@@ -23,8 +23,6 @@ import (
 )
 
 const (
-	defaultExportPackID      = "mediago.default-prompts"
-	defaultExportPackNameSfx = " Export"
 	maxPromptPackUploadBytes = 32 << 20
 )
 
@@ -80,6 +78,9 @@ func (store *Service) exportPackSnapshot(ctx context.Context, packID string, ver
 		return ExportedPack{}, err
 	}
 	pack := packFromModel(model)
+	if pack.Source == packSourceDefault || pack.ID == DefaultPackID {
+		return ExportedPack{}, fmt.Errorf("%w: default pack must be saved as a local pack before export", ErrInvalidPack)
+	}
 	bundle, err := store.bundleFromStoredPack(ctx, model)
 	if err != nil {
 		return ExportedPack{}, err
@@ -91,7 +92,6 @@ func (store *Service) exportPackSnapshot(ctx context.Context, packID string, ver
 		bundle.Manifest.Version = version
 		pack.Version = version
 	}
-	bundle = importableExportBundle(bundle, pack)
 	data, err := encodeBundle(bundle)
 	if err != nil {
 		return ExportedPack{}, err
@@ -200,6 +200,22 @@ func (store *Service) installData(ctx context.Context, fileName string, data []b
 			return Pack{}, fmt.Errorf("%w: applying formal release version: %w", ErrInvalidPack, err)
 		}
 	}
+	if provenance.PackageID == "" {
+		existing, existingErr := store.repo.GetPack(bundle.Manifest.ID)
+		if existingErr == nil {
+			matches, matchErr := store.bundleMatchesStoredPack(ctx, existing, bundle)
+			if matchErr != nil {
+				return Pack{}, matchErr
+			}
+			if matches {
+				return packFromModel(existing), nil
+			}
+			return Pack{}, fmt.Errorf("%w: %s", ErrPackExists, bundle.Manifest.ID)
+		}
+		if !repository.IsRecordNotFound(existingErr) {
+			return Pack{}, existingErr
+		}
+	}
 
 	origin, err := store.persistUploadedPack(bundle.Manifest, data, extension)
 	if err != nil {
@@ -213,6 +229,26 @@ func (store *Service) installData(ctx context.Context, fileName string, data []b
 		return Pack{}, err
 	}
 	return packFromModel(model), nil
+}
+
+func (store *Service) bundleMatchesStoredPack(
+	ctx context.Context,
+	pack domain.PackModel,
+	candidate instructionpack.Bundle,
+) (bool, error) {
+	installed, err := store.bundleFromStoredPack(ctx, pack)
+	if err != nil {
+		return false, err
+	}
+	installedData, err := encodeBundle(installed)
+	if err != nil {
+		return false, err
+	}
+	candidateData, err := encodeBundle(candidate)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(installedData, candidateData), nil
 }
 
 func (store *Service) bundleFromStoredPack(ctx context.Context, pack domain.PackModel) (instructionpack.Bundle, error) {
@@ -263,25 +299,6 @@ func (store *Service) bundleFromStoredPack(ctx context.Context, pack domain.Pack
 		return bundle, nil
 	}
 	return bundle, ctx.Err()
-}
-
-func importableExportBundle(bundle instructionpack.Bundle, pack Pack) instructionpack.Bundle {
-	if pack.Source != packSourceDefault && bundle.Manifest.ID != DefaultPackID {
-		return bundle
-	}
-	bundle.Manifest.ID = defaultExportPackID
-	if !strings.HasSuffix(bundle.Manifest.Name, defaultExportPackNameSfx) {
-		bundle.Manifest.Name = strings.TrimSpace(bundle.Manifest.Name + defaultExportPackNameSfx)
-	}
-	for index := range bundle.Entries {
-		bundle.Entries[index].PackID = defaultExportPackID
-		bundle.Entries[index].ID = instructionpack.EntryID(
-			defaultExportPackID,
-			bundle.Entries[index].Kind,
-			bundle.Entries[index].Slug,
-		)
-	}
-	return bundle
 }
 
 func (entry Entry) packEntry() instructionpack.Entry {

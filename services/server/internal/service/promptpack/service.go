@@ -3,6 +3,8 @@ package promptpack
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
 	instructionbuiltin "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack/builtin"
@@ -144,6 +147,13 @@ type PackContents struct {
 	Pack       Pack       `json:"pack"`
 	Entries    []Entry    `json:"entries"`
 	Categories []Category `json:"categories"`
+}
+
+// ForkPackInput contains editable metadata for a standalone local copy.
+type ForkPackInput struct {
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description,omitempty"`
 }
 
 // Service coordinates prompt pack persistence and built-in seeding.
@@ -438,6 +448,112 @@ func (store *Service) CreatePack(ctx context.Context, pack Pack) (Pack, error) {
 		return Pack{}, err
 	}
 	return store.GetPack(ctx, pack.ID)
+}
+
+// ForkPack snapshots the resolved default pack into a standalone local authoring pack.
+func (store *Service) ForkPack(ctx context.Context, sourcePackID string, input ForkPackInput) (Pack, error) {
+	if err := store.ensureSeeded(ctx); err != nil {
+		return Pack{}, err
+	}
+	sourcePackID = strings.TrimSpace(sourcePackID)
+	input.Name = strings.TrimSpace(input.Name)
+	input.Version = strings.TrimSpace(input.Version)
+	input.Description = strings.TrimSpace(input.Description)
+	if sourcePackID != DefaultPackID {
+		return Pack{}, fmt.Errorf("%w: only the default pack can be saved as a new pack", ErrInvalidPack)
+	}
+	if input.Version == "" {
+		input.Version = "1.0.0"
+	}
+	if input.Name == "" || len(input.Name) > 160 || len(input.Version) > 64 {
+		return Pack{}, fmt.Errorf("%w: local pack name or version is invalid", ErrInvalidPack)
+	}
+
+	packID, err := newLocalPackID()
+	if err != nil {
+		return Pack{}, fmt.Errorf("generating local pack id: %w", err)
+	}
+	err = store.repo.WithTransaction(ctx, func(tx *repository.PackRepository) error {
+		source, err := tx.GetPack(sourcePackID)
+		if repository.IsRecordNotFound(err) {
+			return fmt.Errorf("%w: %s", ErrPackNotFound, sourcePackID)
+		}
+		if err != nil {
+			return err
+		}
+		if normalizePackSource(source.Source, source.ID) != packSourceDefault {
+			return fmt.Errorf("%w: source pack is not the default pack", ErrInvalidPack)
+		}
+		if _, err := tx.GetPack(packID); err == nil {
+			return fmt.Errorf("%w: %s", ErrPackExists, packID)
+		} else if !repository.IsRecordNotFound(err) {
+			return err
+		}
+
+		if err := tx.UpsertPack(domain.PackModel{
+			ID:          packID,
+			Name:        input.Name,
+			Version:     input.Version,
+			Author:      source.Author,
+			Description: input.Description,
+			Source:      packSourceLocal,
+			Enabled:     true,
+		}); err != nil {
+			return err
+		}
+
+		categoryModels, err := tx.ListCategories()
+		if err != nil {
+			return err
+		}
+		for _, model := range categoryModels {
+			if model.PackID != sourcePackID {
+				continue
+			}
+			model.PackID = packID
+			model.Source = entrySourceUser
+			model.Builtin = false
+			model.CreatedAt = time.Time{}
+			model.UpdatedAt = time.Time{}
+			if err := tx.UpsertCategory(model); err != nil {
+				return err
+			}
+		}
+
+		entryModels, err := tx.ListEntries()
+		if err != nil {
+			return err
+		}
+		for _, resolved := range resolvePackEntryModels(entryModels, sourcePackID) {
+			resolved.ID = instructionpack.EntryID(packID, resolved.Kind, resolved.Slug)
+			resolved.PackID = packID
+			resolved.ReleaseID = ""
+			resolved.SourcePackageID = ""
+			resolved.SourceReleaseID = ""
+			resolved.Source = entrySourceUser
+			resolved.OverriddenFrom = ""
+			resolved.Linked = false
+			resolved.ReferenceEntryID = ""
+			resolved.ReferencePackID = ""
+			resolved.Metadata = snapshotMetadata(resolved.Metadata)
+			if err := tx.UpsertEntry(entryModelFromEntry(resolved)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return Pack{}, err
+	}
+	return store.GetPack(ctx, packID)
+}
+
+func newLocalPackID() (string, error) {
+	var data [16]byte
+	if _, err := rand.Read(data[:]); err != nil {
+		return "", err
+	}
+	return "local." + hex.EncodeToString(data[:]), nil
 }
 
 // CreatePackEntryDraft creates an empty user-owned entry inside an installed pack.

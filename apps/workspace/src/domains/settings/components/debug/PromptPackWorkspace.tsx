@@ -75,6 +75,7 @@ import {
 	SelectValue,
 } from "@/shared/components/ui/select";
 import { Textarea } from "@/shared/components/ui/textarea";
+import { Switch } from "@/shared/components/ui/switch";
 import { cn } from "@/shared/lib/utils";
 import {
 	PromptPackEntryEditor,
@@ -100,10 +101,12 @@ interface PromptPackWorkspaceProps {
 	onChanged: () => Promise<void>;
 	onCreatePack: (input: { description: string; name: string }) => Promise<void>;
 	onDirtyChange: (dirty: boolean) => void;
+	onPackEnabledChange: (pack: PromptPack, enabled: boolean) => Promise<void>;
 	onSelectedPackChange: (packID?: string) => void;
 	onStartCreatePack: () => void;
 	packs: PromptPack[];
 	selectedPackID?: string;
+	togglingPackID?: string;
 }
 
 export interface PromptPackWorkspaceHandle {
@@ -126,10 +129,12 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 			onChanged,
 			onCreatePack,
 			onDirtyChange,
+			onPackEnabledChange,
 			onSelectedPackChange,
 			onStartCreatePack,
 			packs,
 			selectedPackID,
+			togglingPackID,
 		},
 		ref,
 	) {
@@ -558,8 +563,10 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 							{!selectedPackID ? (
 								<WorkspaceStart
 									isLoading={isLoading}
+									onPackEnabledChange={onPackEnabledChange}
 									onSelectPack={(packID) => void selectPack(packID)}
 									packs={packs}
+									togglingPackID={togglingPackID}
 								/>
 							) : contentsLoading || !selectedPack || !contents ? (
 								<LoadingState label="加载技能包内容" />
@@ -1782,9 +1789,11 @@ const PromptCategoryManager: React.FC<{
 
 const WorkspaceStart: React.FC<{
 	isLoading: boolean;
+	onPackEnabledChange: (pack: PromptPack, enabled: boolean) => Promise<void>;
 	onSelectPack: (packID: string) => void;
 	packs: PromptPack[];
-}> = ({ isLoading, onSelectPack, packs }) => {
+	togglingPackID?: string;
+}> = ({ isLoading, onPackEnabledChange, onSelectPack, packs, togglingPackID }) => {
 	if (isLoading) return <LoadingState label="加载技能包" />;
 	const orderedPacks = orderPacks(packs);
 
@@ -1815,6 +1824,13 @@ const WorkspaceStart: React.FC<{
 											{pack.description || pack.id}
 										</p>
 									</div>
+									<Switch
+										checked={pack.enabled}
+										className="mt-1 shrink-0"
+										disabled={togglingPackID === pack.id}
+										aria-label={`${pack.enabled ? "停用" : "启用"}技能包 ${pack.name}`}
+										onCheckedChange={(enabled) => void onPackEnabledChange(pack, enabled)}
+									/>
 								</div>
 								<div className="mt-auto flex items-center justify-between gap-3 border-t border-border pt-3">
 									<div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">

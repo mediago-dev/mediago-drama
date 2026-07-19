@@ -38,6 +38,12 @@ type createPromptPackRequest struct {
 	Description string `json:"description"`
 }
 
+type forkPromptPackRequest struct {
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+}
+
 type updatePromptPackRequest struct {
 	Enabled *bool `json:"enabled"`
 }
@@ -107,6 +113,41 @@ func (handler PromptPacks) HandleCreatePack(context *gin.Context) {
 		Author:      payload.Author,
 		Description: payload.Description,
 	})
+	if err != nil {
+		writePromptPackError(context, err)
+		return
+	}
+	httpresponse.OK(context, pack)
+}
+
+// HandleForkPack godoc
+// @Summary 另存默认技能包
+// @Description 将默认技能包当前解析后的内容复制为一个具有随机 ID 的本地技能包。
+// @Tags Skill Packs
+// @Accept json
+// @Produce json
+// @Param id path string true "Source pack ID"
+// @Param payload body SwaggerObject true "Fork metadata"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/packs/{id}/fork [post]
+func (handler PromptPacks) HandleForkPack(context *gin.Context) {
+	payload, err := decodeJSON[forkPromptPackRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	pack, err := handler.store.ForkPack(
+		context.Request.Context(),
+		context.Param("id"),
+		promptpack.ForkPackInput{
+			Name:        payload.Name,
+			Version:     payload.Version,
+			Description: payload.Description,
+		},
+	)
 	if err != nil {
 		writePromptPackError(context, err)
 		return

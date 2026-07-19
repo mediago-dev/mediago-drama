@@ -8,6 +8,7 @@ import {
 	createPromptPackEntry,
 	deletePromptPackCategory,
 	exportPromptPack,
+	forkPromptPack,
 	getPromptPackContents,
 	listPromptPacks,
 	resetPromptPackEntry,
@@ -47,6 +48,7 @@ vi.mock("@/domains/settings/api/packs", () => ({
 	createPromptPackEntry: vi.fn(),
 	deletePromptPackCategory: vi.fn(),
 	exportPromptPack: vi.fn(),
+	forkPromptPack: vi.fn(),
 	getPromptPackContents: vi.fn(),
 	listPromptPacks: vi.fn(),
 	promptPackContentsKey: (id: string) => `/packs/${id}/contents`,
@@ -366,7 +368,17 @@ describe("PromptPackEditor", () => {
 		await waitFor(() => expect(setPromptPackEnabled).toHaveBeenCalledWith(localPack.id, false));
 	});
 
-	it("allows disabling and exporting the default pack without allowing uninstall", async () => {
+	it("controls pack enablement directly from each management card", async () => {
+		vi.mocked(setPromptPackEnabled).mockResolvedValue({ ...localPack, enabled: false });
+		renderEditor();
+
+		fireEvent.click(await screen.findByRole("switch", { name: "停用技能包 本地草稿" }));
+
+		await waitFor(() => expect(setPromptPackEnabled).toHaveBeenCalledWith(localPack.id, false));
+		expect(screen.getByRole("button", { name: `打开技能包 ${localPack.name}` })).toBeEnabled();
+	});
+
+	it("saves the default pack as a local pack before exporting", async () => {
 		const defaultPack = {
 			...localPack,
 			id: "builtin",
@@ -376,9 +388,15 @@ describe("PromptPackEditor", () => {
 		vi.mocked(listPromptPacks).mockResolvedValue([defaultPack]);
 		vi.mocked(getPromptPackContents).mockResolvedValue({ pack: defaultPack, entries: [] });
 		vi.mocked(setPromptPackEnabled).mockResolvedValue({ ...defaultPack, enabled: false });
+		const forkedPack = {
+			...localPack,
+			id: "local.forked-default",
+			name: "默认技能包副本",
+		};
+		vi.mocked(forkPromptPack).mockResolvedValue(forkedPack);
 		vi.mocked(exportPromptPack).mockResolvedValue({
 			blob: new Blob(["MGPK"]),
-			fileName: "builtin.mgpack",
+			fileName: "默认技能包副本-v1.0.0.mgpack",
 		});
 		renderEditor("/prompt-pack-editor?packId=builtin");
 
@@ -391,9 +409,20 @@ describe("PromptPackEditor", () => {
 		await waitFor(() => expect(setPromptPackEnabled).toHaveBeenCalledWith(defaultPack.id, false));
 		expect(screen.queryByRole("button", { name: "卸载技能包" })).not.toBeInTheDocument();
 
-		fireEvent.click(screen.getByRole("button", { name: "导出" }));
+		fireEvent.click(screen.getByRole("button", { name: "另存为并导出" }));
+		expect(await screen.findByRole("heading", { name: "另存为并导出" })).toBeInTheDocument();
+		expect(screen.getByLabelText("名称")).toHaveValue("默认技能包副本");
+		fireEvent.click(screen.getByRole("button", { name: "创建并导出" }));
 
-		await waitFor(() => expect(exportPromptPack).toHaveBeenCalledWith(defaultPack.id));
+		await waitFor(() =>
+			expect(forkPromptPack).toHaveBeenCalledWith(defaultPack.id, {
+				description: "",
+				name: "默认技能包副本",
+				version: "1.0.0",
+			}),
+		);
+		await waitFor(() => expect(exportPromptPack).toHaveBeenCalledWith(forkedPack.id));
+		expect(exportPromptPack).not.toHaveBeenCalledWith(defaultPack.id);
 	});
 
 	it("restores an exact package-backed entry from the dedicated window", async () => {

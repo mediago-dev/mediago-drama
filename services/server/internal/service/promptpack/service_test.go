@@ -901,6 +901,21 @@ func TestServiceExportsAndImportsFullMGPack(t *testing.T) {
 	if imported.ID != installed.ID || imported.Source != packSourceImported || !imported.Enabled {
 		t.Fatalf("imported = %#v, want imported enabled full pack", imported)
 	}
+	repeated, err := target.InstallData(ctx, exported.FileName, exported.Data)
+	if err != nil {
+		t.Fatalf("InstallData(repeated identical file) error = %v", err)
+	}
+	if repeated.ID != imported.ID {
+		t.Fatalf("repeated import = %#v, want existing pack %q", repeated, imported.ID)
+	}
+	bundle.Manifest.Description = "Conflicting package contents"
+	conflicting, err := encodeBundle(bundle)
+	if err != nil {
+		t.Fatalf("encodeBundle(conflicting) error = %v", err)
+	}
+	if _, err := target.InstallData(ctx, exported.FileName, conflicting); !errors.Is(err, ErrPackExists) {
+		t.Fatalf("InstallData(conflicting same id) error = %v, want ErrPackExists", err)
+	}
 	importedSkill, err := target.GetEntry(ctx, instructionpack.KindSkill, "test-skill")
 	if err != nil {
 		t.Fatalf("GetEntry(skill) error = %v", err)
@@ -1016,7 +1031,7 @@ func TestServiceInstallsFormalReleaseWithProvenance(t *testing.T) {
 	}
 }
 
-func TestServiceExportsDefaultPackAsImportableMGPack(t *testing.T) {
+func TestServiceForksDefaultPackAsImportableMGPack(t *testing.T) {
 	ctx := context.Background()
 	source := newTestService(t)
 	if _, err := source.SaveEntry(ctx, instructionpack.KindSkill, "character-writer", Entry{
@@ -1027,9 +1042,38 @@ func TestServiceExportsDefaultPackAsImportableMGPack(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SaveEntry(default skill) error = %v", err)
 	}
-	exported, err := source.ExportPack(ctx, DefaultPackID)
+	if _, err := source.ExportPack(ctx, DefaultPackID); !errors.Is(err, ErrInvalidPack) {
+		t.Fatalf("ExportPack(default) error = %v, want ErrInvalidPack", err)
+	}
+	forked, err := source.ForkPack(ctx, DefaultPackID, ForkPackInput{
+		Name:        "My Default Pack",
+		Version:     "1.0.0",
+		Description: "Standalone default pack copy",
+	})
 	if err != nil {
-		t.Fatalf("ExportPack(default) error = %v", err)
+		t.Fatalf("ForkPack(default) error = %v", err)
+	}
+	if !strings.HasPrefix(forked.ID, "local.") || forked.ID == DefaultPackID || forked.Source != packSourceLocal {
+		t.Fatalf("forked = %#v, want standalone local pack", forked)
+	}
+	secondFork, err := source.ForkPack(ctx, DefaultPackID, ForkPackInput{Name: "Another Copy"})
+	if err != nil {
+		t.Fatalf("ForkPack(default second) error = %v", err)
+	}
+	if secondFork.ID == forked.ID {
+		t.Fatalf("fork ids = %q, want unique ids", forked.ID)
+	}
+
+	exported, err := source.ExportPack(ctx, forked.ID)
+	if err != nil {
+		t.Fatalf("ExportPack(fork) error = %v", err)
+	}
+	repeatedExport, err := source.ExportPack(ctx, forked.ID)
+	if err != nil {
+		t.Fatalf("ExportPack(fork repeated) error = %v", err)
+	}
+	if repeatedExport.Pack.ID != forked.ID {
+		t.Fatalf("repeated export pack id = %q, want %q", repeatedExport.Pack.ID, forked.ID)
 	}
 	archive, err := codec.Decode(exported.Data)
 	if err != nil {
@@ -1039,8 +1083,8 @@ func TestServiceExportsDefaultPackAsImportableMGPack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseZip(default export) error = %v", err)
 	}
-	if bundle.Manifest.ID != defaultExportPackID {
-		t.Fatalf("bundle manifest id = %q, want %q", bundle.Manifest.ID, defaultExportPackID)
+	if bundle.Manifest.ID != forked.ID {
+		t.Fatalf("bundle manifest id = %q, want %q", bundle.Manifest.ID, forked.ID)
 	}
 	if entry, ok := findPackEntry(bundle.Entries, "character-writer"); !ok || !strings.Contains(entry.Body, "Changed default pack body") {
 		t.Fatalf("exported default entries = %#v, want edited default content", bundle.Entries)
@@ -1051,24 +1095,24 @@ func TestServiceExportsDefaultPackAsImportableMGPack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstallData(default export) error = %v", err)
 	}
-	if imported.ID != defaultExportPackID || imported.Source != packSourceImported {
+	if imported.ID != forked.ID || imported.Source != packSourceImported {
 		t.Fatalf("imported = %#v, want importable default export pack", imported)
 	}
 	entry, err := target.GetEntry(ctx, instructionpack.KindSkill, "character-writer")
 	if err != nil {
 		t.Fatalf("GetEntry(imported default skill) error = %v", err)
 	}
-	if entry.PackID != defaultExportPackID || !strings.Contains(entry.Body, "Changed default pack body") {
+	if entry.PackID != forked.ID || !strings.Contains(entry.Body, "Changed default pack body") || entry.SourcePackageID != "" || entry.SourceReleaseID != "" {
 		t.Fatalf("entry = %#v, want imported default export to override builtin", entry)
 	}
-	if _, err := target.SetEnabled(ctx, defaultExportPackID, false); err != nil {
+	if _, err := target.SetEnabled(ctx, forked.ID, false); err != nil {
 		t.Fatalf("SetEnabled(default export false) error = %v", err)
 	}
 	reset, err := target.GetEntry(ctx, instructionpack.KindSkill, "character-writer")
 	if err != nil {
 		t.Fatalf("GetEntry(disabled default export skill) error = %v", err)
 	}
-	if reset.PackID == defaultExportPackID || strings.Contains(reset.Body, "Changed default pack body") {
+	if reset.PackID == forked.ID || strings.Contains(reset.Body, "Changed default pack body") {
 		t.Fatalf("entry = %#v, want disabling imported export to reveal builtin", reset)
 	}
 }
@@ -1091,7 +1135,11 @@ func TestServiceExportsDefaultPackWithUserUnicodeCategory(t *testing.T) {
 		t.Fatalf("CreateEntry(prompt) error = %v", err)
 	}
 
-	exported, err := source.ExportPack(ctx, DefaultPackID)
+	forked, err := source.ForkPack(ctx, DefaultPackID, ForkPackInput{Name: "Unicode Categories"})
+	if err != nil {
+		t.Fatalf("ForkPack(default) error = %v", err)
+	}
+	exported, err := source.ExportPack(ctx, forked.ID)
 	if err != nil {
 		t.Fatalf("ExportPack(default) error = %v", err)
 	}
@@ -1115,7 +1163,7 @@ func TestServiceExportsDefaultPackWithUserUnicodeCategory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstallData(default export) error = %v", err)
 	}
-	if imported.ID != defaultExportPackID || imported.Source != packSourceImported {
+	if imported.ID != forked.ID || imported.Source != packSourceImported {
 		t.Fatalf("imported = %#v, want importable default export pack", imported)
 	}
 	categories, err := target.ListCategories(ctx)
@@ -1129,7 +1177,7 @@ func TestServiceExportsDefaultPackWithUserUnicodeCategory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetEntry(imported prompt) error = %v", err)
 	}
-	if prompt.PackID != defaultExportPackID || metadataString(prompt.Metadata, "category") != "角色" {
+	if prompt.PackID != forked.ID || metadataString(prompt.Metadata, "category") != "角色" {
 		t.Fatalf("prompt = %#v, want imported Unicode category", prompt)
 	}
 }

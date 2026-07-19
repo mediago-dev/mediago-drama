@@ -181,6 +181,48 @@ func TestPromptPacksHandlerCopiesEntriesAndReturnsPackContents(t *testing.T) {
 	}
 }
 
+func TestPromptPacksHandlerForksDefaultPackAndRejectsDirectExport(t *testing.T) {
+	gin.SetMode(gin.ReleaseMode)
+	store := newPromptPackHandlerTestStore(t)
+	handler := NewPromptPacks(store)
+	router := gin.New()
+	router.POST("/packs/:id/fork", handler.HandleForkPack)
+	router.GET("/packs/:id/export", handler.HandleExportPack)
+
+	body, err := json.Marshal(forkPromptPackRequest{
+		Name:        "Handler Default Copy",
+		Version:     "1.0.0",
+		Description: "Saved from the default pack",
+	})
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/packs/builtin/fork", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("fork status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var envelope struct {
+		Success bool            `json:"success"`
+		Data    promptpack.Pack `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if !envelope.Success || !strings.HasPrefix(envelope.Data.ID, "local.") || envelope.Data.Source != "local" {
+		t.Fatalf("fork body = %s, want local fork", response.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/packs/builtin/export", nil)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("default export status = %d, body = %s", response.Code, response.Body.String())
+	}
+}
+
 func TestPromptPacksHandlerCreatesLocalDraftEntry(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	store := newPromptPackHandlerTestStore(t)

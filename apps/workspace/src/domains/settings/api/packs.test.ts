@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { exportPromptPack, promptPackExportFileName } from "./packs";
+import httpClient from "@/shared/lib/http";
+import { exportPromptPack, forkPromptPack, promptPackExportFileName } from "./packs";
+
+vi.mock("@/shared/lib/http", () => ({
+	default: { post: vi.fn() },
+}));
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -46,5 +51,36 @@ describe("promptPackExportFileName", () => {
 		);
 
 		await expect(exportPromptPack("local.test")).resolves.toMatchObject({ fileName: "" });
+	});
+});
+
+describe("forkPromptPack", () => {
+	it("posts fork metadata to the source pack endpoint", async () => {
+		const forked = {
+			enabled: true,
+			id: "local.forked",
+			name: "默认技能包副本",
+			source: "local" as const,
+			version: "1.0.0",
+		};
+		vi.mocked(httpClient.post).mockResolvedValueOnce({
+			code: 0,
+			data: forked,
+			message: "",
+			success: true,
+		});
+
+		await expect(
+			forkPromptPack("builtin", {
+				description: "本地副本",
+				name: "默认技能包副本",
+				version: "1.0.0",
+			}),
+		).resolves.toEqual(forked);
+		expect(httpClient.post).toHaveBeenCalledWith("/packs/builtin/fork", {
+			description: "本地副本",
+			name: "默认技能包副本",
+			version: "1.0.0",
+		});
 	});
 });

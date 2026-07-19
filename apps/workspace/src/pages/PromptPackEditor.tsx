@@ -17,6 +17,7 @@ import useSWR, { useSWRConfig } from "swr";
 import {
 	createPromptPack,
 	exportPromptPack,
+	forkPromptPack,
 	getPromptPackContents,
 	listPromptPacks,
 	promptPackExportFileName,
@@ -27,6 +28,7 @@ import {
 	type PromptPackEntry,
 	uninstallPromptPack,
 } from "@/domains/settings/api/packs";
+import { Alert, AlertDescription } from "@/shared/components/ui/alert";
 import {
 	PromptPackWorkspace,
 	type PromptPackWorkspaceHandle,
@@ -45,7 +47,10 @@ import {
 	AlertDialogTitle,
 } from "@/shared/components/ui/alert-dialog";
 import { Button } from "@/shared/components/ui/button";
+import { Input } from "@/shared/components/ui/input";
+import { Label } from "@/shared/components/ui/label";
 import { Switch } from "@/shared/components/ui/switch";
+import { Textarea } from "@/shared/components/ui/textarea";
 import { openExternalUrl, revealNativePath } from "@/shared/desktop/actions";
 
 export interface CreateLocalPromptPackInput {
@@ -74,6 +79,12 @@ export const PromptPackEditor: React.FC = () => {
 	const [resettingPackID, setResettingPackID] = useState<string>();
 	const [togglingPackID, setTogglingPackID] = useState<string>();
 	const [exportCompletion, setExportCompletion] = useState<PromptPackExportCompletion>();
+	const [saveAsSourcePack, setSaveAsSourcePack] = useState<PromptPack>();
+	const [saveAsName, setSaveAsName] = useState("");
+	const [saveAsVersion, setSaveAsVersion] = useState("1.0.0");
+	const [saveAsDescription, setSaveAsDescription] = useState("");
+	const [saveAsBusy, setSaveAsBusy] = useState(false);
+	const [saveAsError, setSaveAsError] = useState("");
 	const [isEditing, setIsEditing] = useState(false);
 	const [isPackDirty, setIsPackDirty] = useState(false);
 	const [savingPack, setSavingPack] = useState(false);
@@ -188,23 +199,33 @@ export const PromptPackEditor: React.FC = () => {
 		}
 	};
 
-	const exportPack = async (pack: PromptPack) => {
+	const validatePackForExport = async (pack: PromptPack) => {
 		const saved = await workspaceRef.current?.flush();
 		if (saved === false) {
 			toast.error("请完善当前内容", {
 				description: "请先填写当前条目的名称，再导出技能包。",
 			});
-			return;
+			return false;
 		}
-		setExportingPackID(pack.id);
 		try {
 			const contents = await getPromptPackContents(pack.id);
 			const validationIssue = findPromptPackExportIssue(contents.entries);
 			if (validationIssue) {
 				workspaceRef.current?.openEntry(validationIssue.entryID);
 				toast.error("请完善技能包内容", { description: validationIssue.description });
-				return;
+				return false;
 			}
+			return true;
+		} catch (error) {
+			const notice = promptPackExportErrorNotice(error);
+			toast.error(notice.title, { description: notice.description });
+			return false;
+		}
+	};
+
+	const downloadPack = async (pack: PromptPack) => {
+		setExportingPackID(pack.id);
+		try {
 			const exported = await exportPromptPack(pack.id);
 			const fileName = exported.fileName || promptPackExportFileName(pack);
 			const saveResult = await savePromptPackBlob(exported.blob, fileName);
@@ -221,6 +242,52 @@ export const PromptPackEditor: React.FC = () => {
 		} finally {
 			setExportingPackID(undefined);
 		}
+	};
+
+	const exportPack = async (pack: PromptPack) => {
+		if (!(await validatePackForExport(pack))) return;
+		await downloadPack(pack);
+	};
+
+	const openSaveAsAndExport = async (pack: PromptPack) => {
+		if (!(await validatePackForExport(pack))) return;
+		setSaveAsName(`${pack.name}副本`);
+		setSaveAsVersion(pack.version || "1.0.0");
+		setSaveAsDescription(pack.description || "");
+		setSaveAsError("");
+		setSaveAsSourcePack(pack);
+	};
+
+	const saveAsAndExport = async () => {
+		if (!saveAsSourcePack || !saveAsName.trim() || !saveAsVersion.trim()) return;
+		setSaveAsBusy(true);
+		setSaveAsError("");
+		let forked: PromptPack;
+		try {
+			forked = await forkPromptPack(saveAsSourcePack.id, {
+				description: saveAsDescription.trim(),
+				name: saveAsName.trim(),
+				version: saveAsVersion.trim(),
+			});
+		} catch (error) {
+			setSaveAsError(errorMessage(error));
+			setSaveAsBusy(false);
+			return;
+		}
+
+		selectPack(forked.id);
+		setSaveAsSourcePack(undefined);
+		try {
+			await mutatePacks(
+				(current) => [...(current ?? []).filter((pack) => pack.id !== forked.id), forked],
+				{ revalidate: false },
+			);
+			await refreshPromptData();
+		} catch (error) {
+			toast.error("刷新技能包列表失败", { description: errorMessage(error) });
+		}
+		await downloadPack(forked);
+		setSaveAsBusy(false);
 	};
 
 	const deletePack = async (pack: PromptPack) => {
@@ -401,16 +468,22 @@ export const PromptPackEditor: React.FC = () => {
 											type="button"
 											variant="outline"
 											disabled={
-												exportingPackID === selectedPack.id || deletingPackID === selectedPack.id
+												exportingPackID === selectedPack.id ||
+												deletingPackID === selectedPack.id ||
+												saveAsBusy
 											}
-											onClick={() => void exportPack(selectedPack)}
+											onClick={() =>
+												void (selectedPack.source === "default"
+													? openSaveAsAndExport(selectedPack)
+													: exportPack(selectedPack))
+											}
 										>
 											{exportingPackID === selectedPack.id ? (
 												<Loader2 className="size-4 animate-spin" />
 											) : (
 												<Download className="size-4" />
 											)}
-											<span>导出</span>
+											<span>{selectedPack.source === "default" ? "另存为并导出" : "导出"}</span>
 										</Button>
 										{selectedPack.source !== "default" ? (
 											<Button
@@ -443,10 +516,12 @@ export const PromptPackEditor: React.FC = () => {
 				onChanged={refreshPromptData}
 				onCreatePack={createPack}
 				onDirtyChange={setIsPackDirty}
+				onPackEnabledChange={togglePack}
 				onSelectedPackChange={selectPack}
 				onStartCreatePack={startCreatingPack}
 				packs={packs}
 				selectedPackID={selectedPackID}
+				togglingPackID={togglingPackID}
 			/>
 			<PromptPackExportCompleteDialog
 				completion={exportCompletion}
@@ -456,9 +531,107 @@ export const PromptPackEditor: React.FC = () => {
 				onOpenPublishPage={() => void openPublishPage()}
 				onReveal={() => void revealExportedPack()}
 			/>
+			<PromptPackSaveAsDialog
+				busy={saveAsBusy}
+				description={saveAsDescription}
+				error={saveAsError}
+				name={saveAsName}
+				onDescriptionChange={setSaveAsDescription}
+				onNameChange={setSaveAsName}
+				onOpenChange={(open) => {
+					if (!open && !saveAsBusy) setSaveAsSourcePack(undefined);
+				}}
+				onSubmit={() => void saveAsAndExport()}
+				onVersionChange={setSaveAsVersion}
+				open={Boolean(saveAsSourcePack)}
+				version={saveAsVersion}
+			/>
 		</section>
 	);
 };
+
+const PromptPackSaveAsDialog: React.FC<{
+	busy: boolean;
+	description: string;
+	error: string;
+	name: string;
+	onDescriptionChange: (value: string) => void;
+	onNameChange: (value: string) => void;
+	onOpenChange: (open: boolean) => void;
+	onSubmit: () => void;
+	onVersionChange: (value: string) => void;
+	open: boolean;
+	version: string;
+}> = ({
+	busy,
+	description,
+	error,
+	name,
+	onDescriptionChange,
+	onNameChange,
+	onOpenChange,
+	onSubmit,
+	onVersionChange,
+	open,
+	version,
+}) => (
+	<AlertDialog open={open} onOpenChange={onOpenChange}>
+		<AlertDialogContent>
+			<form
+				className="contents"
+				onSubmit={(event) => {
+					event.preventDefault();
+					onSubmit();
+				}}
+			>
+				<AlertDialogHeader>
+					<AlertDialogTitle>另存为并导出</AlertDialogTitle>
+					<AlertDialogDescription>
+						默认技能包将复制为具有独立 ID 的本地技能包，然后导出。
+					</AlertDialogDescription>
+				</AlertDialogHeader>
+				{error ? (
+					<Alert variant="destructive">
+						<AlertDescription>{error}</AlertDescription>
+					</Alert>
+				) : null}
+				<div className="space-y-4 py-1">
+					<div className="space-y-2">
+						<Label htmlFor="save-as-pack-name">名称</Label>
+						<Input
+							id="save-as-pack-name"
+							value={name}
+							onChange={(event) => onNameChange(event.target.value)}
+						/>
+					</div>
+					<div className="space-y-2">
+						<Label htmlFor="save-as-pack-version">版本</Label>
+						<Input
+							id="save-as-pack-version"
+							value={version}
+							onChange={(event) => onVersionChange(event.target.value)}
+						/>
+					</div>
+					<div className="space-y-2">
+						<Label htmlFor="save-as-pack-description">简介</Label>
+						<Textarea
+							id="save-as-pack-description"
+							value={description}
+							onChange={(event) => onDescriptionChange(event.target.value)}
+						/>
+					</div>
+				</div>
+				<AlertDialogFooter>
+					<AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
+					<Button type="submit" disabled={busy || !name.trim() || !version.trim()}>
+						{busy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+						<span>{busy ? "创建中" : "创建并导出"}</span>
+					</Button>
+				</AlertDialogFooter>
+			</form>
+		</AlertDialogContent>
+	</AlertDialog>
+);
 
 interface PromptPackExportCompletion {
 	fileName: string;

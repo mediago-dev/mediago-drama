@@ -91,6 +91,23 @@ export const createPromptPack = async (input: CreatePromptPackInput): Promise<Pr
 	return response.data;
 };
 
+export interface ForkPromptPackInput {
+	name: string;
+	version?: string;
+	description?: string;
+}
+
+export const forkPromptPack = async (
+	sourcePackId: string,
+	input: ForkPromptPackInput,
+): Promise<PromptPack> => {
+	const response = await httpClient.post<PromptPack>(
+		`${promptPacksKey}/${encodeURIComponent(sourcePackId)}/fork`,
+		input,
+	);
+	return response.data;
+};
+
 export const promptPackContentsKey = (id: string) =>
 	`${promptPacksKey}/${encodeURIComponent(id)}/contents`;
 
