@@ -51,15 +51,23 @@ export const userTaskDetails = (
 	catalog: { providers?: GenerationProviderInfo[]; routes: GenerationRoute[] },
 ): ChatMessageDetail[] => {
 	const route = catalog.routes.find((item) => item.id === task.routeId);
+	const taskParams = task.params ?? {};
+	const visibleParams = route
+		? Object.fromEntries(
+				Object.entries(taskParams).filter(([name]) =>
+					route.params.some((param) => param.name === name),
+				),
+			)
+		: taskParams;
 	return [
-		...requestDetailsFromTaskParams(task.params ?? {}),
+		...requestDetailsFromTaskParams(taskParams),
 		{
 			label: "供应商",
 			value: route
 				? `${routeProviderLabel(route, catalog.providers)} · ${route.model}`
 				: task.model,
 		},
-		...paramDetails(task.params ?? {}, route?.params ?? []),
+		...paramDetails(visibleParams, route?.params ?? []),
 	];
 };
 
@@ -200,6 +208,8 @@ export const providerLabel = (provider: string) => {
 			return "MiniMax 国内";
 		case "volcengine":
 			return "火山引擎";
+		case "aliyun":
+			return "阿里云百炼";
 		case "mediago":
 			return "MediaGo";
 		case "dmx":

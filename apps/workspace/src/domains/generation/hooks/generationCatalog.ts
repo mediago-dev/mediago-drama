@@ -125,6 +125,19 @@ export const routeParamValues = (
 	return result;
 };
 
+export const declaredRouteParamValues = (
+	params: GenerationParam[],
+	values: Record<string, unknown> | undefined,
+) => {
+	if (!values) return routeParamValues(params, values);
+
+	const declaredNames = new Set(params.map((param) => param.name));
+	const declaredValues = Object.fromEntries(
+		Object.entries(values).filter(([name]) => declaredNames.has(name)),
+	);
+	return routeParamValues(params, declaredValues);
+};
+
 const normalizeParamValue = (param: GenerationParam, value: unknown) => {
 	if (value === undefined || value === null) return undefined;
 

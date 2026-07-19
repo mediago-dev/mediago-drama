@@ -93,6 +93,7 @@ export interface RouteParamGroup {
 export interface ParamOption {
 	label: string;
 	value: string;
+	requiresNoReferenceUrls?: boolean;
 }
 
 export interface ParamCombo {

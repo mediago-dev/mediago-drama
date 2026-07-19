@@ -8,6 +8,7 @@ const (
 	ProviderMiniMax    = "minimax"
 	ProviderDeepSeek   = "deepseek"
 	ProviderVolcengine = "volcengine"
+	ProviderAliyun     = "aliyun"
 	ProviderMediago    = mediagocatalog.Provider
 	ProviderDMX        = "dmx"
 	ProviderOpenRouter = "openrouter"
@@ -25,6 +26,7 @@ const (
 	AdapterOfficialDeepSeekChatText = "official.deepseek.chat_text"
 	AdapterOfficialVolcengineImage  = "official.volcengine.image"
 	AdapterOfficialVolcengineVideo  = "official.volcengine.video"
+	AdapterOfficialAliyunWanImage   = "official.aliyun.wan_image"
 	AdapterOpenRouterImages         = "openrouter.images"
 	AdapterOpenRouterChatImage      = "openrouter.chat.image"
 	AdapterOpenRouterChatText       = "openrouter.chat.text"

@@ -9,6 +9,7 @@ const (
 	FamilyDeepSeekText  = "deepseek-text"
 	FamilyGPTImage      = "gpt-image"
 	FamilyNanoBanana    = "nano-banana"
+	FamilyWanImage      = "wan-image"
 	FamilySeedance      = "seedance"
 
 	VersionSeedream5Lite           = "seedream-5-lite"
@@ -34,6 +35,8 @@ const (
 	VersionNanoBanana31            = "gemini-3.1-flash-image-preview"
 	VersionNanoBananaPro           = "gemini-3-pro-image-preview"
 	VersionNanoBanana25            = "gemini-2.5-flash-image"
+	VersionWan27ImagePro           = "wan2.7-image-pro"
+	VersionWan27Image              = "wan2.7-image"
 	VersionSeedance20Fast          = "seedance-2.0-fast"
 	VersionSeedance20Mini          = "seedance-2.0-mini"
 	VersionSeedance20              = "seedance-2.0"
@@ -62,6 +65,8 @@ const (
 	ModelDeepSeekV4ProText       = "deepseek-v4-pro-text"
 	ModelGPTImage2               = "gpt-image-2"
 	ModelNanoBanana              = "nano-banana"
+	ModelWan27ImagePro           = "wan2.7-image-pro"
+	ModelWan27Image              = "wan2.7-image"
 	ModelJimengSeedance2Fast     = "jimeng-seedance-2-fast"
 	ModelXiaoyunqueSeedance2Mini = "xiaoyunque-seedance-2-mini-lite"
 )

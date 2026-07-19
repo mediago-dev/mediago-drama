@@ -45,6 +45,7 @@ func TestCatalogRoutesReferenceKnownFamiliesAndVersions(t *testing.T) {
 		ProviderMiniMax,
 		ProviderDeepSeek,
 		ProviderVolcengine,
+		ProviderAliyun,
 		ProviderMediago,
 		ProviderDMX,
 		ProviderOpenRouter,
@@ -206,6 +207,60 @@ func TestImageCatalogIncludesOfficialGoogleNanoBanana25(t *testing.T) {
 	assertLacksOption(t, mustParam(t, route, "resolution"), "4K")
 	assertComboOutput(t, route, "aspectRatio", "resolution", "1:1|1K", "1024x1024")
 	assertComboOutput(t, route, "aspectRatio", "resolution", "16:9|1K", "1344x768")
+}
+
+func TestImageCatalogIncludesOfficialWan27Routes(t *testing.T) {
+	pro := mustRoute(t, RouteOfficialWan27ImagePro)
+	if pro.Provider != ProviderAliyun || pro.Model != ModelWan27ImagePro {
+		t.Fatalf("pro provider/model = %q/%q, want %q/%q", pro.Provider, pro.Model, ProviderAliyun, ModelWan27ImagePro)
+	}
+	if pro.Adapter != AdapterOfficialAliyunWanImage || pro.MaxReferenceURLs != 9 {
+		t.Fatalf("pro adapter/max refs = %q/%d", pro.Adapter, pro.MaxReferenceURLs)
+	}
+	assertHasParams(t, pro, "aspectRatio", "resolution", "n")
+	assertNoParams(t, pro, "watermark", "seed")
+	assertOptionValues(t, mustParam(t, pro, "aspectRatio"), []string{"1:1", "16:9", "9:16", "4:3", "3:4"})
+	assertOptionValues(t, mustParam(t, pro, "resolution"), []string{"1K", "2K", "4K"})
+	assertParamDefault(t, pro, "resolution", "2K")
+	assertComboOutput(t, pro, "aspectRatio", "resolution", "16:9|4K", "4096*2304")
+	assertComboOutput(t, pro, "aspectRatio", "resolution", "3:4|2K", "1728*2368")
+	resolution := mustParam(t, pro, "resolution")
+	if !resolution.Options[2].RequiresNoReferenceURLs {
+		t.Fatal("Wan 2.7 Pro 4K should require no reference URLs")
+	}
+
+	standard := mustRoute(t, RouteOfficialWan27Image)
+	if standard.Provider != ProviderAliyun || standard.Model != ModelWan27Image {
+		t.Fatalf("standard provider/model = %q/%q, want %q/%q", standard.Provider, standard.Model, ProviderAliyun, ModelWan27Image)
+	}
+	assertOptionValues(t, mustParam(t, standard, "resolution"), []string{"1K", "2K"})
+	assertParamDefault(t, standard, "resolution", "2K")
+	assertParamDefault(t, standard, "n", float64(1))
+	assertNoParams(t, standard, "watermark", "seed")
+
+	if err := ValidateRequestForRoute(Request{
+		Kind:          KindImage,
+		RouteID:       pro.ID,
+		ReferenceURLs: []string{"https://example.test/reference.png"},
+		Params: map[string]any{
+			"aspectRatio": "1:1",
+			"resolution":  "4K",
+		},
+	}, pro); err == nil || !strings.Contains(err.Error(), "requires no reference URLs") {
+		t.Fatalf("4K request with references error = %v", err)
+	}
+
+	translated, err := TranslateRouteParams(pro, map[string]any{
+		"aspectRatio": "9:16",
+		"resolution":  "4K",
+		"n":           float64(4),
+	})
+	if err != nil {
+		t.Fatalf("TranslateRouteParams() error = %v", err)
+	}
+	if translated["size"] != "2304*4096" || translated["n"] != float64(4) || translated["enable_sequential"] != false {
+		t.Fatalf("translated params = %#v", translated)
+	}
 }
 
 func TestLibTVImageCatalogIncludesRequestedRoutes(t *testing.T) {

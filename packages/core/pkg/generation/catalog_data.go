@@ -177,6 +177,22 @@ var familySpecs = []familySpec{
 	},
 	{
 		Family: ModelFamily{
+			ID:          FamilyWanImage,
+			Label:       "万相 2.7",
+			Kind:        KindImage,
+			Description: "阿里云百炼万相 2.7 图像生成与编辑模型",
+		},
+		Versions: []ModelVersion{
+			version(VersionWan27ImagePro, FamilyWanImage, "Wan 2.7 Image Pro", KindImage, ModelWan27ImagePro, false, true),
+			version(VersionWan27Image, FamilyWanImage, "Wan 2.7 Image", KindImage, ModelWan27Image, false, true),
+		},
+		Routes: []ModelRoute{
+			officialRoute(RouteOfficialWan27ImagePro, FamilyWanImage, VersionWan27ImagePro, KindImage, "阿里云百炼", ModelWan27ImagePro, AdapterOfficialAliyunWanImage, wan27DocURL, []string{ProviderAliyun}, wan27Params(true), false, true, withReferenceURLLimit(9)),
+			officialRoute(RouteOfficialWan27Image, FamilyWanImage, VersionWan27Image, KindImage, "阿里云百炼", ModelWan27Image, AdapterOfficialAliyunWanImage, wan27DocURL, []string{ProviderAliyun}, wan27Params(false), false, true, withReferenceURLLimit(9)),
+		},
+	},
+	{
+		Family: ModelFamily{
 			ID:          FamilyNanoBanana,
 			Label:       "Nano Banana",
 			Kind:        KindImage,

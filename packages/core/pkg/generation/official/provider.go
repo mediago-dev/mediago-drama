@@ -21,6 +21,7 @@ const (
 	defaultMiniMaxBaseURL    = "https://api.minimaxi.com"
 	defaultDeepSeekBaseURL   = "https://api.deepseek.com/v1"
 	defaultVolcengineBaseURL = "https://ark.cn-beijing.volces.com/api/v3"
+	defaultAliyunBaseURL     = "https://dashscope.aliyuncs.com"
 	defaultHTTPClient        = 90 * time.Second
 )
 
@@ -32,6 +33,7 @@ type Config struct {
 	MiniMaxBaseURL    string
 	DeepSeekBaseURL   string
 	VolcengineBaseURL string
+	AliyunBaseURL     string
 	HTTPClient        *http.Client
 }
 
@@ -43,6 +45,7 @@ type Provider struct {
 	miniMaxBaseURL    string
 	deepSeekBaseURL   string
 	volcengineBaseURL string
+	aliyunBaseURL     string
 	client            *http.Client
 }
 
@@ -64,6 +67,7 @@ func NewProvider(config Config) (*Provider, error) {
 		miniMaxBaseURL:    valueOrDefault(strings.TrimRight(config.MiniMaxBaseURL, "/"), defaultMiniMaxBaseURL),
 		deepSeekBaseURL:   valueOrDefault(strings.TrimRight(config.DeepSeekBaseURL, "/"), defaultDeepSeekBaseURL),
 		volcengineBaseURL: valueOrDefault(strings.TrimRight(config.VolcengineBaseURL, "/"), defaultVolcengineBaseURL),
+		aliyunBaseURL:     valueOrDefault(strings.TrimRight(config.AliyunBaseURL, "/"), defaultAliyunBaseURL),
 		client:            client,
 	}, nil
 }
@@ -107,6 +111,8 @@ func (provider *Provider) Generate(ctx context.Context, request generation.Reque
 		return provider.generateVolcengineImage(ctx, request)
 	case generation.AdapterOfficialVolcengineVideo:
 		return provider.createVolcengineVideo(ctx, request)
+	case generation.AdapterOfficialAliyunWanImage:
+		return provider.generateAliyunWanImage(ctx, request)
 	default:
 		return generation.Response{}, fmt.Errorf("unsupported official adapter %q", route.Adapter)
 	}

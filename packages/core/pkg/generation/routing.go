@@ -142,6 +142,43 @@ func ValidateRequestForRoute(request Request, route ModelRoute) error {
 		if err := ValidateRouteParamTranslation(route, normalizedParams); err != nil {
 			return err
 		}
+		if err := validateRouteReferenceParamOptions(route, normalizedParams, len(referenceURLs)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateRouteReferenceParamOptions(route ModelRoute, params map[string]any, referenceCount int) error {
+	if referenceCount == 0 {
+		return nil
+	}
+
+	defaults := routeParamDefaults(route.CanonicalParams)
+	for _, spec := range route.Params {
+		value, ok := params[spec.Name]
+		if !ok || isEmptyParamValue(value) {
+			value, ok = defaults[ParamID(spec.Name)]
+		}
+		if !ok || isEmptyParamValue(value) {
+			continue
+		}
+
+		selected, ok := optionComparableString(value)
+		if !ok {
+			continue
+		}
+		for _, option := range spec.Options {
+			if option.Value == selected && option.RequiresNoReferenceURLs {
+				return fmt.Errorf(
+					"route %q parameter %q value %q requires no reference URLs",
+					route.ID,
+					spec.Name,
+					selected,
+				)
+			}
+		}
 	}
 
 	return nil

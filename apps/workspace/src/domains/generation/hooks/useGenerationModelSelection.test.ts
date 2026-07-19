@@ -223,7 +223,7 @@ describe("useGenerationModelSelection", () => {
 			versionIds: { "family-image": "version-image" },
 			routeIds: { "version-image": "route-image" },
 			routeParams: {
-				"route-image": { size: "768x768" },
+				"route-image": { size: "768x768", watermark: true, seed: 42 },
 				"route-image-dmx": { size: "512x512" },
 			},
 		});

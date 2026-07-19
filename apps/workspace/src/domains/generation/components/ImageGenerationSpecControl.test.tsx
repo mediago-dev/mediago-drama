@@ -2,7 +2,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { useMemo, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GenerationParam, GenerationParamCombo } from "@/domains/generation/api/generation";
-import { filterImageGenerationSpecParams, resolveImageGenerationSpec } from "./imageGenerationSpec";
+import {
+	filterImageGenerationSpecParams,
+	imageGenerationSpecNormalizationUpdates,
+	resolveImageGenerationSpec,
+} from "./imageGenerationSpec";
 import {
 	ImageGenerationSpecControl,
 	imageGenerationSpecPopoverBoundary,
@@ -21,7 +25,7 @@ const selectParam = (
 	name: string,
 	label: string,
 	defaultValue: string,
-	options: Array<{ label: string; value: string }>,
+	options: Array<{ label: string; value: string; requiresNoReferenceUrls?: boolean }>,
 ): GenerationParam => ({
 	name,
 	label,
@@ -207,6 +211,36 @@ describe("resolveImageGenerationSpec", () => {
 
 		expect(portrait?.sizePreview).toEqual({ width: 1024, height: 1536 });
 		expect(wide4k?.sizePreview).toEqual({ width: 3840, height: 2160 });
+	});
+
+	it("enables Wan 4K without references and normalizes it to 2K after a reference is added", () => {
+		const params = [
+			splitParams[0],
+			selectParam("resolution", "分辨率", "2K", [
+				{ label: "1K", value: "1K" },
+				{ label: "2K", value: "2K" },
+				{ label: "4K", value: "4K", requiresNoReferenceUrls: true },
+			]),
+		];
+		const values = { aspectRatio: "16:9", resolution: "4K" };
+		const withoutReferences = resolveImageGenerationSpec(params, values, undefined, {
+			referenceCount: 0,
+		});
+		const withReference = resolveImageGenerationSpec(params, values, undefined, {
+			referenceCount: 1,
+		});
+
+		expect(
+			withoutReferences?.resolutionOptions.find((option) => option.value === "4K")?.disabled,
+		).toBe(false);
+		expect(withoutReferences?.selectedResolution?.value).toBe("4K");
+		expect(withReference?.resolutionOptions.find((option) => option.value === "4K")?.disabled).toBe(
+			true,
+		);
+		expect(withReference?.selectedResolution?.value).toBe("2K");
+		expect(imageGenerationSpecNormalizationUpdates(withReference, values)).toEqual([
+			{ name: "resolution", value: "2K" },
+		]);
 	});
 });
 

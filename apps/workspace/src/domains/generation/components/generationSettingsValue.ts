@@ -59,14 +59,15 @@ export const normalizeGenerationSettingsValue = (
 	const route =
 		usableRoute(catalog, kind, stringValue(raw?.routeId)) ?? firstUsableRoute(catalog, kind);
 	if (!route) return emptyGenerationSettingsValue(kind);
+	const referenceAssetIds = normalizeReferenceAssetIDs(raw?.referenceAssetIds, route);
 
 	return {
 		kind,
 		label: route.label.trim() || route.id,
-		params: normalizeRouteParams(route, raw?.params),
+		params: normalizeRouteParams(route, raw?.params, referenceAssetIds.length),
 		promptOptimization: normalizePromptOptimization(catalog, raw?.promptOptimization, promptItems),
 		promptSupplements: normalizePromptSupplements(raw?.promptSupplements, promptItems),
-		referenceAssetIds: normalizeReferenceAssetIDs(raw?.referenceAssetIds, route),
+		referenceAssetIds,
 		routeId: route.id,
 	};
 };
@@ -172,14 +173,18 @@ const emptyGenerationSettingsValue = (kind: GenerationSettingsKind): GenerationS
 	routeId: "",
 });
 
-const normalizeRouteParams = (route: GenerationRoute, rawValue: unknown) => {
+const normalizeRouteParams = (
+	route: GenerationRoute,
+	rawValue: unknown,
+	referenceCount: number,
+) => {
 	const rawParams = recordValue(rawValue);
 	const declaredParamNames = new Set(route.params.map((param) => param.name));
 	const declaredValues = Object.fromEntries(
 		Object.entries(rawParams ?? {}).filter(([name]) => declaredParamNames.has(name)),
 	);
 	const params = routeParamValues(route.params, declaredValues);
-	const controls = resolveGenerationRouteParamControls(route, params);
+	const controls = resolveGenerationRouteParamControls(route, params, { referenceCount });
 
 	if (controls.imageSpec) {
 		const { ratioParam, resolutionParam, selectedRatio, selectedResolution } = controls.imageSpec;
