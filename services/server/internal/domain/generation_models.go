@@ -44,10 +44,11 @@ type GenerationTaskModel struct {
 	CreatedAt       time.Time `gorm:"column:created_at;not null;autoCreateTime:nano"`
 	UpdatedAt       time.Time `gorm:"column:updated_at;not null;autoUpdateTime:nano;index:generation_tasks_kind_status_updated_idx,priority:3,sort:asc"`
 
-	Conversation *GenerationConversationModel   `gorm:"foreignKey:ConversationID;references:ID;constraint:OnDelete:CASCADE"`
-	Project      *WorkspaceProjectModel         `gorm:"foreignKey:ProjectID;references:ID;constraint:OnDelete:CASCADE"`
-	References   []GenerationTaskReferenceModel `gorm:"foreignKey:TaskID;references:ID;constraint:OnDelete:CASCADE"`
-	Assets       []GenerationTaskAssetModel     `gorm:"foreignKey:TaskID;references:ID;constraint:OnDelete:CASCADE"`
+	Conversation *GenerationConversationModel     `gorm:"foreignKey:ConversationID;references:ID;constraint:OnDelete:CASCADE"`
+	Project      *WorkspaceProjectModel           `gorm:"foreignKey:ProjectID;references:ID;constraint:OnDelete:CASCADE"`
+	References   []GenerationTaskReferenceModel   `gorm:"foreignKey:TaskID;references:ID;constraint:OnDelete:CASCADE"`
+	Assets       []GenerationTaskAssetModel       `gorm:"foreignKey:TaskID;references:ID;constraint:OnDelete:CASCADE"`
+	DeletedSlots []GenerationTaskDeletedSlotModel `gorm:"foreignKey:TaskID;references:ID;constraint:OnDelete:CASCADE"`
 }
 
 // TableName returns the backing table name.
@@ -106,6 +107,21 @@ type GenerationTaskAssetModel struct {
 // TableName returns the backing table name.
 func (GenerationTaskAssetModel) TableName() string {
 	return "generation_task_assets"
+}
+
+// GenerationTaskDeletedSlotModel stores generated output slot tombstones.
+type GenerationTaskDeletedSlotModel struct {
+	TaskID    string    `gorm:"column:task_id;primaryKey;index:generation_task_deleted_slots_task_idx,priority:1"`
+	SlotIndex int       `gorm:"column:slot_index;primaryKey;index:generation_task_deleted_slots_task_idx,priority:2"`
+	CreatedAt time.Time `gorm:"column:created_at;not null;autoCreateTime:nano"`
+	UpdatedAt time.Time `gorm:"column:updated_at;not null;autoUpdateTime:nano"`
+
+	Task GenerationTaskModel `gorm:"foreignKey:TaskID;references:ID;constraint:OnDelete:CASCADE"`
+}
+
+// TableName returns the backing table name.
+func (GenerationTaskDeletedSlotModel) TableName() string {
+	return "generation_task_deleted_slots"
 }
 
 // ProjectSelectedAssetModel stores project-level selected creative assets.

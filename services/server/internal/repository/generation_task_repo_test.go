@@ -99,6 +99,35 @@ func TestGenerationTaskRepositoryLifecycle(t *testing.T) {
 	if len(got.Assets) != 1 || got.Assets[0].AssetID != asset.ID || got.Assets[0].Asset.URL != asset.URL {
 		t.Fatalf("Assets = %+v, want normalized asset row with preloaded asset", got.Assets)
 	}
+	if err := repo.ReplaceGenerationTaskDeletedSlotRows(task.ID, []domain.GenerationTaskDeletedSlotModel{{
+		TaskID:    task.ID,
+		SlotIndex: 2,
+		CreatedAt: domain.TimeFromString("2026-05-22T00:00:00Z"),
+		UpdatedAt: domain.TimeFromString("2026-05-22T00:00:00Z"),
+	}}); err != nil {
+		t.Fatalf("ReplaceGenerationTaskDeletedSlotRows() error = %v", err)
+	}
+	got, err = repo.GetGenerationTask(task.ID)
+	if err != nil {
+		t.Fatalf("GetGenerationTask() after deleted slot replacement error = %v", err)
+	}
+	if len(got.DeletedSlots) != 1 || got.DeletedSlots[0].SlotIndex != 2 {
+		t.Fatalf("DeletedSlots = %+v, want normalized deleted slot row", got.DeletedSlots)
+	}
+	deletedSlot, err := repo.DeleteGenerationTaskAssetSlot(task.ID, 3)
+	if err != nil {
+		t.Fatalf("DeleteGenerationTaskAssetSlot() for missing asset row error = %v", err)
+	}
+	if !deletedSlot {
+		t.Fatal("DeleteGenerationTaskAssetSlot() deleted = false, want true for persisted tombstone")
+	}
+	got, err = repo.GetGenerationTask(task.ID)
+	if err != nil {
+		t.Fatalf("GetGenerationTask() after tombstone delete error = %v", err)
+	}
+	if len(got.DeletedSlots) != 2 {
+		t.Fatalf("DeletedSlots = %+v, want both deleted slot rows", got.DeletedSlots)
+	}
 
 	pending, err := repo.ListPendingGenerationTasks("video", []string{" submitted ", "SUBMITTED"}, 10)
 	if err != nil {

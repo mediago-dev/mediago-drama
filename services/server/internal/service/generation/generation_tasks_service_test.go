@@ -293,6 +293,59 @@ func TestGenerationTaskServiceDeleteAssetIncludesAttemptsWithoutDeadlock(t *test
 	}
 }
 
+func TestGenerationTaskServiceDeleteFailedPlaceholderPersistsWithoutAssetRow(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	taskID := "task-delete-failed-placeholder"
+
+	service := NewGenerationTaskService(dbPath, nil)
+	if err := service.Upsert(GenerationTaskRecord{
+		ID:      taskID,
+		Kind:    "image",
+		Status:  "failed",
+		Prompt:  "portrait",
+		Message: "provider failed before storing assets",
+		Params:  map[string]any{"n": 1},
+	}); err != nil {
+		t.Fatalf("upserting failed task: %v", err)
+	}
+
+	task, deleted, err := service.DeleteAsset(taskID, 0)
+	if err != nil {
+		t.Fatalf("deleting failed placeholder: %v", err)
+	}
+	if !deleted {
+		t.Fatal("delete returned false, want true for failed placeholder")
+	}
+	if len(task.Assets) != 0 {
+		t.Fatalf("assets = %#v, want no asset rows for failed placeholder", task.Assets)
+	}
+	if len(task.DeletedAssetSlots) != 1 || task.DeletedAssetSlots[0] != 0 {
+		t.Fatalf("deleted slots = %#v, want slot 0", task.DeletedAssetSlots)
+	}
+
+	restarted := NewGenerationTaskService(dbPath, nil)
+	reloaded, ok, err := restarted.Get(taskID)
+	if err != nil {
+		t.Fatalf("getting reloaded task: %v", err)
+	}
+	if !ok {
+		t.Fatal("task was not persisted")
+	}
+	if len(reloaded.Assets) != 0 ||
+		len(reloaded.DeletedAssetSlots) != 1 ||
+		reloaded.DeletedAssetSlots[0] != 0 {
+		t.Fatalf("reloaded task = %+v, want persisted deleted placeholder slot", reloaded)
+	}
+
+	_, deleted, err = restarted.DeleteAsset(taskID, 0)
+	if err != nil {
+		t.Fatalf("deleting failed placeholder again: %v", err)
+	}
+	if !deleted {
+		t.Fatal("second delete returned false, want idempotent success")
+	}
+}
+
 func TestGenerationTaskServiceUpdateAssetSelectionPersists(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	taskID := "task-update-selected-asset"

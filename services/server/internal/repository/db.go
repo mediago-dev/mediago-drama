@@ -212,6 +212,7 @@ func EnsureWorkspaceSchema(db *gorm.DB) error {
 		&domain.GenerationTaskAttemptModel{},
 		&domain.GenerationTaskReferenceModel{},
 		&domain.GenerationTaskAssetModel{},
+		&domain.GenerationTaskDeletedSlotModel{},
 		&domain.ProjectSelectedAssetModel{},
 		&domain.ProjectReferenceAssetModel{},
 		&domain.GenerationNotificationModel{},
