@@ -41,8 +41,12 @@ export const filterMediaAssets = (
 export const userRequestDetails = (
 	route: GenerationRoute,
 	params: Record<string, unknown>,
+	referenceCount = 0,
 ): ChatMessageDetail[] => [
-	{ label: "供应商", value: `${routeProviderLabel(route)} · ${route.model}` },
+	{
+		label: "供应商",
+		value: `${routeProviderLabel(route)} · ${generationModelForReferences(route, referenceCount)}`,
+	},
 	...paramDetails(params, route.params),
 ];
 
@@ -64,11 +68,16 @@ export const userTaskDetails = (
 		{
 			label: "供应商",
 			value: route
-				? `${routeProviderLabel(route, catalog.providers)} · ${route.model}`
+				? `${routeProviderLabel(route, catalog.providers)} · ${task.model || route.model}`
 				: task.model,
 		},
 		...paramDetails(visibleParams, route?.params ?? []),
 	];
+};
+
+const generationModelForReferences = (route: GenerationRoute, referenceCount: number) => {
+	if (route.id !== "mediago.happyhorse-1.1") return route.model;
+	return referenceCount > 0 ? "happyhorse-1.1-r2v" : "happyhorse-1.1-t2v";
 };
 
 export const assistantGenerationDetails = (item: {

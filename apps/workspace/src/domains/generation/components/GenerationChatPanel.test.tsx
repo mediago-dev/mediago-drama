@@ -249,6 +249,30 @@ describe("GenerationChatPanel", () => {
 		expect(screen.getAllByText("生成中")).toHaveLength(2);
 	});
 
+	it("shows partial success after a completed multi-image task returns fewer assets", () => {
+		HTMLElement.prototype.scrollTo = vi.fn();
+		const entries: GenerationEntry[] = [
+			{
+				id: "task-image-partial",
+				kind: "image",
+				status: "completed",
+				content: "",
+				prompt: "生成四张图",
+				requestDetails: [{ label: "图像数量", value: "4" }],
+				assets: [{ kind: "image", url: "https://example.test/only.png", mimeType: "image/png" }],
+			},
+		];
+
+		const { container } = render(
+			<GenerationChatPanel entries={entries} onRefreshVideo={vi.fn()} onSelectEntry={vi.fn()} />,
+		);
+
+		expect(
+			within(container).getByText("部分成功：请求 4 张，成功生成 1 张，3 张未生成。"),
+		).toBeTruthy();
+		expect(within(container).queryByText("生成中")).toBeNull();
+	});
+
 	it("does not treat an image ratio detail as the pending image count", () => {
 		HTMLElement.prototype.scrollTo = vi.fn();
 		const entries: GenerationEntry[] = [

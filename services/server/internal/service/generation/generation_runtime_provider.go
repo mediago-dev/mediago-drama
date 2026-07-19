@@ -72,8 +72,11 @@ func (workflow *GenerationService) requireGenerationRouteConfigured(route corege
 		// means the enablement state is unknown, and failing open lets the real
 		// generation request surface the actual error instead of a misleading
 		// "model disabled" message.
-		if models, err := workflow.mediagoAvailableModels(context.Background()); err == nil && !mediagoModelSetHasRoute(models, route) {
-			return fmt.Errorf("MediaGo 聚合平台当前未启用模型 %s", route.Model)
+		if models, err := workflow.mediagoAvailableModels(context.Background()); err == nil {
+			missingModels := mediagoMissingRouteModels(models, route)
+			if len(missingModels) > 0 {
+				return fmt.Errorf("MediaGo 聚合平台当前未启用模型 %s", strings.Join(missingModels, ", "))
+			}
 		}
 	}
 	return RequireGenerationRouteConfigured(

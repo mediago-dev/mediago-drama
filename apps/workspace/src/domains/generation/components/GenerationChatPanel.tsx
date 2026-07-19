@@ -147,13 +147,20 @@ const GenerationChatEntry: React.FC<{
 	const requestSummary = requestInlineSummary(
 		requestDetailsWithCreatedAt(entry.requestDetails ?? [], entry.createdAt),
 	);
+	const failed = isFailedGenerationStatus(entry.assistantMessage?.status ?? entry.status);
 	const requestedImageCount =
-		pending && entry.kind === "image" ? requestGenerationCount(entry.requestDetails ?? []) : 0;
-	const pendingPlaceholderCount = Math.max(0, requestedImageCount - (entry.assets?.length ?? 0));
+		entry.kind === "image" ? requestGenerationCount(entry.requestDetails ?? []) : 0;
+	const missingCompletedImageCount = Math.max(0, requestedImageCount - (entry.assets?.length ?? 0));
+	const pendingPlaceholderCount = pending ? missingCompletedImageCount : 0;
+	const partiallyCompletedImage =
+		entry.kind === "image" &&
+		!pending &&
+		!failed &&
+		hasGeneratedAssets &&
+		missingCompletedImageCount > 0;
 	const isTextEntry = entry.kind === "text";
 	const showTextLoading = isTextEntry && pending && entry.content.trim() === "";
 	const canCopyTextResult = isTextEntry && Boolean(entry.content.trim() && onCopyResult);
-	const failed = isFailedGenerationStatus(entry.assistantMessage?.status ?? entry.status);
 
 	return (
 		<div className="grid gap-3 border-b border-border pb-6 last:border-b-0">
@@ -269,6 +276,18 @@ const GenerationChatEntry: React.FC<{
 					)}
 				</div>
 			)}
+			{partiallyCompletedImage ? (
+				<div
+					role="status"
+					className="flex max-w-[min(44rem,92%)] items-start gap-2 rounded-sm border border-warning-border bg-warning-surface px-3 py-2 text-xs leading-5 text-warning-foreground"
+				>
+					<AlertCircle className="mt-0.5 size-4 shrink-0" />
+					<span>
+						部分成功：请求 {requestedImageCount} 张，成功生成 {entry.assets?.length ?? 0} 张，
+						{missingCompletedImageCount} 张未生成。
+					</span>
+				</div>
+			) : null}
 			<GenerationDetailText details={entry.resultDetails ?? []} />
 		</div>
 	);

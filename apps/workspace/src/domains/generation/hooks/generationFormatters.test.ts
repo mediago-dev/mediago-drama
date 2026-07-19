@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { GenerationRoute, GenerationTask } from "@/domains/generation/api/generation";
-import { generationCreatedAtDetail, providerLabel, userTaskDetails } from "./generationFormatters";
+import {
+	generationCreatedAtDetail,
+	providerLabel,
+	userRequestDetails,
+	userTaskDetails,
+} from "./generationFormatters";
 
 describe("generationCreatedAtDetail", () => {
 	it("formats valid generation timestamps", () => {
@@ -43,6 +48,28 @@ describe("generationCreatedAtDetail", () => {
 		).toEqual([
 			{ label: "供应商", value: "阿里云百炼 · 官方 · wan2.7-image-pro" },
 			{ label: "分辨率", value: "4K" },
+		]);
+	});
+
+	it("shows the HappyHorse R2V model when a MediaGo request has references", () => {
+		const route = {
+			id: "mediago.happyhorse-1.1",
+			model: "happyhorse-1.1-t2v",
+			provider: "mediago",
+			params: [],
+		} as unknown as GenerationRoute;
+
+		expect(userRequestDetails(route, {}, 1)).toEqual([
+			{ label: "供应商", value: "MediaGo · 统一接口 · happyhorse-1.1-r2v" },
+		]);
+
+		const task = {
+			routeId: route.id,
+			model: "happyhorse-1.1-r2v",
+			params: {},
+		} as unknown as GenerationTask;
+		expect(userTaskDetails(task, { routes: [route] })).toEqual([
+			{ label: "供应商", value: "MediaGo · 统一接口 · happyhorse-1.1-r2v" },
 		]);
 	});
 });

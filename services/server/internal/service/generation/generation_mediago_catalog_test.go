@@ -30,7 +30,11 @@ func TestListGenerationModelsFiltersMediagoRoutesByUserCatalog(t *testing.T) {
 					{"id": "gpt-image-2"},
 					{"canonical_slug": "doubao-seedream-5-0-lite"},
 					{"id": "gemini-3.1-flash-image"},
-					{"id": "gemini-3-pro-image"}
+					{"id": "gemini-3-pro-image"},
+					{"id": "wan2.7-image"},
+					{"id": "wan2.7-image-pro"},
+					{"id": "happyhorse-1.1-t2v"},
+					{"id": "happyhorse-1.1-r2v"}
 				]
 			}`))
 	}))
@@ -56,6 +60,13 @@ func TestListGenerationModelsFiltersMediagoRoutesByUserCatalog(t *testing.T) {
 	if !generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoNanoBananaPro) {
 		t.Fatalf("route %q should be configured when present in MediaGo user catalog", coregeneration.RouteMediagoNanoBananaPro)
 	}
+	if !generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoWan27Image) ||
+		!generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoWan27ImagePro) {
+		t.Fatal("MediaGo Wan routes should be configured when both models are present")
+	}
+	if !generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoHappyHorse11) {
+		t.Fatal("MediaGo HappyHorse route should be configured when t2v and r2v are present")
+	}
 	if generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoNanoBanana25) {
 		t.Fatalf("route %q should be hidden when absent from MediaGo user catalog", coregeneration.RouteMediagoNanoBanana25)
 	}
@@ -69,6 +80,32 @@ func TestListGenerationModelsFiltersMediagoRoutesByUserCatalog(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&requests); got != 1 {
 		t.Fatalf("MediaGo model catalog requests = %d, want cached catalog to avoid a second fetch", got)
+	}
+}
+
+func TestListGenerationModelsRequiresBothMediagoHappyHorseModes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"data":[{"id":"happyhorse-1.1-t2v"}]}`))
+	}))
+	defer server.Close()
+
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{coregeneration.ProviderMediago: "mgak-test"},
+	})
+	workflow := NewGenerationService(settingsSvc, nil, nil)
+	workflow.SetMediagoBaseURL(server.URL)
+
+	if generationRouteConfiguredInCatalog(workflow.ListGenerationModels(), coregeneration.RouteMediagoHappyHorse11) {
+		t.Fatal("MediaGo HappyHorse route should stay hidden until t2v and r2v are both available")
+	}
+	route, ok := coregeneration.FindRoute(coregeneration.RouteMediagoHappyHorse11)
+	if !ok {
+		t.Fatalf("missing route %q", coregeneration.RouteMediagoHappyHorse11)
+	}
+	_, err := workflow.newGenerationProvider(route)
+	if err == nil || !strings.Contains(err.Error(), "happyhorse-1.1-r2v") {
+		t.Fatalf("newGenerationProvider() error = %v, want missing r2v model", err)
 	}
 }
 

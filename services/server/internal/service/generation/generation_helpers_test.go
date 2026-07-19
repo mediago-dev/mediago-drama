@@ -118,3 +118,26 @@ func TestGenerationResponseFromCoreFailsCompletedImageWithoutAssets(t *testing.T
 		t.Fatalf("error = %q, want empty image asset reason", response.Error)
 	}
 }
+
+func TestGenerationRequestFromMessageSelectsMediagoHappyHorseModelFromReferences(t *testing.T) {
+	route, ok := coregeneration.FindRoute(coregeneration.RouteMediagoHappyHorse11)
+	if !ok {
+		t.Fatalf("missing route %q", coregeneration.RouteMediagoHappyHorse11)
+	}
+	payload := GenerationMessageRequest{
+		Kind:     string(route.Kind),
+		RouteID:  route.ID,
+		Provider: route.Provider,
+		Model:    route.Model,
+		Prompt:   "animate the character",
+	}
+
+	textRequest := GenerationRequestFromMessage(payload, route, nil)
+	if textRequest.Model != coregeneration.ModelHappyHorse11T2V {
+		t.Fatalf("text model = %q, want %q", textRequest.Model, coregeneration.ModelHappyHorse11T2V)
+	}
+	referenceRequest := GenerationRequestFromMessage(payload, route, []string{"data:image/png;base64,AAAA"})
+	if referenceRequest.Model != coregeneration.ModelHappyHorse11R2V {
+		t.Fatalf("reference model = %q, want %q", referenceRequest.Model, coregeneration.ModelHappyHorse11R2V)
+	}
+}
