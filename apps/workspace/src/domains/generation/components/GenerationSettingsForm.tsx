@@ -266,9 +266,9 @@ export const GenerationSettingsForm: React.FC<GenerationSettingsFormProps> = ({
 						</label>
 					</div>
 					<div className="flex flex-wrap items-center gap-2">
-						<LabeledInlineControl label="技能包">
+						<LabeledInlineControl label="提示词">
 							<PromptPackSelect
-								ariaLabel="补充技能包"
+								ariaLabel="补充提示词"
 								disabled={
 									effectiveDisabled ||
 									!controller.promptSupplementEnabled ||
@@ -289,8 +289,8 @@ export const GenerationSettingsForm: React.FC<GenerationSettingsFormProps> = ({
 					{controller.promptSupplementEnabled && !promptSupplementReady ? (
 						<p className="text-xs text-muted-foreground">
 							{controller.promptInsertItems.length === 0
-								? "需要可用的技能包后才能追加并生成。"
-								: "需要选择至少一个技能包后才能追加并生成。"}
+								? "需要可用的提示词后才能追加并生成。"
+								: "需要选择至少一个提示词后才能追加并生成。"}
 						</p>
 					) : null}
 				</section>
@@ -314,9 +314,9 @@ export const GenerationSettingsForm: React.FC<GenerationSettingsFormProps> = ({
 						</label>
 					</div>
 					<div className="flex flex-wrap items-center gap-2">
-						<LabeledInlineControl label="技能包">
+						<LabeledInlineControl label="提示词">
 							<PromptPackSelect
-								ariaLabel="优化技能包"
+								ariaLabel="优化提示词"
 								disabled={
 									effectiveDisabled ||
 									!controller.value.promptOptimization.enabled ||
@@ -379,7 +379,7 @@ export const GenerationSettingsForm: React.FC<GenerationSettingsFormProps> = ({
 					</div>
 					{controller.value.promptOptimization.enabled && !promptOptimizationReady ? (
 						<p className="text-xs text-muted-foreground">
-							需要可用的技能包和文本模型后才能优化并生成。
+							需要可用的提示词和文本模型后才能优化并生成。
 						</p>
 					) : null}
 				</section>
@@ -430,12 +430,12 @@ const PromptPackSelect: React.FC<{
 	);
 	const triggerLabel =
 		items.length === 0
-			? "无可用技能包"
+			? "无可用提示词"
 			: multiple
 				? selectedIds.length > 0
 					? `已选 ${selectedIds.length} 个`
-					: "选择技能包"
-				: (items.find((item) => item.id === primarySelectedId)?.name ?? "选择技能包");
+					: "选择提示词"
+				: (items.find((item) => item.id === primarySelectedId)?.name ?? "选择提示词");
 	const [activeGroupId, setActiveGroupId] = useState(selectedGroup?.id ?? groups[0]?.id ?? "");
 	const activeGroup =
 		groups.find((group) => group.id === activeGroupId) ?? selectedGroup ?? groups[0] ?? null;
@@ -565,9 +565,9 @@ const PromptPackSelect: React.FC<{
 					onPointerEnter={clearHoverIntent}
 					onPointerLeave={handleSubmenuPointerLeave}
 				>
-					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">技能包</p>
+					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">提示词</p>
 					<div
-						aria-label="技能包列表"
+						aria-label="提示词列表"
 						aria-multiselectable={multiple || undefined}
 						className="grid min-h-0 auto-rows-min gap-1 overflow-y-auto overscroll-contain pr-1"
 						onWheel={scrollCascadedPickerListOnWheel}

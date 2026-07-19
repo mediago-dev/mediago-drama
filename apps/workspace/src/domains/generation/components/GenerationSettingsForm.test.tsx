@@ -104,8 +104,9 @@ describe("GenerationSettingsForm", () => {
 		await screen.findByRole("combobox", { name: "模型名称" });
 		fireEvent.click(screen.getByRole("checkbox", { name: "生成时追加" }));
 
-		const trigger = screen.getByRole("button", { name: "补充技能包" });
+		const trigger = screen.getByRole("button", { name: "补充提示词" });
 		fireEvent.click(trigger);
+		expect(screen.getAllByText("提示词")).toHaveLength(3);
 		expect(screen.getByRole("button", { name: "风格 1 项" })).toBeTruthy();
 		fireEvent.click(screen.getByRole("option", { name: "用户自定义风格" }));
 		fireEvent.pointerEnter(screen.getByRole("button", { name: "镜头 1 项" }));
@@ -128,10 +129,10 @@ describe("GenerationSettingsForm", () => {
 		render(<Harness />);
 		await screen.findByRole("combobox", { name: "模型名称" });
 		fireEvent.click(screen.getByRole("checkbox", { name: "生成时追加" }));
-		fireEvent.click(screen.getByRole("button", { name: "补充技能包" }));
+		fireEvent.click(screen.getByRole("button", { name: "补充提示词" }));
 		vi.useFakeTimers();
 
-		const itemPanel = screen.getByRole("listbox", { name: "技能包列表" }).closest("section");
+		const itemPanel = screen.getByRole("listbox", { name: "提示词列表" }).closest("section");
 		const crossedGroup = screen.getByRole("button", { name: "镜头 1 项" });
 		expect(itemPanel).toBeTruthy();
 
@@ -157,8 +158,8 @@ describe("GenerationSettingsForm", () => {
 
 		fireEvent.click(screen.getByRole("checkbox", { name: "优化并生成时使用" }));
 
-		expect(screen.getByText("需要可用的技能包和文本模型后才能优化并生成。")).toBeTruthy();
-		expect(screen.getByRole("button", { name: "优化技能包" })).toBeDisabled();
+		expect(screen.getByText("需要可用的提示词和文本模型后才能优化并生成。")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "优化提示词" })).toBeDisabled();
 		expect(screen.getByRole("combobox", { name: "优化模型" })).toBeDisabled();
 	});
 
