@@ -694,7 +694,7 @@ describe("EpisodeTimelineView canvas generation", () => {
 		});
 	});
 
-	it("persists videos synced from selected storyboard assets before preview playback", async () => {
+	it("keeps selected storyboard videos ready when the latest generation task failed", async () => {
 		const persistedEpisode = makeStoryboardEpisode();
 		vi.mocked(useSWR).mockImplementation((key: unknown) => {
 			if (Array.isArray(key) && key[0] === "workspace-resolved-episode") {
@@ -734,19 +734,13 @@ describe("EpisodeTimelineView canvas generation", () => {
 					data: {
 						tasks: [
 							{
-								assets: [
-									{
-										kind: "video",
-										posterUrl: "/api/v1/media-assets/generated-video/poster",
-										selected: true,
-										url: "/api/v1/media-assets/generated-video/content",
-									},
-								],
+								assets: [],
 								createdAt: "2026-06-22T00:00:00.000Z",
 								documentId: "story-doc",
+								error: "provider failed",
 								kind: "video",
 								sectionId: storyboardVideoClipId,
-								status: "completed",
+								status: "failed",
 								updatedAt: "2026-06-22T00:00:01.000Z",
 							},
 						],
@@ -782,6 +776,13 @@ describe("EpisodeTimelineView canvas generation", () => {
 				}),
 				"project-a",
 			);
+		});
+		expect(updateWorkspaceEpisode).toHaveBeenCalledTimes(1);
+		expect(
+			findEpisodeVideoClip(useEpisodeStore.getState().episode, storyboardVideoClipId),
+		).toMatchObject({
+			status: "ready",
+			videoUrl: "/api/v1/media-assets/generated-video/content",
 		});
 	});
 
