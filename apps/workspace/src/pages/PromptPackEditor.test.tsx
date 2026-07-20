@@ -425,7 +425,7 @@ describe("PromptPackEditor", () => {
 			source: "user" as const,
 		};
 		const promptEntry = {
-			body: "提示词正文",
+			body: "# 提示词正文\n\n包含 **重点**。\n\n- 第一项",
 			id: "prompt-switch",
 			kind: "prompt" as const,
 			metadata: { category: "other" },
@@ -448,8 +448,12 @@ describe("PromptPackEditor", () => {
 
 		expect(await screen.findByLabelText("提示词名称")).toHaveValue("画面提示词");
 		const promptBody = screen.getByLabelText("编辑提示词内容");
-		expect(promptBody.tagName).toBe("TEXTAREA");
-		expect(promptBody).toHaveValue("提示词正文");
+		expect(promptBody).toHaveAttribute("contenteditable", "true");
+		expect(
+			within(promptBody).getByRole("heading", { level: 1, name: "提示词正文" }),
+		).toBeInTheDocument();
+		expect(promptBody.querySelector("strong")).toHaveTextContent("重点");
+		expect(within(promptBody).getByRole("list")).toHaveTextContent("第一项");
 		expect(screen.queryByText(/Cannot read properties of null/)).not.toBeInTheDocument();
 	});
 
@@ -967,6 +971,38 @@ describe("PromptPackEditor", () => {
 		fireEvent.click(screen.getByRole("button", { name: "放弃草稿" }));
 		expect(screen.queryByRole("button", { name: "分组管理" })).not.toBeInTheDocument();
 		expect(screen.queryByRole("button", { name: "唯一 Skill" })).not.toBeInTheDocument();
+	});
+
+	it("allows returning to an empty Skill tab when the pack only has prompts", async () => {
+		vi.mocked(getPromptPackContents).mockResolvedValue({
+			pack: { ...localPack, promptCount: 1 },
+			entries: [
+				{
+					body: "Prompt content",
+					id: "prompt-only",
+					kind: "prompt",
+					metadata: { category: "other" },
+					name: "唯一提示词",
+					packId: localPack.id,
+					slug: "prompt-only",
+					source: "user",
+				},
+			],
+			categories: [{ id: "other", label: "其他", order: 0, packId: localPack.id, source: "user" }],
+		});
+		renderEditor("/prompt-pack-editor?packId=local.test-pack");
+
+		const promptTab = await screen.findByRole("tab", { name: "提示词 1" });
+		const skillTab = screen.getByRole("tab", { name: "Skill 0" });
+		fireEvent.click(promptTab);
+		await waitFor(() => expect(promptTab).toHaveAttribute("aria-selected", "true"));
+		expect(screen.getByRole("button", { name: "唯一提示词" })).toBeInTheDocument();
+
+		fireEvent.click(skillTab);
+		await waitFor(() => expect(skillTab).toHaveAttribute("aria-selected", "true"));
+		expect(screen.queryByRole("button", { name: "唯一提示词" })).not.toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+		expect(await screen.findByRole("button", { name: "新建 Skill" })).toBeInTheDocument();
 	});
 
 	it("exports a plain mgpack without a commercial publishing form", async () => {
@@ -1506,7 +1542,7 @@ describe("PromptPackEditor", () => {
 		expect(
 			screen.queryByText("提示词", { selector: "span.rounded-control" }),
 		).not.toBeInTheDocument();
-		expect(bodyInput.previousElementSibling).toBe(nameInput);
+		expect(nameInput.nextElementSibling).toContainElement(bodyInput);
 		fireEvent.click(screen.getByRole("button", { name: "编辑" }));
 		fireEvent.change(nameInput, {
 			target: { value: "新名称" },
@@ -1522,6 +1558,49 @@ describe("PromptPackEditor", () => {
 						id: promptEntry.id,
 						metadata: { category: "style", legacyFlag: "keep" },
 						name: "新名称",
+					}),
+				]),
+			}),
+		);
+	});
+
+	it("flushes pasted Markdown before an immediate keyboard save", async () => {
+		const promptEntry = {
+			body: "原始内容",
+			id: "prompt-immediate-save",
+			kind: "prompt" as const,
+			metadata: { category: "style" },
+			name: "即时保存提示词",
+			packId: localPack.id,
+			slug: "prompt-immediate-save",
+			source: "user" as const,
+		};
+		vi.mocked(getPromptPackContents).mockResolvedValue({
+			pack: localPack,
+			entries: [promptEntry],
+			categories: [{ id: "style", label: "风格", order: 0, packId: localPack.id, source: "user" }],
+		});
+		renderEditor("/prompt-pack-editor?packId=local.test-pack");
+
+		fireEvent.click(await screen.findByRole("button", { name: "即时保存提示词" }));
+		fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+		const bodyInput = await screen.findByLabelText("编辑提示词内容");
+		const markdown = "# Seedance 2.0\n\n具备 **动作指导** 能力。";
+		fireEvent.paste(bodyInput, {
+			clipboardData: {
+				getData: (type: string) => (type === "text/plain" ? markdown : ""),
+			},
+		});
+		fireEvent.keyDown(window, { key: "s", metaKey: true });
+
+		await waitFor(() => expect(savePromptPackDraft).toHaveBeenCalledTimes(1));
+		expect(savePromptPackDraft).toHaveBeenCalledWith(
+			localPack.id,
+			expect.objectContaining({
+				entries: expect.arrayContaining([
+					expect.objectContaining({
+						body: expect.stringContaining("**动作指导**"),
+						id: promptEntry.id,
 					}),
 				]),
 			}),

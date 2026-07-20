@@ -161,18 +161,23 @@ export const PromptPackEditor: React.FC = () => {
 		const handleSaveShortcut = (event: KeyboardEvent) => {
 			if (
 				!isEditing ||
-				!persistedDraftDirty ||
 				savingPack ||
 				!(event.metaKey || event.ctrlKey) ||
 				event.key.toLowerCase() !== "s"
 			)
 				return;
 			event.preventDefault();
-			void savePack();
+			window.setTimeout(() => {
+				const latestDraft = selectedPackID
+					? usePromptPackDraftStore.getState().draftsByPackId[selectedPackID]
+					: undefined;
+				if (!latestDraft || !isPersistedPromptPackDraftDirty(latestDraft)) return;
+				void savePack();
+			}, 0);
 		};
-		window.addEventListener("keydown", handleSaveShortcut);
-		return () => window.removeEventListener("keydown", handleSaveShortcut);
-	}, [isEditing, persistedDraftDirty, savePack, savingPack]);
+		window.addEventListener("keydown", handleSaveShortcut, true);
+		return () => window.removeEventListener("keydown", handleSaveShortcut, true);
+	}, [isEditing, savePack, savingPack, selectedPackID]);
 
 	const selectPack = (packID?: string) => {
 		setCreatingPack(false);

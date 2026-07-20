@@ -1,16 +1,25 @@
+import type { Extensions } from "@tiptap/core";
 import Placeholder from "@tiptap/extension-placeholder";
+import { Table } from "@tiptap/extension-table";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
+import TableRow from "@tiptap/extension-table-row";
 import { Markdown } from "@tiptap/markdown";
+import { Slice } from "@tiptap/pm/model";
 import { EditorContent, type Editor, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Code2, Heading1, Heading2, Heading3, List, ListOrdered, Quote, Type } from "lucide-react";
 import type React from "react";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useMarkdownEditorPerformance } from "@/hooks/useMarkdownEditorPerformance";
+import { createMarkdownEditorContentCache } from "@/shared/lib/markdown-editor-content-cache";
 import { cn } from "@/shared/lib/utils";
 import "@/styles/tiptap.css";
 
 export interface SettingsMarkdownEditorProps {
 	ariaLabel?: string;
 	ariaLabelledBy?: string;
+	cacheKey?: string;
 	className?: string;
 	editable?: boolean;
 	editorClassName?: string;
@@ -24,6 +33,7 @@ export interface SettingsMarkdownEditorProps {
 export interface SettingsMarkdownPreviewProps {
 	ariaLabel?: string;
 	ariaLabelledBy?: string;
+	cacheKey?: string;
 	className?: string;
 	editorClassName?: string;
 	placeholder?: string;
@@ -33,6 +43,7 @@ export interface SettingsMarkdownPreviewProps {
 export const SettingsMarkdownEditor: React.FC<SettingsMarkdownEditorProps> = ({
 	ariaLabel = "Markdown 编辑器",
 	ariaLabelledBy,
+	cacheKey,
 	className,
 	editable = true,
 	editorClassName,
@@ -45,6 +56,8 @@ export const SettingsMarkdownEditor: React.FC<SettingsMarkdownEditorProps> = ({
 	const editor = useSettingsMarkdownEditor({
 		ariaLabel,
 		ariaLabelledBy,
+		cacheKey,
+		compact: variant === "panel",
 		editable,
 		editorClassName,
 		onChange,
@@ -209,9 +222,36 @@ const inactiveToolbarState: SettingsToolbarState = {
 	paragraph: false,
 };
 
+const ignoreMarkdownChange = () => undefined;
+const settingsMarkdownContentCache = createMarkdownEditorContentCache();
+
+const createSettingsMarkdownExtensions = ({ placeholder }: { placeholder: string }): Extensions => [
+	StarterKit.configure({
+		link: {
+			autolink: true,
+			defaultProtocol: "https",
+			enableClickSelection: true,
+			linkOnPaste: true,
+			openOnClick: false,
+		},
+	}),
+	Table,
+	TableRow,
+	TableHeader,
+	TableCell,
+	Placeholder.configure({ placeholder }),
+	Markdown.configure({
+		indentation: {
+			style: "space",
+			size: 2,
+		},
+	}),
+];
+
 export const SettingsMarkdownPreview: React.FC<SettingsMarkdownPreviewProps> = ({
 	ariaLabel = "Markdown 预览",
 	ariaLabelledBy,
+	cacheKey,
 	className,
 	editorClassName,
 	placeholder = "暂无内容。",
@@ -220,6 +260,8 @@ export const SettingsMarkdownPreview: React.FC<SettingsMarkdownPreviewProps> = (
 	const editor = useSettingsMarkdownEditor({
 		ariaLabel,
 		ariaLabelledBy,
+		cacheKey,
+		compact: true,
 		editable: false,
 		editorClassName,
 		placeholder,
@@ -241,6 +283,8 @@ export const SettingsMarkdownPreview: React.FC<SettingsMarkdownPreviewProps> = (
 const useSettingsMarkdownEditor = ({
 	ariaLabel,
 	ariaLabelledBy,
+	cacheKey,
+	compact,
 	editable,
 	editorClassName,
 	onChange,
@@ -249,75 +293,131 @@ const useSettingsMarkdownEditor = ({
 }: {
 	ariaLabel: string;
 	ariaLabelledBy?: string;
+	cacheKey?: string;
+	compact: boolean;
 	editable: boolean;
 	editorClassName?: string;
 	onChange?: (value: string) => void;
 	placeholder: string;
 	value: string;
 }) => {
-	const onChangeRef = useRef(onChange);
-	const emittedMarkdownRef = useRef(value);
+	const resolvedCacheKey = cacheKey ?? "";
+	const editableRef = useRef(editable);
+	const cacheWriteVersionRef = useRef(0);
+	editableRef.current = editable;
+	const rememberEditorContent = useCallback((key: string, markdown: string, nextEditor: Editor) => {
+		if (!key || !markdown) return;
+		const version = ++cacheWriteVersionRef.current;
+		window.setTimeout(() => {
+			if (cacheWriteVersionRef.current !== version) return;
+			settingsMarkdownContentCache.remember(key, markdown, nextEditor);
+		}, 0);
+	}, []);
+	const {
+		emittedMarkdownRef,
+		flushPendingMarkdownChange,
+		handleBlur,
+		handleUpdate,
+		hasPendingMarkdownChange,
+		shouldRerenderOnTransaction,
+	} = useMarkdownEditorPerformance({
+		onChange: onChange ?? ignoreMarkdownChange,
+		value,
+	});
 	const extensions = useMemo(
-		() => [
-			StarterKit.configure({
-				link: {
-					autolink: true,
-					defaultProtocol: "https",
-					enableClickSelection: true,
-					linkOnPaste: true,
-					openOnClick: !editable,
-				},
-			}),
-			Placeholder.configure({ placeholder }),
-			Markdown.configure({
-				indentation: {
-					style: "space",
-					size: 2,
-				},
-			}),
-		],
-		[editable, placeholder],
+		() => createSettingsMarkdownExtensions({ placeholder }),
+		[placeholder],
+	);
+	const initialEditorContent = useMemo(
+		() =>
+			(resolvedCacheKey && settingsMarkdownContentCache.cached(resolvedCacheKey, value)) || value,
+		[resolvedCacheKey, value],
 	);
 	const editor = useEditor(
 		{
 			editable,
 			extensions,
-			content: value,
-			contentType: "markdown",
+			content: initialEditorContent,
+			...(typeof initialEditorContent === "string" ? { contentType: "markdown" as const } : {}),
 			editorProps: {
 				attributes: {
 					...(ariaLabelledBy ? { "aria-labelledby": ariaLabelledBy } : { "aria-label": ariaLabel }),
 					class: cn(
-						"settings-markdown-prosemirror tiptap-content min-h-full outline-none",
+						"tiptap-content min-h-full outline-none",
+						compact && "settings-markdown-prosemirror",
 						editorClassName,
 					),
 				},
+				clipboardTextParser: (text, _context, _plain, view) => {
+					const currentEditor = (view.dom as typeof view.dom & { editor?: Editor }).editor;
+					if (!editableRef.current || !currentEditor?.markdown) return Slice.empty;
+
+					const document = view.state.schema.nodeFromJSON(
+						currentEditor.markdown.parse(text.replace(/^\uFEFF/, "")),
+					);
+					return Slice.maxOpen(document.content);
+				},
 			},
 			immediatelyRender: false,
+			shouldRerenderOnTransaction,
+			onBlur: handleBlur,
+			onCreate: ({ editor: nextEditor }) => {
+				rememberEditorContent(resolvedCacheKey, value, nextEditor);
+			},
 			onUpdate: ({ editor: nextEditor }) => {
-				if (!editable) return;
-
-				const markdown = nextEditor.getMarkdown();
-				emittedMarkdownRef.current = markdown;
-				onChangeRef.current?.(markdown);
+				if (!editableRef.current) return;
+				handleUpdate(nextEditor);
 			},
 		},
-		[ariaLabel, ariaLabelledBy, editable, editorClassName, extensions],
+		[
+			ariaLabel,
+			ariaLabelledBy,
+			compact,
+			editorClassName,
+			extensions,
+			handleBlur,
+			handleUpdate,
+			rememberEditorContent,
+			shouldRerenderOnTransaction,
+		],
+	);
+
+	useEffect(
+		() => () => {
+			cacheWriteVersionRef.current += 1;
+		},
+		[],
 	);
 
 	useEffect(() => {
-		onChangeRef.current = onChange;
-	}, [onChange]);
+		if (!editor || editor.isDestroyed || editor.isEditable === editable) return;
+		editor.setEditable(editable, false);
+	}, [editable, editor]);
 
 	useEffect(() => {
 		if (!editor || editor.isDestroyed || value === emittedMarkdownRef.current) return;
+		if (hasPendingMarkdownChange()) {
+			flushPendingMarkdownChange();
+			if (value === emittedMarkdownRef.current) return;
+		}
 
 		emittedMarkdownRef.current = value;
-		editor.commands.setContent(value, {
-			contentType: "markdown",
+		const cachedContent = resolvedCacheKey
+			? settingsMarkdownContentCache.cached(resolvedCacheKey, value)
+			: null;
+		editor.commands.setContent(cachedContent ?? value, {
+			...(cachedContent ? {} : { contentType: "markdown" as const }),
 			emitUpdate: false,
 		});
-	}, [editor, value]);
+		if (!cachedContent) rememberEditorContent(resolvedCacheKey, value, editor);
+	}, [
+		editor,
+		flushPendingMarkdownChange,
+		hasPendingMarkdownChange,
+		rememberEditorContent,
+		resolvedCacheKey,
+		value,
+	]);
 
 	return editor;
 };
