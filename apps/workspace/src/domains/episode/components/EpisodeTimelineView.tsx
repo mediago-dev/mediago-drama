@@ -499,14 +499,15 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 				player.currentTime = startTime;
 			}
 			const nativeVideo = mediaPlayerVideoElement(player);
-			const playbackRequest =
-				nativeVideo?.play() ?? player.provider?.play() ?? player.play(event?.nativeEvent);
+			const playbackRequest = isCanvasWorkbench
+				? player.play(event?.nativeEvent)
+				: (nativeVideo?.play() ?? player.provider?.play() ?? player.play(event?.nativeEvent));
 			void playbackRequest.catch((error: unknown) => {
 				handlePreviewPlaybackError(toErrorMessage(error));
 			});
 			play();
 		},
-		[handlePreviewPlaybackError, play, setCurrentTime],
+		[handlePreviewPlaybackError, isCanvasWorkbench, play, setCurrentTime],
 	);
 	const handleTimelinePlaybackToggle = useCallback(
 		(event?: React.MouseEvent<HTMLButtonElement>) => {
@@ -668,23 +669,48 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 		onOpenReferenceGeneration: openReferenceSectionGeneration,
 	});
 
+	const previewPlayer = (
+		<EpisodePreviewPlayer
+			videoUrl={playbackVideoUrl}
+			posterUrl={playbackPosterUrl}
+			title={playbackTitle}
+			currentTime={playbackTime}
+			isPlaying={active && isPlaying && Boolean(playbackVideoUrl)}
+			load={isCanvasWorkbench ? "play" : "visible"}
+			onEnded={handlePreviewEnded}
+			onPlayingChange={handlePreviewPlayingChange}
+			onPlaybackError={handlePreviewPlaybackError}
+			onTimeUpdate={handlePreviewTimeUpdate}
+			playerRef={previewPlayerRef}
+		/>
+	);
+
 	return (
 		<div className="flex h-full min-h-0 flex-col bg-ide-editor text-ide-editor-foreground">
-			<main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+			<main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
 				{isCanvasWorkbench ? (
-					<EpisodeCanvasView
-						active={active}
-						activeDocument={activeDocument ?? null}
-						assets={assets}
-						documents={documents}
-						episode={episode}
-						selectedGenerationAssets={selectedGenerationAssets}
-						selectedClipId={selectedClipId}
-						storyboardMarkdown={activeDocument?.content ?? ""}
-						onGenerateClip={handleTimelineClipGenerate}
-						onOpenReferenceGeneration={openReferenceSectionGeneration}
-						onSelectClip={handleTimelineClipSelect}
-					/>
+					<>
+						<EpisodeCanvasView
+							active={active}
+							activeDocument={activeDocument ?? null}
+							assets={assets}
+							documents={documents}
+							episode={episode}
+							selectedGenerationAssets={selectedGenerationAssets}
+							selectedClipId={selectedClipId}
+							storyboardMarkdown={activeDocument?.content ?? ""}
+							onGenerateClip={handleTimelineClipGenerate}
+							onOpenReferenceGeneration={openReferenceSectionGeneration}
+							onSelectClip={handleTimelineClipSelect}
+						/>
+						<div
+							aria-hidden="true"
+							className="pointer-events-none absolute left-0 top-0 size-px overflow-hidden opacity-0"
+							inert
+						>
+							{previewPlayer}
+						</div>
+					</>
 				) : (
 					<section className="grid min-h-0 flex-1 grid-cols-1 border-b border-border">
 						<div className="flex min-h-0 flex-1 flex-col gap-2 bg-ide-preview p-2">
@@ -743,18 +769,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 										</span>
 									</Button>
 								</div>
-								<EpisodePreviewPlayer
-									videoUrl={playbackVideoUrl}
-									posterUrl={playbackPosterUrl}
-									title={playbackTitle}
-									currentTime={playbackTime}
-									isPlaying={active && isPlaying && Boolean(playbackVideoUrl)}
-									onEnded={handlePreviewEnded}
-									onPlayingChange={handlePreviewPlayingChange}
-									onPlaybackError={handlePreviewPlaybackError}
-									onTimeUpdate={handlePreviewTimeUpdate}
-									playerRef={previewPlayerRef}
-								/>
+								{previewPlayer}
 							</div>
 						</div>
 					</section>

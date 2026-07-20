@@ -42,6 +42,7 @@ const fixtures = vi.hoisted(() => ({
 	previewNativeVideoPause: vi.fn(),
 	previewNativeVideoPlay: vi.fn(() => Promise.resolve()),
 	previewPlayerPause: vi.fn(() => Promise.resolve()),
+	previewPlayerPlay: vi.fn(() => Promise.resolve()),
 	previewProvider: {
 		play: vi.fn(() => Promise.resolve()),
 	},
@@ -162,12 +163,14 @@ vi.mock("@/domains/episode/components/EpisodePreviewPlayer", () => ({
 	EpisodePreviewPlayer: ({
 		currentTime,
 		isPlaying,
+		load,
 		onPlayingChange,
 		onTimeUpdate,
 		playerRef,
 	}: {
 		currentTime?: number;
 		isPlaying?: boolean;
+		load?: string;
 		onPlayingChange?: (playing: boolean) => void;
 		onTimeUpdate?: (currentTime: number) => void;
 		playerRef?: React.Ref<unknown>;
@@ -184,6 +187,7 @@ vi.mock("@/domains/episode/components/EpisodePreviewPlayer", () => ({
 		const player = {
 			currentTime: 0,
 			pause: fixtures.previewPlayerPause,
+			play: fixtures.previewPlayerPlay,
 			provider: fixtures.previewProvider,
 			querySelector: (selector: string) => (selector === "video" ? video : null),
 			remoteControl: fixtures.previewRemoteControl,
@@ -197,6 +201,7 @@ vi.mock("@/domains/episode/components/EpisodePreviewPlayer", () => ({
 			<div
 				data-testid="preview-player"
 				data-current-time={currentTime}
+				data-load={load ?? ""}
 				data-playing={isPlaying ? "true" : "false"}
 			>
 				<button type="button" onClick={() => onPlayingChange?.(true)}>
@@ -294,6 +299,7 @@ describe("EpisodeTimelineView canvas generation", () => {
 		fixtures.previewRemoteControl.pause.mockReset();
 		fixtures.previewRemoteControl.play.mockReset();
 		fixtures.previewPlayerPause.mockReset();
+		fixtures.previewPlayerPlay.mockReset();
 		fixtures.previewProvider.play.mockReset();
 		vi.mocked(useSWR).mockReset();
 		vi.mocked(useSWR).mockReturnValue({ data: undefined, mutate: vi.fn() } as never);
@@ -413,8 +419,72 @@ describe("EpisodeTimelineView canvas generation", () => {
 		screen.getByRole("button", { name: "模拟播放片段条" }).click();
 
 		expect(fixtures.previewNativeVideoPlay).toHaveBeenCalledTimes(1);
+		expect(fixtures.previewPlayerPlay).not.toHaveBeenCalled();
 		expect(fixtures.previewProvider.play).not.toHaveBeenCalled();
 		expect(fixtures.previewRemoteControl.play).not.toHaveBeenCalled();
+		expect(useEpisodeStore.getState().isPlaying).toBe(true);
+	});
+
+	it("starts timeline playback from the canvas with a play-triggered hidden player", async () => {
+		useEpisodeStore.getState().pause();
+		const episodeWithVideo = sampleEpisodeWithReadyVideo();
+		vi.mocked(workspaceEpisodePreviewStreamURL).mockReturnValue(
+			"/api/v1/projects/project-a/workspace/episodes/story-doc/preview.mp4",
+		);
+		vi.mocked(useSWR).mockImplementation((key: unknown) => {
+			if (Array.isArray(key) && key[0] === "workspace-resolved-episode") {
+				return {
+					data: {
+						createdAt: "2026-06-22T00:00:00.000Z",
+						documentId: "story-doc",
+						episode: episodeWithVideo,
+						projectId: "project-a",
+						updatedAt: "2026-06-22T00:00:00.000Z",
+						workspaceDir: "/workspace/project-a",
+					},
+					mutate: vi.fn(),
+				} as never;
+			}
+			if (Array.isArray(key) && key[0] === "episode-media-assets") {
+				return {
+					data: {
+						assets: [
+							{
+								createdAt: "2026-06-22T00:00:00.000Z",
+								durationSeconds: 5,
+								filename: "clip.mp4",
+								id: "asset-a",
+								kind: "video",
+								mimeType: "video/mp4",
+								posterUrl: "/api/v1/media-assets/asset-a/poster",
+								size: 1024,
+								source: "generation",
+								updatedAt: "2026-06-22T00:00:00.000Z",
+								url: "/api/v1/media-assets/asset-a/content",
+							},
+						],
+					},
+					mutate: vi.fn(),
+				} as never;
+			}
+			return { data: undefined, mutate: vi.fn() } as never;
+		});
+
+		render(
+			<MemoryRouter initialEntries={["/projects?projectId=project-a&workbench=canvas"]}>
+				<EpisodeTimelineView documentId="story-doc" workbench="canvas" />
+			</MemoryRouter>,
+		);
+
+		await waitFor(() => {
+			expect(workspaceEpisodePreviewStreamURL).toHaveBeenCalled();
+		});
+		expect(screen.getByTestId("preview-player")).toHaveAttribute("data-load", "play");
+
+		screen.getByRole("button", { name: "模拟播放片段条" }).click();
+
+		expect(fixtures.previewPlayerPlay).toHaveBeenCalledTimes(1);
+		expect(fixtures.previewNativeVideoPlay).not.toHaveBeenCalled();
 		expect(useEpisodeStore.getState().isPlaying).toBe(true);
 	});
 

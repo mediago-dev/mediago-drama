@@ -1,7 +1,7 @@
 import type { MediaPlayerInstance } from "@vidstack/react";
 import { Film, Play, Sparkles } from "lucide-react";
 import type React from "react";
-import { VideoPlayer } from "@/components/VideoPlayer";
+import { VideoPlayer, type VideoPlayerProps } from "@/components/VideoPlayer";
 import { useEpisodeStore } from "@/domains/episode/stores";
 import { apiResourceURL } from "@/shared/lib/api-base";
 
@@ -13,6 +13,7 @@ interface EpisodePreviewPlayerProps {
 	onPlaybackError?: (message: string) => void;
 	onTimeUpdate?: (currentTime: number) => void;
 	playerRef?: React.Ref<MediaPlayerInstance>;
+	load?: VideoPlayerProps["load"];
 	videoUrl?: string;
 	posterUrl?: string;
 	title?: string;
@@ -26,6 +27,7 @@ export const EpisodePreviewPlayer: React.FC<EpisodePreviewPlayerProps> = ({
 	onPlaybackError,
 	onTimeUpdate,
 	playerRef,
+	load = "visible",
 	videoUrl,
 	posterUrl,
 	title,
@@ -57,7 +59,7 @@ export const EpisodePreviewPlayer: React.FC<EpisodePreviewPlayerProps> = ({
 						title={title}
 						currentTime={playbackTime}
 						isPlaying={playbackPlaying}
-						load="visible"
+						load={load}
 						onEnded={onEnded}
 						onPlaybackError={onPlaybackError}
 						onTimeUpdate={handleTimeUpdate}
