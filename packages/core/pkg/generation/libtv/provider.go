@@ -301,7 +301,7 @@ func (provider *Provider) Get(ctx context.Context, id string) (generation.Respon
 	}
 	defer os.RemoveAll(downloadDir)
 
-	args := []string{"download", "--node=" + node, "--out=" + downloadDir, "--without-ai-watermark"}
+	args := []string{"download", "--node=" + node, "--out=" + downloadDir, "--without-ai-watermark", "--vip"}
 	if strings.TrimSpace(projectID) != "" {
 		args = append(args, "--project="+projectID)
 	}
