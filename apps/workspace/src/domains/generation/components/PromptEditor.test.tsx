@@ -69,14 +69,16 @@ describe("PromptEditor", () => {
 		expect(filteredByBody.map((item) => item.id)).toEqual(["character-extra"]);
 	});
 
-	it("only treats a slash as an active prompt command when the query starts immediately after it", () => {
-		const activeMatch = promptEditorTestInternals.findPromptSlashMatchFromText("/电影", 4);
+	it("treats a slash as an active prompt command anywhere when the query starts immediately after it", () => {
+		const startMatch = promptEditorTestInternals.findPromptSlashMatchFromText("/电影", 4);
+		const inlineMatch = promptEditorTestInternals.findPromptSlashMatchFromText("角色设定/电影", 8);
 		const separatorMatch = promptEditorTestInternals.findPromptSlashMatchFromText(
 			"主角 / 低阶散修",
 			10,
 		);
 
-		expect(activeMatch?.query).toBe("电影");
+		expect(startMatch?.query).toBe("电影");
+		expect(inlineMatch).toEqual({ query: "电影", range: { from: 5, to: 8 } });
 		expect(separatorMatch).toBeNull();
 	});
 
