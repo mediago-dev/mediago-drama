@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from "react";
-import useSWR, { useSWRConfig } from "swr";
+import useSWR from "swr";
 import {
 	getPromptPackContents,
 	promptPackContentsKey,
@@ -35,7 +35,6 @@ import {
 	type PromptPackEntry,
 	type PromptPackEntryKind,
 } from "@/domains/settings/api/packs";
-import { isPromptPackContentCacheKey } from "@/domains/settings/lib/prompt-pack-cache";
 import {
 	createDraftEntry,
 	isPersistedPromptPackDraftDirty,
@@ -150,7 +149,6 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 		ref,
 	) {
 		const toast = useToast();
-		const { mutate: mutateGlobal } = useSWRConfig();
 		const selectedPack = packs.find(
 			(pack) => pack.id === selectedPackID && pack.source !== "imported",
 		);
@@ -187,13 +185,15 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 		const selectedPackReadonly = selectedPack?.source !== "local";
 		const selectedEntry =
 			view.type === "entry" ? entries.find((entry) => entry.id === view.entryID) : undefined;
-		const draftDirty = Boolean(persistedDraft && isPersistedPromptPackDraftDirty(persistedDraft));
+		const openEntry = useCallback((entryID: string) => {
+			setView({ entryID, type: "entry" });
+		}, []);
 
 		useEffect(() => {
-			if (navigatorKind === "skill" && skillEntries.length === 0 && promptEntries.length > 0) {
-				setNavigatorKind("prompt");
+			if (skillEntries.length === 0 && promptEntries.length > 0) {
+				setNavigatorKind((current) => (current === "skill" ? "prompt" : current));
 			}
-		}, [navigatorKind, promptEntries.length, skillEntries.length]);
+		}, [promptEntries.length, skillEntries.length]);
 
 		useEffect(() => {
 			if (!isEditing) setDraftErrors({});
@@ -217,31 +217,30 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 
 		useEffect(() => {
 			if (view.type === "entry" && contents && !selectedEntry) {
-				const nextEntry = entries.find((entry) => entry.kind === navigatorKind) ?? entries[0];
-				setView(nextEntry ? { entryID: nextEntry.id, type: "entry" } : { type: "idle" });
+				const nextEntry = entries.find((entry) => entry.kind === navigatorKind);
+				if (nextEntry) openEntry(nextEntry.id);
+				else setView({ type: "idle" });
 			}
-		}, [contents, entries, navigatorKind, selectedEntry, view]);
+		}, [contents, entries, navigatorKind, openEntry, selectedEntry, view]);
 
 		useEffect(() => {
 			if (!contents || view.type !== "idle") return;
-			const nextEntry = entries.find((entry) => entry.kind === navigatorKind) ?? entries[0];
-			if (nextEntry) setView({ entryID: nextEntry.id, type: "entry" });
-		}, [contents, entries, navigatorKind, view.type]);
-
-		const openEntry = useCallback((entryID: string) => {
-			setView({ entryID, type: "entry" });
-		}, []);
+			const nextEntry = entries.find((entry) => entry.kind === navigatorKind);
+			if (nextEntry) openEntry(nextEntry.id);
+		}, [contents, entries, navigatorKind, openEntry, view.type]);
 
 		const saveAll = async () => {
-			if (!isEditing || !persistedDraft || !selectedPack) return true;
-			const issue = validatePromptPackDraft(persistedDraft.working);
+			if (!isEditing || !selectedPack) return true;
+			const latestDraft = usePromptPackDraftStore.getState().draftsByPackId[selectedPack.id];
+			if (!latestDraft) return true;
+			const issue = validatePromptPackDraft(latestDraft.working);
 			if (issue) {
 				setDraftErrors(issue.entryId ? { [issue.entryId]: issue.message } : {});
 				if (issue.entryId) setView({ entryID: issue.entryId, type: "entry" });
 				toast.error("请完善技能包草稿", { description: issue.message });
 				return false;
 			}
-			if (!draftDirty) {
+			if (!isPersistedPromptPackDraftDirty(latestDraft)) {
 				removePersistedDraft(selectedPack.id);
 				return true;
 			}
@@ -249,12 +248,11 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 			try {
 				const saved = await savePromptPackDraft(
 					selectedPack.id,
-					serializePromptPackDraft(persistedDraft),
+					serializePromptPackDraft(latestDraft),
 				);
 				await mutateContents(saved, { revalidate: false });
 				removePersistedDraft(selectedPack.id);
 				await onChanged();
-				await mutateGlobal(isPromptPackContentCacheKey);
 				toast.success("技能包已保存", { description: "草稿中的全部修改已一次性生效。" });
 				return true;
 			} catch (error) {
@@ -336,7 +334,8 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 			if (view.type === "entry" && view.entryID === entry.id) {
 				const nextEntry =
 					next.entries.find((candidate) => candidate.kind === navigatorKind) ?? next.entries[0];
-				setView(nextEntry ? { entryID: nextEntry.id, type: "entry" } : { type: "idle" });
+				if (nextEntry) openEntry(nextEntry.id);
+				else setView({ type: "idle" });
 			}
 			return true;
 		};
@@ -464,7 +463,8 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 								setNavigatorKind(kind);
 								if (view.type === "entry" && selectedEntry?.kind !== kind) {
 									const nextEntry = entries.find((entry) => entry.kind === kind);
-									setView(nextEntry ? { entryID: nextEntry.id, type: "entry" } : { type: "idle" });
+									if (nextEntry) openEntry(nextEntry.id);
+									else setView({ type: "idle" });
 								}
 							}}
 							onCreateCategory={() => setCreateCategoryDialogOpen(true)}
@@ -475,7 +475,7 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 							onResetEntry={confirmResetEntry}
 							onMovePrompt={movePromptToCategory}
 							onReorderCategories={reorderCategories}
-							onSelectEntry={(entryID) => setView({ entryID, type: "entry" })}
+							onSelectEntry={openEntry}
 							onSelectPack={selectPack}
 							onStartCreatePack={startCreatePack}
 							onPackEnabledChange={onPackEnabledChange}

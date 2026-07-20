@@ -77,31 +77,23 @@ export const PromptPackEntryEditor: React.FC<PromptPackEntryEditorProps> = ({
 					</Alert>
 				) : null}
 
-				{entry.kind === "skill" ? (
-					<div className="mt-5">
+				<div className={"mt-5"}>
+					{entry.kind === "skill" ? (
 						<p className="text-xs font-medium text-muted-foreground">Skill 正文</p>
-						<SettingsMarkdownEditor
-							ariaLabel="编辑 Skill 内容"
-							className="mt-2 min-h-[32rem]"
-							editable={isEditing}
-							editorClassName="min-h-[28rem] pb-24"
-							placeholder="开始编写 Skill..."
-							showToolbar
-							variant="document"
-							value={draft.body}
-							onChange={(body) => updateDraft({ body })}
-						/>
-					</div>
-				) : (
-					<Textarea
-						aria-label="编辑提示词内容"
-						className="mt-4 min-h-[32rem] resize-y rounded-sm border-input bg-background px-4 py-3 text-sm leading-6 shadow-none read-only:cursor-default read-only:resize-none"
-						placeholder="开始编写提示词..."
-						readOnly={!isEditing}
+					) : null}
+					<SettingsMarkdownEditor
+						ariaLabel={entry.kind === "skill" ? "编辑 Skill 内容" : "编辑提示词内容"}
+						cacheKey={entry.id}
+						className={entry.kind === "skill" ? "mt-2 min-h-[32rem]" : "min-h-[32rem]"}
+						editable={isEditing}
+						editorClassName="min-h-[28rem] pb-24"
+						placeholder={entry.kind === "skill" ? "开始编写 Skill..." : "开始编写提示词..."}
+						showToolbar
+						variant="document"
 						value={draft.body}
-						onChange={(event) => updateDraft({ body: event.target.value })}
+						onChange={(body) => updateDraft({ body })}
 					/>
-				)}
+				</div>
 			</div>
 		</section>
 	);

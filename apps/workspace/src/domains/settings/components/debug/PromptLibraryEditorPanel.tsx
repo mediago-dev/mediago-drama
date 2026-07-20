@@ -488,6 +488,7 @@ export const PromptLibraryEditorPanel: React.FC<{ showActions?: boolean }> = ({
 									</Label>
 									<SettingsMarkdownPreview
 										ariaLabelledBy="prompt-preset-preview-label"
+										cacheKey={selectedPreset.id}
 										className="min-h-40"
 										placeholder="暂无提示词。"
 										value={selectedPreset.prompt}
