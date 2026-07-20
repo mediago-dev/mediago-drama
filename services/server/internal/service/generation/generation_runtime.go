@@ -156,6 +156,9 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	payload.ModelID = strings.TrimSpace(payload.ModelID)
 	payload.Model = strings.TrimSpace(payload.Model)
 	payload.AssetTitle = strings.TrimSpace(payload.AssetTitle)
+	if status, err := workflow.resolveGenerationPromptReferences(ctx, &payload); err != nil {
+		return generationMessageResponse{}, status, err
+	}
 	payload.PromptSupplements = NormalizeGenerationPromptSupplements(payload.PromptSupplements)
 	payload.ReferenceURLs = CompactStrings(payload.ReferenceURLs)
 	payload.ReferenceAssetIDs = CompactStrings(payload.ReferenceAssetIDs)

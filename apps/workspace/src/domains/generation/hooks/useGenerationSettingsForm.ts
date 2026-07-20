@@ -111,7 +111,9 @@ export const useGenerationSettingsForm = ({
 		useRawPrompt: true,
 	});
 	const promptItemsLoaded = workspace.hasLoadedPromptInsertItems;
-	const promptItemsForNormalization = promptItemsLoaded ? workspace.promptInsertItems : undefined;
+	const promptItemsForNormalization = promptItemsLoaded
+		? workspace.promptReferenceItems
+		: undefined;
 	const [value, setValue] = useState<GenerationSettingsValue>(() =>
 		emptyGenerationSettingsValue(kind),
 	);
@@ -185,14 +187,14 @@ export const useGenerationSettingsForm = ({
 				usesContextValue
 					? promptSupplementDraftItemIdsFromValue(defaultValue)
 					: (storedSettings?.promptSupplementItemIds ?? []),
-				workspace.promptInsertItems,
+				workspace.promptReferenceItems,
 				promptItemsLoaded,
 			);
 			const optimizationDraftItemId = resolvePromptOptimizationDraftItemId(
 				usesContextValue
 					? recordNestedString(defaultValue, "promptOptimization", "referenceId")
 					: (storedSettings?.promptOptimizeItemId ?? ""),
-				workspace.promptInsertItems,
+				workspace.promptReferenceItems,
 				promptItemsLoaded,
 			);
 			const optimizationDraftRouteId = resolvePromptOptimizationDraftRouteId(
@@ -205,7 +207,7 @@ export const useGenerationSettingsForm = ({
 			const optimizationEnabled = usesContextValue
 				? recordNestedBoolean(defaultValue, "promptOptimization", "enabled")
 				: storedSettings?.usePromptOptimization === true;
-			const optimizationDraftItem = workspace.promptInsertItems.find(
+			const optimizationDraftItem = workspace.promptReferenceItems.find(
 				(item) => item.id === optimizationDraftItemId,
 			);
 			const optimizationDraftModel = optimizationOptions.find(
@@ -228,7 +230,7 @@ export const useGenerationSettingsForm = ({
 					? promptOptimizationValue(optimizationDraftItem, optimizationDraftModel)
 					: { enabled: false },
 				promptSupplements: supplementEnabled
-					? promptSupplementValues(supplementDraftItemIds, workspace.promptInsertItems)
+					? promptSupplementValues(supplementDraftItemIds, workspace.promptReferenceItems)
 					: [],
 			};
 			initializedKeyRef.current = initializationKey;
@@ -240,14 +242,14 @@ export const useGenerationSettingsForm = ({
 		const current = valueRef.current;
 		const supplementDraftItemIds = normalizePromptSupplementDraftItemIds(
 			promptSupplementDraftItemIdsRef.current,
-			workspace.promptInsertItems,
+			workspace.promptReferenceItems,
 			promptItemsLoaded,
 		);
 		const optimizationDraftItemId = promptOptimizationDraftItemClearedRef.current
 			? null
 			: resolvePromptOptimizationDraftItemId(
 					promptOptimizationDraftItemIdRef.current ?? "",
-					workspace.promptInsertItems,
+					workspace.promptReferenceItems,
 					promptItemsLoaded,
 				);
 		const optimizationDraftRouteId = promptOptimizationDraftRouteClearedRef.current
@@ -269,7 +271,7 @@ export const useGenerationSettingsForm = ({
 			promptOptimizationDraftRouteIdRef.current = optimizationDraftRouteId;
 			setPromptOptimizationDraftRouteId(optimizationDraftRouteId);
 		}
-		const optimizationDraftItem = workspace.promptInsertItems.find(
+		const optimizationDraftItem = workspace.promptReferenceItems.find(
 			(item) => item.id === optimizationDraftItemId,
 		);
 		const optimizationDraftModel = optimizationOptions.find(
@@ -287,7 +289,7 @@ export const useGenerationSettingsForm = ({
 				? promptOptimizationValue(optimizationDraftItem, optimizationDraftModel)
 				: { enabled: false },
 			promptSupplements: promptSupplementEnabledRef.current
-				? promptSupplementValues(supplementDraftItemIds, workspace.promptInsertItems)
+				? promptSupplementValues(supplementDraftItemIds, workspace.promptReferenceItems)
 				: [],
 		};
 		commitValue(next);
@@ -304,7 +306,7 @@ export const useGenerationSettingsForm = ({
 		workspace.hasLiveCatalog,
 		workspace.hasSettledGenerationPreferences,
 		workspace.hasSettledPromptInsertItems,
-		workspace.promptInsertItems,
+		workspace.promptReferenceItems,
 	]);
 
 	const selectedRoute = useMemo(
@@ -479,13 +481,14 @@ export const useGenerationSettingsForm = ({
 		promptOptimizationModelOptions.find((option) => option.id === promptOptimizationDraftRouteId) ??
 		null;
 	const selectedPromptOptimizationItem =
-		workspace.promptInsertItems.find((item) => item.id === promptOptimizationDraftItemId) ?? null;
+		workspace.promptReferenceItems.find((item) => item.id === promptOptimizationDraftItemId) ??
+		null;
 	const selectedPromptSupplementItems = useMemo(
 		() =>
 			promptSupplementDraftItemIds
-				.map((id) => workspace.promptInsertItems.find((item) => item.id === id))
+				.map((id) => workspace.promptReferenceItems.find((item) => item.id === id))
 				.filter((item): item is PromptInsertItem => Boolean(item)),
-		[promptSupplementDraftItemIds, workspace.promptInsertItems],
+		[promptSupplementDraftItemIds, workspace.promptReferenceItems],
 	);
 
 	const setPromptSupplementEnabled = useCallback(
@@ -497,16 +500,16 @@ export const useGenerationSettingsForm = ({
 				promptSupplements: enabled
 					? promptSupplementValues(
 							promptSupplementDraftItemIdsRef.current,
-							workspace.promptInsertItems,
+							workspace.promptReferenceItems,
 						)
 					: [],
 			});
 		},
-		[commitValue, workspace.promptInsertItems],
+		[commitValue, workspace.promptReferenceItems],
 	);
 	const togglePromptSupplementItem = useCallback(
 		(id: string) => {
-			const item = workspace.promptInsertItems.find((candidate) => candidate.id === id);
+			const item = workspace.promptReferenceItems.find((candidate) => candidate.id === id);
 			if (!item) return;
 			const selected = promptSupplementDraftItemIdsRef.current.includes(item.id);
 			const nextDraftItemIds = selected
@@ -518,10 +521,10 @@ export const useGenerationSettingsForm = ({
 			setPromptSupplementEnabledState(true);
 			commitValue({
 				...valueRef.current,
-				promptSupplements: promptSupplementValues(nextDraftItemIds, workspace.promptInsertItems),
+				promptSupplements: promptSupplementValues(nextDraftItemIds, workspace.promptReferenceItems),
 			});
 		},
-		[commitValue, workspace.promptInsertItems],
+		[commitValue, workspace.promptReferenceItems],
 	);
 
 	const setPromptOptimizationEnabled = useCallback(
@@ -534,7 +537,7 @@ export const useGenerationSettingsForm = ({
 				? null
 				: resolvePromptOptimizationDraftItemId(
 						promptOptimizationDraftItemIdRef.current ?? "",
-						workspace.promptInsertItems,
+						workspace.promptReferenceItems,
 						promptItemsLoaded,
 					);
 			const routeId = promptOptimizationDraftRouteClearedRef.current
@@ -548,7 +551,7 @@ export const useGenerationSettingsForm = ({
 			setPromptOptimizationDraftItemId(itemId);
 			promptOptimizationDraftRouteIdRef.current = routeId;
 			setPromptOptimizationDraftRouteId(routeId);
-			const item = workspace.promptInsertItems.find((candidate) => candidate.id === itemId);
+			const item = workspace.promptReferenceItems.find((candidate) => candidate.id === itemId);
 			const model = promptOptimizationModelOptions.find((option) => option.id === routeId);
 			commitValue({
 				...valueRef.current,
@@ -560,7 +563,7 @@ export const useGenerationSettingsForm = ({
 			promptItemsLoaded,
 			preferredPromptOptimizationModel,
 			promptOptimizationModelOptions,
-			workspace.promptInsertItems,
+			workspace.promptReferenceItems,
 		],
 	);
 	const setPromptOptimizationItemId = useCallback(
@@ -570,7 +573,7 @@ export const useGenerationSettingsForm = ({
 			setPromptOptimizationDraftItemId(id);
 			if (!valueRef.current.promptOptimization.enabled) return;
 			const item = id
-				? (workspace.promptInsertItems.find((candidate) => candidate.id === id) ?? null)
+				? (workspace.promptReferenceItems.find((candidate) => candidate.id === id) ?? null)
 				: null;
 			const model =
 				promptOptimizationModelOptions.find(
@@ -581,7 +584,7 @@ export const useGenerationSettingsForm = ({
 				promptOptimization: promptOptimizationValue(item, model),
 			});
 		},
-		[commitValue, promptOptimizationModelOptions, workspace.promptInsertItems],
+		[commitValue, promptOptimizationModelOptions, workspace.promptReferenceItems],
 	);
 	const setPromptOptimizationRouteId = useCallback(
 		(id: string) => {
@@ -590,7 +593,7 @@ export const useGenerationSettingsForm = ({
 			setPromptOptimizationDraftRouteId(id);
 			if (!valueRef.current.promptOptimization.enabled) return;
 			const item =
-				workspace.promptInsertItems.find(
+				workspace.promptReferenceItems.find(
 					(candidate) => candidate.id === promptOptimizationDraftItemIdRef.current,
 				) ?? null;
 			const model = promptOptimizationModelOptions.find((option) => option.id === id) ?? null;
@@ -599,7 +602,7 @@ export const useGenerationSettingsForm = ({
 				promptOptimization: promptOptimizationValue(item, model),
 			});
 		},
-		[commitValue, promptOptimizationModelOptions, workspace.promptInsertItems],
+		[commitValue, promptOptimizationModelOptions, workspace.promptReferenceItems],
 	);
 
 	const supportsReferenceImages =
@@ -701,7 +704,7 @@ export const useGenerationSettingsForm = ({
 		isValid,
 		maxReferenceImages,
 		mutateMediaAssets: workspace.mutateMediaAssets,
-		promptInsertItems: workspace.promptInsertItems,
+		promptInsertItems: workspace.promptReferenceItems,
 		promptOptimizationModelOptions,
 		promptSupplementEnabled,
 		referenceDialogOpen,
@@ -802,7 +805,7 @@ const promptSupplementValues = (
 	return itemIds.flatMap((id) => {
 		const item = promptItemsById.get(id);
 		const referencePrompt = item?.prompt.trim() ?? "";
-		if (!item || !referencePrompt) return [];
+		if (!item) return [];
 		return [
 			{
 				referenceId: item.id,

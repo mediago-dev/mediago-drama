@@ -678,6 +678,50 @@ describe("PromptPackEditor", () => {
 		await waitFor(() => expect(getPromptPackContents).toHaveBeenCalledWith(localPack.id));
 	});
 
+	it("keeps the default pack first and sorts the remaining packs by name after toggling", async () => {
+		const defaultPack = {
+			...localPack,
+			id: "builtin",
+			name: "默认技能包",
+			source: "default" as const,
+			updatedAt: "2020-01-01T00:00:00Z",
+		};
+		const alphaPack = {
+			...localPack,
+			id: "local.alpha",
+			name: "Alpha 技能包",
+			updatedAt: "2026-01-01T00:00:00Z",
+		};
+		const zuluPack = {
+			...localPack,
+			id: "local.zulu",
+			name: "Zulu 技能包",
+			updatedAt: "2024-01-01T00:00:00Z",
+		};
+		vi.mocked(listPromptPacks)
+			.mockResolvedValueOnce([zuluPack, alphaPack, defaultPack])
+			.mockResolvedValueOnce([
+				{ ...alphaPack, updatedAt: "2026-02-01T00:00:00Z" },
+				defaultPack,
+				{ ...zuluPack, enabled: false, updatedAt: "2026-03-01T00:00:00Z" },
+			]);
+		vi.mocked(setPromptPackEnabled).mockResolvedValue({ ...zuluPack, enabled: false });
+		renderEditor();
+
+		const packNames = () =>
+			within(screen.getByRole("region", { name: "默认和本地技能包" }))
+				.getAllByRole("article")
+				.map((article) => within(article).getByRole("heading", { level: 3 }).textContent);
+		expect(await screen.findByRole("switch", { name: "停用技能包 Zulu 技能包" })).toBeEnabled();
+		expect(packNames()).toEqual(["默认技能包", "Alpha 技能包", "Zulu 技能包"]);
+
+		fireEvent.click(screen.getByRole("switch", { name: "停用技能包 Zulu 技能包" }));
+
+		await waitFor(() => expect(listPromptPacks).toHaveBeenCalledTimes(2));
+		expect(await screen.findByRole("switch", { name: "启用技能包 Zulu 技能包" })).toBeEnabled();
+		expect(packNames()).toEqual(["默认技能包", "Alpha 技能包", "Zulu 技能包"]);
+	});
+
 	it("copies a local pack from its management card without exporting it", async () => {
 		const copiedPack = {
 			...localPack,

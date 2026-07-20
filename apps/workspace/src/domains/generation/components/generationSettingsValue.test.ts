@@ -381,6 +381,40 @@ describe("generation settings persistence adapters", () => {
 });
 
 describe("generationSettingsValueForSubmit", () => {
+	it("accepts protected prompt references without browser-visible prompt bodies", () => {
+		const protectedItems: PromptInsertItem[] = [
+			{
+				id: "protected-prompt",
+				categoryLabel: "风格",
+				name: "受保护风格",
+				prompt: "",
+			},
+		];
+		const ready = generationSettingsValueForSubmit(
+			catalog,
+			{
+				kind: "image",
+				promptOptimization: {
+					enabled: true,
+					referenceId: "protected-prompt",
+					routeId: "route-text",
+				},
+				promptSupplements: [
+					{ referenceId: "protected-prompt", referenceName: "受保护风格", referencePrompt: "" },
+				],
+				routeId: "route-image",
+			},
+			protectedItems,
+		);
+
+		expect(ready?.promptSupplements).toEqual([
+			expect.objectContaining({ referenceId: "protected-prompt", referencePrompt: "" }),
+		]);
+		expect(ready?.promptOptimization).toEqual(
+			expect.objectContaining({ enabled: true, referenceId: "protected-prompt" }),
+		);
+	});
+
 	it("returns current prompt snapshots and rejects an enabled incomplete optimization", () => {
 		const ready = generationSettingsValueForSubmit(
 			catalog,
@@ -405,7 +439,7 @@ describe("generationSettingsValueForSubmit", () => {
 			referencePrompt: "增强镜头语言与光影层次",
 		});
 
-		const incomplete = generationSettingsValueForSubmit(
+		const referenceOnly = generationSettingsValueForSubmit(
 			catalog,
 			normalizeGenerationSettingsValue(catalog, "image", {
 				promptOptimization: {
@@ -418,6 +452,15 @@ describe("generationSettingsValueForSubmit", () => {
 				routeId: "route-image",
 			}),
 		);
+		expect(referenceOnly?.promptOptimization).toEqual(
+			expect.objectContaining({ enabled: true, referenceId: "pack-optimize" }),
+		);
+
+		const incomplete = generationSettingsValueForSubmit(catalog, {
+			kind: "image",
+			promptOptimization: { enabled: true, routeId: "route-text" },
+			routeId: "route-image",
+		});
 		expect(incomplete).toBeNull();
 	});
 });

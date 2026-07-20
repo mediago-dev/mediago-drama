@@ -61,7 +61,8 @@ export const GenerationSettingsForm: React.FC<GenerationSettingsFormProps> = ({
 		: `暂无可用${kindLabel(controller.value.kind)}生成供应商`;
 	const promptSupplementReady = controller.selectedPromptSupplementItems.length > 0;
 	const promptOptimizationReady = Boolean(
-		controller.selectedPromptOptimizationItem && controller.selectedPromptOptimizationModel?.route,
+		controller.selectedPromptOptimizationItem?.id &&
+		controller.selectedPromptOptimizationModel?.route,
 	);
 	const primaryParamControls = primaryParamGroups.map((group) => {
 		const param = group.params[0];

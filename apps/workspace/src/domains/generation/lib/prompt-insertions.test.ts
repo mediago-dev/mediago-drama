@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PromptCategory } from "@/domains/generation/api/prompt-categories";
-import type { PromptPreset } from "@/domains/generation/api/prompt-presets";
+import type { PromptPreset, PromptPresetIndex } from "@/domains/generation/api/prompt-presets";
 import { promptInsertItemsFromPresets } from "./prompt-insertions";
 
 const presets: PromptPreset[] = [
@@ -44,6 +44,24 @@ const categories: PromptCategory[] = [
 ];
 
 describe("promptInsertItemsFromPresets", () => {
+	it("keeps protected prompt metadata selectable without exposing its body", () => {
+		const protectedIndex: PromptPresetIndex = {
+			id: "protected-cinematic",
+			category: "style",
+			name: "电影质感",
+			packId: "marketplace.protected",
+			source: "pack",
+		};
+
+		expect(promptInsertItemsFromPresets([protectedIndex], categories)).toEqual([
+			expect.objectContaining({
+				id: "protected-cinematic",
+				name: "电影质感",
+				prompt: "",
+			}),
+		]);
+	});
+
 	it("exposes preset prompts for slash insertion without selected category state", () => {
 		const items = promptInsertItemsFromPresets(presets, categories);
 

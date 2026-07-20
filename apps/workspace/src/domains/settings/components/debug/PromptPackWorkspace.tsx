@@ -1839,26 +1839,11 @@ const LoadingState: React.FC<{ label: string }> = ({ label }) => (
 
 const orderPacks = (packs: PromptPack[]) =>
 	[...packs].sort((first, second) => {
-		const sourceDifference = packSourceOrder(first.source) - packSourceOrder(second.source);
-		if (sourceDifference !== 0) return sourceDifference;
-		const firstTime = Date.parse(first.updatedAt || first.createdAt || "");
-		const secondTime = Date.parse(second.updatedAt || second.createdAt || "");
-		if (Number.isFinite(firstTime) && Number.isFinite(secondTime) && firstTime !== secondTime) {
-			return secondTime - firstTime;
-		}
+		const defaultDifference =
+			Number(second.source === "default") - Number(first.source === "default");
+		if (defaultDifference !== 0) return defaultDifference;
 		return first.name.localeCompare(second.name, "zh-CN");
 	});
-
-const packSourceOrder = (source: PromptPack["source"]) => {
-	switch (source) {
-		case "default":
-			return 0;
-		case "local":
-			return 1;
-		case "imported":
-			return 2;
-	}
-};
 
 const orderEntries = (entries: PromptPackEntry[]) =>
 	[...entries].sort((first, second) =>

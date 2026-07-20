@@ -151,7 +151,7 @@ describe("GenerationSettingsForm", () => {
 		workspaceMock.current = {
 			...workspaceValue(),
 			catalog: { ...catalog, routes: catalog.routes.filter((route) => route.kind !== "text") },
-			promptInsertItems: [],
+			promptReferenceItems: [],
 		};
 		render(<Harness />);
 		await screen.findByRole("combobox", { name: "模型名称" });
@@ -236,7 +236,7 @@ const workspaceValue = () => ({
 	isUploadingAsset: false,
 	mediaAssets: [imageAsset],
 	mutateMediaAssets: vi.fn(),
-	promptInsertItems,
+	promptReferenceItems: promptInsertItems,
 	selectedFamily: catalog.families[0],
 	selectedParams: {},
 	selectedRoute: catalog.routes[0],

@@ -1,5 +1,5 @@
 import type { PromptCategory } from "@/domains/generation/api/prompt-categories";
-import type { PromptPreset } from "@/domains/generation/api/prompt-presets";
+import type { PromptPreset, PromptPresetIndex } from "@/domains/generation/api/prompt-presets";
 import type { PromptInsertItem } from "@/domains/generation/components/PromptSlashCommand";
 import {
 	promptCategoryLabel,
@@ -7,26 +7,29 @@ import {
 } from "@/domains/generation/lib/prompt-categories";
 
 export const promptInsertItemsFromPresets = (
-	presets: PromptPreset[],
+	presets: Array<PromptPreset | PromptPresetIndex>,
 	categories: PromptCategory[] = [],
 ): PromptInsertItem[] =>
 	presets
-		.filter((preset) => preset.prompt.trim())
+		.filter((preset) => !("prompt" in preset) || preset.prompt.trim())
 		.slice()
 		.sort(comparePromptPresetsForInsertion)
 		.map((preset) => ({
 			id: preset.id,
 			categoryLabel: promptCategoryLabel(preset.category, categories),
 			name: preset.name,
-			prompt: preset.prompt,
+			prompt: "prompt" in preset ? preset.prompt : "",
 			sourceRef:
-				preset.sourcePackageId && preset.sourceReleaseId
+				"sourcePackageId" in preset && preset.sourcePackageId && preset.sourceReleaseId
 					? { packageId: preset.sourcePackageId, releaseId: preset.sourceReleaseId }
 					: undefined,
 			sourceLabel: preset.source === "pack" ? "来自包" : "用户新增",
 		}));
 
-const comparePromptPresetsForInsertion = (left: PromptPreset, right: PromptPreset) => {
+const comparePromptPresetsForInsertion = (
+	left: PromptPreset | PromptPresetIndex,
+	right: PromptPreset | PromptPresetIndex,
+) => {
 	const categoryDelta = promptCategoryOrder(left.category) - promptCategoryOrder(right.category);
 	if (categoryDelta !== 0) return categoryDelta;
 	if (left.category !== right.category)

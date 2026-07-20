@@ -138,6 +138,27 @@ func (handler PromptLibrary) HandleGetPrompt(context *gin.Context) {
 	httpresponse.OK(context, prompt)
 }
 
+// HandleGetPromptForUse returns prompt content for an explicit insertion or
+// generation action. Imported packs stay hidden from management views, while
+// their enabled prompts remain usable from the generation workspace.
+// @Summary 获取可插入的提示词内容
+// @Description 返回一个可直接插入生成输入框的提示词完整内容。
+// @Tags Prompt Presets
+// @Produce json
+// @Param id path string true "Prompt preset ID"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 404 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/prompt-presets/{id}/use [get]
+func (handler PromptLibrary) HandleGetPromptForUse(context *gin.Context) {
+	prompt, err := handler.store.Get(context.Request.Context(), context.Param("id"))
+	if err != nil {
+		writePromptLibraryError(context, err)
+		return
+	}
+	httpresponse.OK(context, prompt)
+}
+
 // HandlePostPrompt godoc
 // @Summary 创建提示词预设
 // @Description 创建一个用户提示词预设。

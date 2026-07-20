@@ -99,6 +99,7 @@ type GenerationPromptOptimizationInput struct {
 	CapabilityID      string         `json:"capabilityId,omitempty"`
 	RouteID           string         `json:"routeId,omitempty"`
 	Model             string         `json:"model,omitempty"`
+	ReferenceID       string         `json:"referenceId,omitempty" jsonschema:"可选：技能包提示词 ID；正文受保护时由服务端在执行前解析。"`
 	ReferenceName     string         `json:"referenceName,omitempty"`
 	ReferencePrompt   string         `json:"referencePrompt,omitempty"`
 	Params            map[string]any `json:"params,omitempty"`

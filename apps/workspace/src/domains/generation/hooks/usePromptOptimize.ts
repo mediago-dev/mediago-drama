@@ -16,6 +16,7 @@ import {
 
 export interface PromptOptimizeInput {
 	currentPrompt: string;
+	referenceId?: string;
 	referencePrompt: string;
 	referenceName: string;
 	sourceRefs?: GenerationContentSourceRef[];
@@ -85,11 +86,7 @@ export const usePromptOptimize = ({
 			const normalizedProjectId = projectId?.trim() || undefined;
 
 			try {
-				const userPrompt = buildPromptOptimizeUserPrompt({
-					currentPrompt: input.currentPrompt,
-					referenceName: input.referenceName,
-					referencePrompt: input.referencePrompt,
-				});
+				const opaqueReference = !input.referencePrompt.trim() && Boolean(input.referenceId?.trim());
 				await ensurePromptOptimizeConversation({
 					conversationId,
 					conversationScopeId,
@@ -108,7 +105,16 @@ export const usePromptOptimize = ({
 						provider: textRoute.provider,
 						modelId: textRoute.legacyModelId ?? "",
 						model: textRoute.model,
-						prompt: userPrompt,
+						prompt: opaqueReference ? input.currentPrompt : buildPromptOptimizeUserPrompt(input),
+						promptOptimization: opaqueReference
+							? {
+									model: textRoute.model,
+									referenceId: input.referenceId?.trim() || undefined,
+									referenceName: input.referenceName,
+									referencePrompt: input.referencePrompt,
+									routeId: textRoute.id,
+								}
+							: undefined,
 						sourceRefs: input.sourceRefs,
 						params: {
 							system_instruction: promptOptimizeSystemInstruction,

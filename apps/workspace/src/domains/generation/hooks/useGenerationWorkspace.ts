@@ -19,8 +19,10 @@ import {
 } from "@/domains/generation/api/generation";
 import {
 	type PromptPreset,
+	listPromptPresetIndex,
 	listPromptPresets,
 	listStylePresets,
+	promptPresetIndexKey,
 	promptPresetsKey,
 	stylePresetsKey,
 } from "@/domains/generation/api/prompt-presets";
@@ -208,14 +210,19 @@ export const useGenerationWorkspace = ({
 		projectStyleOnly ? null : stylePresetsKey,
 		listStylePresets,
 	);
-	const { data: loadedPromptPresets, error: promptPresetsError } = useSWR(promptPresetsKey, () =>
-		listPromptPresets(),
+	// `projectStyleOnly` only limits the model style selector. Slash insertion is
+	// available in project media dialogs too, so its prompt bodies must always load.
+	const { data: loadedPromptPresets } = useSWR(promptPresetsKey, () => listPromptPresets());
+	const { data: loadedPromptPresetIndex, error: promptPresetsError } = useSWR(
+		promptPresetIndexKey,
+		() => listPromptPresetIndex(),
 	);
 	const { data: loadedPromptCategories, error: promptCategoriesError } = useSWR(
 		promptCategoriesKey,
 		listPromptCategories,
 	);
 	const allPresets = loadedPromptPresets ?? emptyPromptPresets;
+	const allPresetReferences = loadedPromptPresetIndex ?? emptyPromptPresets;
 	const promptCategories = loadedPromptCategories ?? emptyPromptCategories;
 	const hasSettledGenerationPreferences =
 		!resolvedPreferenceScopeId ||
@@ -224,9 +231,9 @@ export const useGenerationWorkspace = ({
 	// Only successful responses are authoritative for pruning saved prompt-pack ids.
 	// Failed requests still settle the form, but must not masquerade as an empty catalog.
 	const hasLoadedPromptInsertItems =
-		loadedPromptPresets !== undefined && loadedPromptCategories !== undefined;
+		loadedPromptPresetIndex !== undefined && loadedPromptCategories !== undefined;
 	const hasSettledPromptInsertItems =
-		(loadedPromptPresets !== undefined || promptPresetsError !== undefined) &&
+		(loadedPromptPresetIndex !== undefined || promptPresetsError !== undefined) &&
 		(loadedPromptCategories !== undefined || promptCategoriesError !== undefined);
 	const {
 		catalog,
@@ -265,6 +272,14 @@ export const useGenerationWorkspace = ({
 	const promptInsertItems = useMemo(
 		() => promptInsertItemsFromPresets(allPresets, promptCategories),
 		[allPresets, promptCategories],
+	);
+	const promptReferencePresets = useMemo(() => {
+		const detailsByID = new Map(allPresets.map((preset) => [preset.id, preset]));
+		return allPresetReferences.map((preset) => detailsByID.get(preset.id) ?? preset);
+	}, [allPresetReferences, allPresets]);
+	const promptReferenceItems = useMemo(
+		() => promptInsertItemsFromPresets(promptReferencePresets, promptCategories),
+		[promptCategories, promptReferencePresets],
 	);
 	// 项目级会话里混了同项目所有章节/分镜的任务；按 project/document/section 过滤出当前节点自己的。
 	// 创作台不传 sectionId，看到全部。
@@ -522,6 +537,7 @@ export const useGenerationWorkspace = ({
 		orderedGenerationEntries,
 		prompt,
 		promptInsertItems,
+		promptReferenceItems,
 		promptSourceRefs,
 		referenceCount,
 		refreshVideo,

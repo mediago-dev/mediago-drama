@@ -30,6 +30,7 @@ func NormalizeGenerationPromptOptimizationRequest(request *GenerationPromptOptim
 	normalized.CapabilityID = strings.TrimSpace(normalized.CapabilityID)
 	normalized.RouteID = strings.TrimSpace(normalized.RouteID)
 	normalized.Model = strings.TrimSpace(normalized.Model)
+	normalized.ReferenceID = strings.TrimSpace(normalized.ReferenceID)
 	normalized.ReferenceName = strings.TrimSpace(normalized.ReferenceName)
 	normalized.ReferencePrompt = strings.TrimSpace(normalized.ReferencePrompt)
 	normalized.Params = NormalizeGenerationParams(normalized.Params)
@@ -41,7 +42,7 @@ func ValidateGenerationPromptOptimizationRequest(request *GenerationPromptOptimi
 	if request == nil {
 		return nil
 	}
-	if request.ReferencePrompt == "" {
+	if request.ReferenceID == "" && request.ReferencePrompt == "" {
 		return fmt.Errorf("缺少提示词优化参考内容")
 	}
 	if request.RouteID == "" {
@@ -79,6 +80,9 @@ func (workflow *GenerationService) CreatePromptOptimizedGenerationMessage(
 	payload.ModelID = strings.TrimSpace(payload.ModelID)
 	payload.Model = strings.TrimSpace(payload.Model)
 	payload.AssetTitle = strings.TrimSpace(payload.AssetTitle)
+	if status, err := workflow.resolveGenerationPromptReferences(ctx, &payload); err != nil {
+		return GenerationOptimizeAndGenerateResponse{}, status, err
+	}
 	payload.PromptSupplements = NormalizeGenerationPromptSupplements(payload.PromptSupplements)
 	payload.ReferenceURLs = CompactStrings(payload.ReferenceURLs)
 	payload.ReferenceAssetIDs = CompactStrings(payload.ReferenceAssetIDs)

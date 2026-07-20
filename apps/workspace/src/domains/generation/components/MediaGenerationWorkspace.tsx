@@ -517,21 +517,33 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const canSubmitWithPromptOptimization =
 		canSubmitPromptOverride && Boolean(selectedPromptOptimizeModel?.route);
 	const handlePromptOptimizeSelect = useCallback(
-		(item: (typeof ws.promptInsertItems)[number]) => {
+		(item: (typeof ws.promptReferenceItems)[number]) => {
 			const referencePrompt = item.prompt.trim();
-			if (!referencePrompt) return;
+			if (!item.id.trim() && !referencePrompt) return;
 			ws.addPromptSource(item);
 			const sourceRefs = item.sourceRef
 				? [...ws.promptSourceRefs, item.sourceRef]
 				: ws.promptSourceRefs;
 
 			if (!ws.prompt.trim()) {
+				if (!referencePrompt) {
+					toast.warning("请先输入生成提示词", {
+						description: "受保护技能包需要搭配当前提示词使用。",
+					});
+					return;
+				}
 				ws.setPrompt(referencePrompt);
 				toast.success("已填入技能包", { description: item.name });
 				return;
 			}
 
 			if (!canOptimizePrompt) {
+				if (!referencePrompt) {
+					toast.warning("没有可用文本模型", {
+						description: "配置文本模型后即可使用受保护技能包优化提示词。",
+					});
+					return;
+				}
 				ws.setPrompt((currentPrompt) =>
 					appendPromptOptimizeReference(currentPrompt, referencePrompt),
 				);
@@ -541,6 +553,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 
 			void optimizePrompt({
 				currentPrompt: ws.prompt,
+				referenceId: item.id,
 				referenceName: item.name,
 				referencePrompt,
 				sourceRefs,
@@ -549,16 +562,22 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		[canOptimizePrompt, optimizePrompt, toast, ws],
 	);
 	const handlePromptOptimizeAndSubmitSelect = useCallback(
-		async (item: (typeof ws.promptInsertItems)[number]) => {
+		async (item: (typeof ws.promptReferenceItems)[number]) => {
 			if (!canSubmitPromptOverride) return;
 			const referencePrompt = item.prompt.trim();
-			if (!referencePrompt) return;
+			if (!item.id.trim() && !referencePrompt) return;
 			ws.addPromptSource(item);
 			const sourceRefs = item.sourceRef
 				? [...ws.promptSourceRefs, item.sourceRef]
 				: ws.promptSourceRefs;
 
 			if (!ws.prompt.trim()) {
+				if (!referencePrompt) {
+					toast.warning("请先输入生成提示词", {
+						description: "受保护技能包需要搭配当前提示词使用。",
+					});
+					return;
+				}
 				ws.setPrompt(referencePrompt);
 				await ws.submitGeneration({ prompt: referencePrompt, sourceRefs });
 				return;
@@ -582,6 +601,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 					scopeId: promptOptimizeConversationScopeId ?? undefined,
 					sessionId: promptOptimizeConversationId ?? undefined,
 					model: textRoute.model,
+					referenceId: item.id,
 					referenceName: item.name,
 					referencePrompt,
 				},
@@ -1662,7 +1682,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 						canGenerate={canSubmitWithPromptOptimization}
 						disabled={ws.isSubmitting}
 						isOptimizing={isPromptOptimizing}
-						items={ws.promptInsertItems}
+						items={ws.promptReferenceItems}
 						modelOptions={promptOptimizeModelOptions}
 						onOptimize={handlePromptOptimizeSelect}
 						onOptimizeAndSubmit={handlePromptOptimizeAndSubmitSelect}

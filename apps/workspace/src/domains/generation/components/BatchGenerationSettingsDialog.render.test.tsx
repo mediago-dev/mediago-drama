@@ -110,6 +110,7 @@ describe("BatchGenerationSettingsDialog shared form adapter", () => {
 			params: { n: 2, ratio: "1:1" },
 			promptOptimization: {
 				model: "text-model",
+				referenceId: "pack-optimize",
 				referenceName: "场景氛围图",
 				referencePrompt: "突出空间层次和光线。",
 				routeId: "route-text",

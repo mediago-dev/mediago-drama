@@ -110,11 +110,17 @@ export const generationSettingsValueForSubmit = (
 		requestedOptimization &&
 		(!normalized.promptOptimization.enabled ||
 			!normalized.promptOptimization.routeId ||
-			!normalized.promptOptimization.referencePrompt?.trim())
+			(!normalized.promptOptimization.referenceId?.trim() &&
+				!normalized.promptOptimization.referencePrompt?.trim()))
 	) {
 		return null;
 	}
-	if (normalized.promptSupplements.some((item) => !item.referencePrompt.trim())) return null;
+	if (
+		normalized.promptSupplements.some(
+			(item) => !item.referenceId?.trim() && !item.referencePrompt.trim(),
+		)
+	)
+		return null;
 	return normalized;
 };
 
@@ -229,7 +235,7 @@ const normalizePromptSupplements = (
 		const referenceName = (liveItem?.name ?? stringValue(raw.referenceName) ?? "").trim();
 		const referencePrompt = (liveItem?.prompt ?? stringValue(raw.referencePrompt) ?? "").trim();
 		// Preserve an id-only value while the prompt-pack request is still loading.
-		if (!referencePrompt && !(referenceId && promptItems === undefined)) continue;
+		if (!referencePrompt && !referenceId) continue;
 		if (referenceId && seenIDs.has(referenceId)) continue;
 		if (referencePrompt && seenPrompts.has(referencePrompt)) continue;
 		if (referenceId) seenIDs.add(referenceId);

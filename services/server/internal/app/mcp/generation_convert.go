@@ -116,6 +116,7 @@ func generationPromptOptimizationFromMCP(input *mediamcp.GenerationPromptOptimiz
 		CapabilityID:      strings.TrimSpace(input.CapabilityID),
 		RouteID:           strings.TrimSpace(input.RouteID),
 		Model:             strings.TrimSpace(input.Model),
+		ReferenceID:       strings.TrimSpace(input.ReferenceID),
 		ReferenceName:     strings.TrimSpace(input.ReferenceName),
 		ReferencePrompt:   strings.TrimSpace(input.ReferencePrompt),
 		Params:            input.Params,

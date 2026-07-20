@@ -34,6 +34,9 @@ func (workflow *GenerationService) StreamGenerationText(
 	payload.Provider = strings.TrimSpace(payload.Provider)
 	payload.ModelID = strings.TrimSpace(payload.ModelID)
 	payload.Model = strings.TrimSpace(payload.Model)
+	if status, err := workflow.prepareTextPromptOptimization(ctx, &payload); err != nil {
+		return status, err
+	}
 	payload.ReferenceURLs = []string{}
 	payload.ReferenceAssetIDs = []string{}
 	var sourceRefsErr error
@@ -216,6 +219,25 @@ func (workflow *GenerationService) StreamGenerationText(
 		Usage:   usage,
 	}
 	return workflow.finishGenerationTextTask(task, conversation, completedResponse, emit)
+}
+
+func (workflow *GenerationService) prepareTextPromptOptimization(
+	ctx context.Context,
+	payload *GenerationMessageRequest,
+) (int, error) {
+	if payload == nil || payload.PromptOptimization == nil {
+		return http.StatusOK, nil
+	}
+	if status, err := workflow.resolveGenerationPromptReferences(ctx, payload); err != nil {
+		return status, err
+	}
+	optimization := NormalizeGenerationPromptOptimizationRequest(payload.PromptOptimization)
+	if err := ValidateGenerationPromptOptimizationRequest(optimization); err != nil {
+		return http.StatusBadRequest, err
+	}
+	payload.Prompt = promptOptimizationUserPrompt(optimization, payload.Prompt)
+	payload.PromptOptimization = nil
+	return http.StatusOK, nil
 }
 
 func (workflow *GenerationService) persistTextStreamFailure(task GenerationTaskRecord, partialText string, failure error) GenerationMessageResponse {

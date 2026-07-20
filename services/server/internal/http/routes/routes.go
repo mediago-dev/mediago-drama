@@ -90,6 +90,7 @@ func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.GET("/prompt-presets", handlers.PromptLibrary.HandleListPrompts)
 	apiRoutes.POST("/prompt-presets", handlers.PromptLibrary.HandlePostPrompt)
 	apiRoutes.GET("/prompt-presets/:id", handlers.PromptLibrary.HandleGetPrompt)
+	apiRoutes.GET("/prompt-presets/:id/use", handlers.PromptLibrary.HandleGetPromptForUse)
 	apiRoutes.PUT("/prompt-presets/:id", handlers.PromptLibrary.HandlePutPrompt)
 	apiRoutes.POST("/prompt-presets/:id/reset", handlers.PromptLibrary.HandleResetPrompt)
 	apiRoutes.DELETE("/prompt-presets/:id", handlers.PromptLibrary.HandleDeletePrompt)

@@ -390,6 +390,7 @@ const workspaceDefaults = {
 	fullPrompt: "完整提示词",
 	prompt: "旧提示词",
 	promptInsertItems: [],
+	promptReferenceItems: [],
 	promptSourceRefs: [],
 	selectableReferenceKinds: new Set(["image"]),
 	selectedFamily: { id: "image-family", label: "图像模型" },
@@ -1865,7 +1866,7 @@ describe("MediaGenerationWorkspace", () => {
 		vi.mocked(useGenerationWorkspace).mockReturnValue({
 			...workspaceDefaults,
 			prompt: "",
-			promptInsertItems: [promptInsertItem],
+			promptReferenceItems: [promptInsertItem],
 			setPrompt,
 		} as unknown as ReturnType<typeof useGenerationWorkspace>);
 
@@ -1889,7 +1890,7 @@ describe("MediaGenerationWorkspace", () => {
 			...workspaceDefaults,
 			catalog: textGenerationCatalog,
 			prompt: "原始角色提示词",
-			promptInsertItems: [promptInsertItem],
+			promptReferenceItems: [promptInsertItem],
 			setPrompt,
 		} as unknown as ReturnType<typeof useGenerationWorkspace>);
 
@@ -1943,6 +1944,53 @@ describe("MediaGenerationWorkspace", () => {
 		expect(setPrompt).toHaveBeenCalledWith("optimized prompt");
 	});
 
+	it("lists and resolves a protected prompt pack without exposing its body", async () => {
+		const protectedPromptItem = {
+			...promptInsertItem,
+			id: "protected-cinematic",
+			name: "受保护电影质感",
+			prompt: "",
+		};
+		generationApiMocks.streamGenerationText.mockImplementation(async (_request, handlers) => {
+			handlers.onDelta?.("optimized protected prompt");
+		});
+		vi.mocked(useGenerationWorkspace).mockReturnValue({
+			...workspaceDefaults,
+			catalog: textGenerationCatalog,
+			prompt: "原始视频提示词",
+			promptReferenceItems: [protectedPromptItem],
+			setPrompt: vi.fn(),
+		} as unknown as ReturnType<typeof useGenerationWorkspace>);
+
+		render(
+			<MediaGenerationWorkspace
+				historyScopeId="history-a"
+				initialPrompt="原始视频提示词"
+				kind="video"
+				projectId="project-a"
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "优化提示词" }));
+		fireEvent.click(screen.getByRole("button", { name: /受保护电影质感/ }));
+		await waitFor(() => expect(screen.getByRole("button", { name: "优化" })).toBeEnabled());
+		fireEvent.click(screen.getByRole("button", { name: "优化" }));
+
+		await waitFor(() => expect(generationApiMocks.streamGenerationText).toHaveBeenCalled());
+		const [request] = generationApiMocks.streamGenerationText.mock.calls[0];
+		expect(request).toMatchObject({
+			prompt: "原始视频提示词",
+			promptOptimization: {
+				model: "text-model",
+				referenceId: "protected-cinematic",
+				referenceName: "受保护电影质感",
+				referencePrompt: "",
+				routeId: "text-route",
+			},
+		});
+		expect(JSON.stringify(request)).not.toContain("cinematic lighting, detailed composition");
+	});
+
 	it("submits prompt optimization settings when optimizing and generating", async () => {
 		const setPrompt = vi.fn();
 		const submitGeneration = vi.fn(async () => undefined);
@@ -1950,7 +1998,7 @@ describe("MediaGenerationWorkspace", () => {
 			...workspaceDefaults,
 			catalog: textGenerationCatalog,
 			prompt: "原始角色提示词",
-			promptInsertItems: [promptInsertItem],
+			promptReferenceItems: [promptInsertItem],
 			setPrompt,
 			submitGeneration,
 		} as unknown as ReturnType<typeof useGenerationWorkspace>);
@@ -1998,7 +2046,7 @@ describe("MediaGenerationWorkspace", () => {
 			...workspaceDefaults,
 			catalog: textGenerationCatalog,
 			prompt: "原始角色提示词",
-			promptInsertItems: [promptInsertItem],
+			promptReferenceItems: [promptInsertItem],
 			setPrompt,
 			submitGeneration,
 		} as unknown as ReturnType<typeof useGenerationWorkspace>);
@@ -2053,7 +2101,7 @@ describe("MediaGenerationWorkspace", () => {
 				versions: [{ id: "version-image", kind: "image", label: "v1" }],
 			},
 			prompt: "原始角色提示词",
-			promptInsertItems: [promptInsertItem],
+			promptReferenceItems: [promptInsertItem],
 			setPrompt,
 			submitGeneration,
 		} as unknown as ReturnType<typeof useGenerationWorkspace>);
@@ -2089,7 +2137,7 @@ describe("MediaGenerationWorkspace", () => {
 			...workspaceDefaults,
 			catalog: textGenerationCatalog,
 			prompt: "原始角色提示词",
-			promptInsertItems: [promptInsertItem],
+			promptReferenceItems: [promptInsertItem],
 			setPrompt,
 		} as unknown as ReturnType<typeof useGenerationWorkspace>);
 
@@ -2138,7 +2186,7 @@ describe("MediaGenerationWorkspace", () => {
 		vi.mocked(useGenerationWorkspace).mockReturnValue({
 			...workspaceDefaults,
 			prompt: "原始角色提示词",
-			promptInsertItems: [promptInsertItem],
+			promptReferenceItems: [promptInsertItem],
 			setPrompt,
 		} as unknown as ReturnType<typeof useGenerationWorkspace>);
 

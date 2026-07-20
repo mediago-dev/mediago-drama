@@ -71,11 +71,17 @@ export const listPromptPresets = async (
 	config?: AxiosRequestConfig,
 ): Promise<PromptPreset[]> => {
 	const index = await listPromptPresetIndex(filter, config);
-	const details = await Promise.allSettled(index.map((entry) => getPromptPreset(entry.id)));
+	const details = await Promise.allSettled(index.map((entry) => getPromptPresetForUse(entry.id)));
 	return details.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
 };
 
 export const getPromptPreset = promptPresetResource.get;
+export const getPromptPresetForUse = async (id: string | number): Promise<PromptPreset> => {
+	const response = await httpClient.get<PromptPreset>(
+		`${promptPresetsKey}/${encodeURIComponent(String(id))}/use`,
+	);
+	return response.data;
+};
 export const createPromptPreset = promptPresetResource.create;
 export const updatePromptPreset = promptPresetResource.update;
 export const deletePromptPreset = promptPresetResource.remove;

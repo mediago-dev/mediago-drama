@@ -153,6 +153,7 @@ type GenerationPromptOptimizationRequest struct {
 	CapabilityID      string         `json:"capabilityId,omitempty"`
 	RouteID           string         `json:"routeId"`
 	Model             string         `json:"model,omitempty"`
+	ReferenceID       string         `json:"referenceId,omitempty"`
 	ReferenceName     string         `json:"referenceName,omitempty"`
 	ReferencePrompt   string         `json:"referencePrompt"`
 	Params            map[string]any `json:"params,omitempty"`

@@ -103,10 +103,12 @@ const BatchGenerationSettingsDialogContent: React.FC<{
 			const optimizationRoute = controller.catalog.routes.find(
 				(item) => item.id === value.promptOptimization.routeId,
 			);
-			const referencePrompt = value.promptOptimization.referencePrompt?.trim();
-			if (!optimizationRoute || !referencePrompt) return;
+			const referenceId = value.promptOptimization.referenceId?.trim();
+			const referencePrompt = value.promptOptimization.referencePrompt?.trim() ?? "";
+			if (!optimizationRoute || (!referenceId && !referencePrompt)) return;
 			promptOptimization = {
 				model: optimizationRoute.model,
+				referenceId,
 				referenceName: value.promptOptimization.referenceName,
 				referencePrompt,
 				routeId: optimizationRoute.id,

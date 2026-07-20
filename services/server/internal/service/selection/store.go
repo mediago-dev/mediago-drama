@@ -1472,8 +1472,8 @@ func validateGenerationSettingsPromptSupplements(field FormField, value any) ([]
 			return nil, fmt.Errorf("form field %q expects promptSupplements[%d].referenceName to be a string", field.ID, index)
 		}
 		prompt, ok := object["referencePrompt"].(string)
-		if !ok || strings.TrimSpace(prompt) == "" {
-			return nil, fmt.Errorf("form field %q requires promptSupplements[%d].referencePrompt", field.ID, index)
+		if !ok {
+			return nil, fmt.Errorf("form field %q expects promptSupplements[%d].referencePrompt to be a string", field.ID, index)
 		}
 		supplement := map[string]any{
 			"referenceName":   strings.TrimSpace(name),
@@ -1487,6 +1487,9 @@ func validateGenerationSettingsPromptSupplements(field FormField, value any) ([]
 			if id = strings.TrimSpace(id); id != "" {
 				supplement["referenceId"] = id
 			}
+		}
+		if _, hasID := supplement["referenceId"]; !hasID && strings.TrimSpace(prompt) == "" {
+			return nil, fmt.Errorf("form field %q requires promptSupplements[%d].referenceId or referencePrompt", field.ID, index)
 		}
 		resolved = append(resolved, supplement)
 	}
@@ -1522,8 +1525,10 @@ func validateGenerationSettingsPromptOptimization(field FormField, value any) (m
 	if _, ok := resolved["routeId"]; !ok {
 		return nil, fmt.Errorf("form field %q requires promptOptimization.routeId when enabled", field.ID)
 	}
-	if _, ok := resolved["referencePrompt"]; !ok {
-		return nil, fmt.Errorf("form field %q requires promptOptimization.referencePrompt when enabled", field.ID)
+	if _, hasPrompt := resolved["referencePrompt"]; !hasPrompt {
+		if _, hasID := resolved["referenceId"]; !hasID {
+			return nil, fmt.Errorf("form field %q requires promptOptimization.referenceId or referencePrompt when enabled", field.ID)
+		}
 	}
 	return resolved, nil
 }

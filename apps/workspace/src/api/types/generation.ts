@@ -255,6 +255,7 @@ export interface GenerationPromptOptimizationRequest {
 	capabilityId?: string;
 	routeId: string;
 	model?: string;
+	referenceId?: string;
 	referenceName?: string;
 	referencePrompt: string;
 	params?: Record<string, unknown>;

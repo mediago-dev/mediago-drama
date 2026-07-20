@@ -158,7 +158,7 @@ describe("useGenerationSettingsForm", () => {
 		};
 		workspaceMock.current = {
 			...workspaceMock.current,
-			promptInsertItems: [...promptItems, customStylePack],
+			promptReferenceItems: [...promptItems, customStylePack],
 		};
 		rerender();
 
@@ -416,7 +416,7 @@ describe("useGenerationSettingsForm", () => {
 			...workspaceMock.current,
 			hasLoadedPromptInsertItems: false,
 			hasSettledPromptInsertItems: true,
-			promptInsertItems: [],
+			promptReferenceItems: [],
 		};
 
 		const { result } = renderHook(() => useGenerationSettingsForm({ kind: "image" }));
@@ -463,7 +463,7 @@ describe("useGenerationSettingsForm", () => {
 
 		workspaceMock.current = {
 			...workspaceMock.current,
-			promptInsertItems: promptItems.map((item) =>
+			promptReferenceItems: promptItems.map((item) =>
 				item.id === "pack-style" ? { ...item, prompt: "更新后的二维动画线条" } : item,
 			),
 		};
@@ -490,7 +490,7 @@ const workspaceValue = () => ({
 	isUploadingAsset: false,
 	mediaAssets: [imageAsset],
 	mutateMediaAssets: vi.fn(),
-	promptInsertItems: promptItems,
+	promptReferenceItems: promptItems,
 	selectedFamily: catalog.families[0],
 	selectedParams: {},
 	selectedRoute: catalog.routes[0],

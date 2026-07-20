@@ -757,6 +757,7 @@ func expectedGenerationMessageInput(
 	if plan.promptOptimization != nil {
 		expected.PromptOptimization = &mediamcp.GenerationPromptOptimizationInput{
 			RouteID:         plan.promptOptimization.RouteID,
+			ReferenceID:     plan.promptOptimization.ReferenceID,
 			ReferenceName:   plan.promptOptimization.ReferenceName,
 			ReferencePrompt: plan.promptOptimization.ReferencePrompt,
 			Params:          map[string]any{},
@@ -961,6 +962,7 @@ func canonicalGenerationPromptOptimization(
 		CapabilityID:      strings.TrimSpace(input.CapabilityID),
 		RouteID:           strings.TrimSpace(input.RouteID),
 		Model:             strings.TrimSpace(input.Model),
+		ReferenceID:       strings.TrimSpace(input.ReferenceID),
 		ReferenceName:     strings.TrimSpace(input.ReferenceName),
 		ReferencePrompt:   strings.TrimSpace(input.ReferencePrompt),
 		Params:            nonNilMap(input.Params),
@@ -1200,6 +1202,7 @@ type confirmedPromptSupplement struct {
 
 type confirmedPromptOptimization struct {
 	RouteID         string
+	ReferenceID     string
 	ReferenceName   string
 	ReferencePrompt string
 }
@@ -1452,8 +1455,8 @@ func submittedPromptSupplements(value any) ([]confirmedPromptSupplement, error) 
 			return nil, fmt.Errorf("expects item %d referenceName to be a string", index)
 		}
 		prompt, ok := object["referencePrompt"].(string)
-		if !ok || strings.TrimSpace(prompt) == "" {
-			return nil, fmt.Errorf("requires item %d referencePrompt", index)
+		if !ok {
+			return nil, fmt.Errorf("expects item %d referencePrompt to be a string", index)
 		}
 		id := ""
 		if rawID, present := object["referenceId"]; present && rawID != nil {
@@ -1462,6 +1465,9 @@ func submittedPromptSupplements(value any) ([]confirmedPromptSupplement, error) 
 			if !idOK {
 				return nil, fmt.Errorf("expects item %d referenceId to be a string", index)
 			}
+		}
+		if strings.TrimSpace(id) == "" && strings.TrimSpace(prompt) == "" {
+			return nil, fmt.Errorf("requires item %d referenceId or referencePrompt", index)
 		}
 		result = append(result, confirmedPromptSupplement{
 			ReferenceID:     strings.TrimSpace(id),
@@ -1491,9 +1497,10 @@ func submittedPromptOptimization(value any) (*confirmedPromptOptimization, error
 	if !ok || strings.TrimSpace(routeID) == "" {
 		return nil, fmt.Errorf("requires routeId when enabled")
 	}
-	referencePrompt, ok := object["referencePrompt"].(string)
-	if !ok || strings.TrimSpace(referencePrompt) == "" {
-		return nil, fmt.Errorf("requires referencePrompt when enabled")
+	referencePrompt, _ := object["referencePrompt"].(string)
+	referenceID, _ := object["referenceId"].(string)
+	if strings.TrimSpace(referenceID) == "" && strings.TrimSpace(referencePrompt) == "" {
+		return nil, fmt.Errorf("requires referenceId or referencePrompt when enabled")
 	}
 	referenceName := ""
 	if rawName, present := object["referenceName"]; present && rawName != nil {
@@ -1505,6 +1512,7 @@ func submittedPromptOptimization(value any) (*confirmedPromptOptimization, error
 	}
 	return &confirmedPromptOptimization{
 		RouteID:         strings.TrimSpace(routeID),
+		ReferenceID:     strings.TrimSpace(referenceID),
 		ReferenceName:   strings.TrimSpace(referenceName),
 		ReferencePrompt: strings.TrimSpace(referencePrompt),
 	}, nil
@@ -1535,6 +1543,12 @@ func authorizePromptOptimization(
 	if input == nil {
 		return fmt.Errorf("prompt optimization does not match the submitted generation_plan")
 	}
+	confirmedReferenceID := ""
+	inputReferenceID := ""
+	if confirmed.ReferencePrompt == "" {
+		confirmedReferenceID = confirmed.ReferenceID
+		inputReferenceID = strings.TrimSpace(input.ReferenceID)
+	}
 	want := map[string]any{
 		"sessionId":         "",
 		"scopeId":           "",
@@ -1543,6 +1557,7 @@ func authorizePromptOptimization(
 		"capabilityId":      "",
 		"routeId":           confirmed.RouteID,
 		"model":             "",
+		"referenceId":       confirmedReferenceID,
 		"referenceName":     confirmed.ReferenceName,
 		"referencePrompt":   confirmed.ReferencePrompt,
 		"params":            map[string]any{},
@@ -1555,6 +1570,7 @@ func authorizePromptOptimization(
 		"capabilityId":      strings.TrimSpace(input.CapabilityID),
 		"routeId":           strings.TrimSpace(input.RouteID),
 		"model":             strings.TrimSpace(input.Model),
+		"referenceId":       inputReferenceID,
 		"referenceName":     strings.TrimSpace(input.ReferenceName),
 		"referencePrompt":   strings.TrimSpace(input.ReferencePrompt),
 		"params":            nonNilMap(input.Params),

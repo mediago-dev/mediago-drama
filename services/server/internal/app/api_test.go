@@ -158,6 +158,12 @@ func TestAPIHandler(t *testing.T) {
 			t.Fatalf("detail status code = %d, want prompt detail", detail.StatusCode)
 		}
 
+		useDetail := requestJSON(t, handler, http.MethodGet, "/api/v1/prompt-presets/character-multi-view/use", "")
+		defer useDetail.Body.Close()
+		if useDetail.StatusCode != http.StatusOK || !strings.Contains(readBody(t, useDetail.Body), `"prompt":`) {
+			t.Fatalf("use detail status code = %d, want insertable prompt detail", useDetail.StatusCode)
+		}
+
 		update := requestJSON(t, handler, http.MethodPut, "/api/v1/prompt-presets/character-multi-view", `{"id":"character-multi-view","name":"自定义多视图","category":"extra","type":"image","prompt":"用户覆盖提示词"}`)
 		defer update.Body.Close()
 		if update.StatusCode != http.StatusForbidden {
