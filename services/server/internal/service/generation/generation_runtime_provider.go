@@ -101,6 +101,9 @@ func (workflow *GenerationService) generationRouteConfiguredWithMediagoModels(
 	if route.Status != coregeneration.RouteStatusAvailable {
 		return false
 	}
+	if !workflow.settings.GenerationProviderEnabled(route.Provider) {
+		return false
+	}
 	if route.Provider == coregeneration.ProviderMediago && strings.TrimSpace(workflow.mediagoBaseURL) == "" {
 		return false
 	}

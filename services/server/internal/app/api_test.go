@@ -1962,7 +1962,9 @@ func newTestHandler(t *testing.T, dbPath string) http.Handler {
 			SettingsDBPath:          dbPath,
 			MediaDir:                filepath.Join(filepath.Dir(dbPath), "assets"),
 			WorkspaceDir:            filepath.Join(filepath.Dir(dbPath), "workspace"),
+			ModelPlatforms:          []string{"mediago", "openrouter", "dmxapi"},
 			DisableGenerationWorker: true,
+			DisableWorkspaceWatcher: true,
 			agentRunner:             fakeAgentRunner{},
 			documentOperationRunner: fakeDocumentOperationRunner{},
 		},
@@ -1992,8 +1994,18 @@ func testWorkspaceDBPathForSettings(dbPath string) string {
 func createExternalProjectForTest(t *testing.T, handler http.Handler, name string) (workspaceProjectRecord, string) {
 	t.Helper()
 
-	projectDir := filepath.Join(t.TempDir(), "external-project")
-	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+	projectRoot := ""
+	if appHandler, ok := handler.(*Handler); ok && appHandler.api != nil {
+		// Keep projects owned by a shared parent handler under the handler's temp
+		// root. The handler is then closed before that root is removed, avoiding
+		// background agent persistence racing a subtest TempDir cleanup.
+		projectRoot = filepath.Dir(appHandler.api.workspaceState.Dir())
+	}
+	if projectRoot == "" {
+		projectRoot = t.TempDir()
+	}
+	projectDir, err := os.MkdirTemp(projectRoot, "external-project-")
+	if err != nil {
 		t.Fatalf("creating external project dir: %v", err)
 	}
 	payload, err := json.Marshal(map[string]string{

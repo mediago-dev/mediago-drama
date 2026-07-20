@@ -528,14 +528,11 @@ func TestPrepareOpenCodeRuntimeConfigConcurrentIdenticalContentPublishesOnce(t *
 
 func TestPrepareOpenCodeRuntimeConfigExcludesDMXWhenPlatformDisabled(t *testing.T) {
 	settings := NewSettingsWithAgentModelProfiles(
-		&memoryAPIKeyStore{values: map[string]string{}},
+		&memoryAPIKeyStore{values: map[string]string{"dmx": "sk-dmx-secret"}},
 		&memoryAgentModelProfileStore{values: map[string]domainAgentModelProfile{}},
 	)
+	settings.SetModelPlatforms([]string{ModelPlatformMediago})
 	ctx := context.Background()
-
-	if _, err := settings.SetAPIKey(ctx, "dmx", "sk-dmx-secret"); err != nil {
-		t.Fatalf("SetAPIKey returned error: %v", err)
-	}
 
 	workspaceDir := t.TempDir()
 	config, err := settings.PrepareOpenCodeRuntimeConfig(ctx, workspaceDir)

@@ -48,6 +48,7 @@ func (store *memoryAPIKeyStore) Clear(keyName string) error {
 
 func TestSettingsSetListAndClearAPIKey(t *testing.T) {
 	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{}})
+	settings.SetModelPlatforms([]string{ModelPlatformOpenRouter})
 
 	list, err := settings.SetAPIKey(context.Background(), "openrouter", "sk-service")
 	if err != nil {
@@ -73,6 +74,11 @@ func TestSettingsSetListAndClearAPIKey(t *testing.T) {
 
 func TestSettingsListAPIKeysIncludesGenerationAndAgentProviders(t *testing.T) {
 	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{}})
+	settings.SetModelPlatforms([]string{
+		ModelPlatformMediago,
+		ModelPlatformOpenRouter,
+		ModelPlatformDMXAPI,
+	})
 
 	list, err := settings.ListAPIKeys(context.Background())
 	if err != nil {
@@ -104,6 +110,32 @@ func TestSettingsListAPIKeysIncludesGenerationAndAgentProviders(t *testing.T) {
 		!stringSliceContains(provider.Capabilities, "agent") ||
 		!stringSliceContains(provider.Capabilities, "generation") {
 		t.Fatalf("mediago provider = %#v, want generation and agent MediaGo provider", provider)
+	}
+}
+
+func TestSettingsListAPIKeysExcludesAggregationProvidersOutsideBuildAllowlist(t *testing.T) {
+	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{
+		generation.ProviderMediago:    "mgak-existing",
+		generation.ProviderOpenRouter: "sk-openrouter-existing",
+		generation.ProviderDMX:        "sk-dmx-existing",
+	}})
+	settings.SetModelPlatforms([]string{ModelPlatformOpenRouter})
+
+	list, err := settings.ListAPIKeys(context.Background())
+	if err != nil {
+		t.Fatalf("ListAPIKeys returned error: %v", err)
+	}
+	if apiKeyProviderExists(list, generation.ProviderMediago) {
+		t.Fatalf("providers = %#v, want MediaGo hidden outside MODEL_PLATFORM", list.Providers)
+	}
+	if apiKeyProviderExists(list, generation.ProviderDMX) {
+		t.Fatalf("providers = %#v, want DMXAPI hidden outside MODEL_PLATFORM", list.Providers)
+	}
+	if !apiKeyProviderExists(list, generation.ProviderOpenRouter) {
+		t.Fatalf("providers = %#v, want enabled OpenRouter platform", list.Providers)
+	}
+	if !apiKeyProviderExists(list, generation.ProviderOpenAI) {
+		t.Fatalf("providers = %#v, want official providers unaffected", list.Providers)
 	}
 }
 

@@ -71,6 +71,7 @@ func TestNewHandlerDefaultsSettingsDBToWorkspaceDatabaseDir(t *testing.T) {
 		},
 		Config{
 			WorkspaceDir:            workspaceDir,
+			ModelPlatforms:          []string{"openrouter"},
 			DisableGenerationWorker: true,
 			DisableWorkspaceWatcher: true,
 			agentRunner:             fakeAgentRunner{},

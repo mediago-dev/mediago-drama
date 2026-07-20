@@ -96,6 +96,22 @@ describe("Settings API key page", () => {
 		expect(screen.queryByRole("heading", { name: "官方供应商" })).not.toBeInTheDocument();
 	});
 
+	it("does not show aggregation providers omitted from the build allowlist", async () => {
+		vi.mocked(getAPIKeys).mockResolvedValue(
+			apiKeysResponse({ mediagoConfigured: true, openrouterConfigured: true }),
+		);
+		vi.mocked(getModelPlatforms).mockResolvedValue({ platforms: [] });
+
+		renderSettings();
+
+		expect(
+			await screen.findByRole("heading", { name: "当前版本未启用 MediaGo" }),
+		).toBeInTheDocument();
+		expect(screen.queryByRole("heading", { name: "统一接口" })).not.toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: /其他接入方式/ }));
+		expect(screen.queryByText("OpenRouter")).not.toBeInTheDocument();
+	});
+
 	it("renders MediaGo model chips from platform data", async () => {
 		renderSettings();
 

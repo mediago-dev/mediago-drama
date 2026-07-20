@@ -126,6 +126,7 @@ type Settings struct {
 	agentProfiles            AgentModelProfileStore
 	appSettings              AppSettingStore
 	modelPlatformIDs         []string
+	modelPlatformsConfigured bool
 	generationCLIProviderIDs []string
 	mediagoBaseURL           string
 	jimengBinPath            string
@@ -784,6 +785,9 @@ func (service *Settings) apiKeyProviders() []APIKeyProvider {
 	enabledCLIProviders := enabledGenerationCLIProviderSet(service.GenerationCLIProviderIDs())
 	filtered := make([]APIKeyProvider, 0, len(providers))
 	for _, provider := range providers {
+		if !service.GenerationProviderEnabled(provider.ID) {
+			continue
+		}
 		if isGenerationCLIProvider(provider.ID) && !enabledCLIProviders[provider.ID] {
 			continue
 		}

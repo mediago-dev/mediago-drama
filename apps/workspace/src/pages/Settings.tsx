@@ -171,9 +171,7 @@ const APIKeysPanel: React.FC = () => {
 	const modelPlatforms = modelPlatformsData?.platforms ?? [];
 	const providersByID = new Map(providers.map((provider) => [provider.id, provider]));
 	const unifiedProviders = platformProviders(modelPlatforms, providersByID, "unified");
-	const mediagoProvider =
-		platformProvider(modelPlatforms, providersByID, mediagoProviderID) ??
-		providersByID.get(mediagoProviderID);
+	const mediagoProvider = platformProvider(modelPlatforms, providersByID, mediagoProviderID);
 	const mediagoModelGroups =
 		modelPlatforms.find((platform) => platform.id === mediagoProviderID)?.modelGroups ?? [];
 	const visibleUnifiedProviders = unifiedProviders.filter(

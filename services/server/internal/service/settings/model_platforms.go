@@ -180,6 +180,7 @@ func (service *Settings) SetModelPlatforms(ids []string) {
 		return
 	}
 	service.modelPlatformIDs = normalizeModelPlatformIDs(ids)
+	service.modelPlatformsConfigured = true
 }
 
 // SetGenerationCLIs configures which local generation CLIs this build exposes.
@@ -490,6 +491,33 @@ func (service *Settings) modelPlatformEnabled(id string) bool {
 		}
 	}
 	return false
+}
+
+// GenerationProviderEnabled reports whether an aggregation provider is exposed
+// by this build's model platform allowlist. Official and local providers are
+// unaffected by MODEL_PLATFORM.
+func (service *Settings) GenerationProviderEnabled(providerID string) bool {
+	if service == nil || !service.modelPlatformsConfigured {
+		return true
+	}
+	platformID, gated := modelPlatformIDForGenerationProvider(providerID)
+	if !gated {
+		return true
+	}
+	return service.modelPlatformEnabled(platformID)
+}
+
+func modelPlatformIDForGenerationProvider(providerID string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(providerID)) {
+	case generation.ProviderMediago:
+		return ModelPlatformMediago, true
+	case generation.ProviderOpenRouter:
+		return ModelPlatformOpenRouter, true
+	case generation.ProviderDMX:
+		return ModelPlatformDMXAPI, true
+	default:
+		return "", false
+	}
 }
 
 func normalizeModelPlatformIDs(ids []string) []string {

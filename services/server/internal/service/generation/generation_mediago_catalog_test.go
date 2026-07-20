@@ -83,6 +83,38 @@ func TestListGenerationModelsFiltersMediagoRoutesByUserCatalog(t *testing.T) {
 	}
 }
 
+func TestListGenerationModelsHonorsBuildPlatformAllowlistWithExistingKeys(t *testing.T) {
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{
+			coregeneration.ProviderMediago:    "mgak-existing",
+			coregeneration.ProviderOpenRouter: "sk-openrouter-existing",
+			coregeneration.ProviderDMX:        "sk-dmx-existing",
+		},
+	})
+	settingsSvc.SetModelPlatforms([]string{settings.ModelPlatformOpenRouter})
+	workflow := NewGenerationService(settingsSvc, nil, nil)
+
+	catalog := workflow.ListGenerationModels()
+	if !generationRouteConfiguredInCatalog(catalog, coregeneration.RouteOpenRouterGPT41MiniText) {
+		t.Fatalf("route %q should be configured when OpenRouter is packaged and keyed", coregeneration.RouteOpenRouterGPT41MiniText)
+	}
+	for _, routeID := range []string{
+		coregeneration.RouteMediagoGPTImage2,
+		coregeneration.RouteDMXGPT41MiniText,
+	} {
+		if generationRouteConfiguredInCatalog(catalog, routeID) {
+			t.Fatalf("route %q should be hidden when its platform is outside MODEL_PLATFORM", routeID)
+		}
+		route, ok := coregeneration.FindRoute(routeID)
+		if !ok {
+			t.Fatalf("missing route %q", routeID)
+		}
+		if _, err := workflow.newGenerationProvider(route); err == nil {
+			t.Fatalf("newGenerationProvider(%q) should reject a platform outside MODEL_PLATFORM", routeID)
+		}
+	}
+}
+
 func TestListGenerationModelsRequiresBothMediagoHappyHorseModes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
