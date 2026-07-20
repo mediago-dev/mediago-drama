@@ -1,5 +1,4 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type React from "react";
 import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -27,15 +26,39 @@ vi.mock("@/domains/settings/api/settings", async (importOriginal) => {
 
 vi.mock("@/domains/settings/components/CodexRelayPanel", () => ({
 	CodexRelayPanel: ({
-		beforeContent,
+		officialChannel,
 		title,
 	}: {
-		beforeContent?: React.ReactNode;
-		title?: React.ReactNode;
+		officialChannel?: {
+			busy: boolean;
+			detail?: string;
+			email?: string;
+			onLogin: () => void;
+			onLogout: () => void;
+			onReopen: () => void;
+			status: string;
+		};
+		title?: unknown;
 	}) => (
 		<div>
-			<h2>{title}</h2>
-			{beforeContent}
+			<h2>{String(title)}</h2>
+			<p>{officialChannel?.email}</p>
+			<p>{officialChannel?.detail}</p>
+			{officialChannel?.status === "loggedIn" ? (
+				<button type="button" onClick={officialChannel.onLogout}>
+					退出全局账号
+				</button>
+			) : null}
+			{officialChannel?.status === "loggedOut" ? (
+				<button type="button" onClick={officialChannel.onLogin}>
+					使用 ChatGPT 登录
+				</button>
+			) : null}
+			{officialChannel?.status === "pending" ? (
+				<button type="button" onClick={officialChannel.onReopen}>
+					重新打开浏览器
+				</button>
+			) : null}
 		</div>
 	),
 }));

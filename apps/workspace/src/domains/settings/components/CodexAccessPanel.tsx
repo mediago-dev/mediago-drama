@@ -1,4 +1,4 @@
-import { CheckCircle2, ExternalLink, Loader2, LogIn, LogOut, RefreshCw } from "lucide-react";
+import { LogOut } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
@@ -8,19 +8,14 @@ import {
 	beginCodexAccountLogin,
 	cancelCodexAccountLogin,
 	codexAccountKey,
-	codexRelaySettingsKey,
 	getCodexAccount,
 	getCodexAccountLogin,
-	getCodexRelaySettings,
 	logoutCodexAccount,
-	saveCodexRelaySettings,
 } from "@/domains/settings/api/settings";
 import { CodexRelayPanel } from "@/domains/settings/components/CodexRelayPanel";
 import { useToast } from "@/hooks/useToast";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
-import { Button } from "@/shared/components/ui/button";
 import { openExternalUrl } from "@/shared/desktop/actions";
-import { cn } from "@/shared/lib/utils";
 
 export const CodexAccessPanel: React.FC = () => {
 	const toast = useToast();
@@ -31,7 +26,6 @@ export const CodexAccessPanel: React.FC = () => {
 		isLoading,
 		mutate,
 	} = useSWR(codexAccountKey, getCodexAccount);
-	const { data: relay } = useSWR(codexRelaySettingsKey, getCodexRelaySettings);
 	const [attempt, setAttempt] = useState<CodexLoginAttempt>();
 	const [busy, setBusy] = useState("");
 
@@ -106,32 +100,6 @@ export const CodexAccessPanel: React.FC = () => {
 		}
 	};
 
-	const useOfficialChannel = async () => {
-		if (!relay?.enabled) return;
-		setBusy("official");
-		try {
-			const next = await saveCodexRelaySettings({
-				enabled: false,
-				activeProfileId: relay.activeProfileId || "",
-				profiles: relay.profiles.map(({ id, name, baseURL, model, protocol, enabled }) => ({
-					id,
-					name,
-					baseURL,
-					model,
-					protocol,
-					enabled,
-				})),
-			});
-			await mutateGlobal(codexRelaySettingsKey, next, { revalidate: false });
-			void mutateGlobal(isAgentRuntimeConfigKey, undefined, { revalidate: true });
-			toast.success("已切换到 ChatGPT 官方订阅");
-		} catch (error) {
-			toast.error("切换失败", { description: errorMessage(error) });
-		} finally {
-			setBusy("");
-		}
-	};
-
 	const logout = async () => {
 		setBusy("logout");
 		try {
@@ -157,133 +125,33 @@ export const CodexAccessPanel: React.FC = () => {
 		});
 	};
 
+	const loggedIn = account?.status === "loggedIn";
+	const pending = attempt?.status === "pending";
+	const status = isLoading
+		? ("loading" as const)
+		: accountError
+			? ("error" as const)
+			: loggedIn
+				? ("loggedIn" as const)
+				: pending
+					? ("pending" as const)
+					: ("loggedOut" as const);
+
 	return (
 		<CodexRelayPanel
 			title="Codex 接入"
-			description="使用 ChatGPT 官方订阅，或配置 Codex 中转站。"
-			beforeContent={
-				<OfficialAccountCard
-					account={account}
-					attempt={attempt}
-					busy={busy}
-					error={accountError}
-					isLoading={isLoading}
-					relayEnabled={relay?.enabled ?? false}
-					onCancel={() => void cancelLogin()}
-					onLogin={() => void startLogin()}
-					onLogout={confirmLogout}
-					onReopen={() => void reopenLogin()}
-					onUseOfficial={() => void useOfficialChannel()}
-				/>
-			}
+			description="选择 ChatGPT 官方订阅，或通过中转平台接入 Codex。"
+			officialChannel={{
+				status,
+				email: account?.email,
+				detail: loggedIn ? `${planLabel(account.planType)} · ${account.codexHome}` : undefined,
+				busy: busy !== "",
+				onCancel: () => void cancelLogin(),
+				onLogin: () => void startLogin(),
+				onLogout: confirmLogout,
+				onReopen: () => void reopenLogin(),
+			}}
 		/>
-	);
-};
-
-const OfficialAccountCard: React.FC<{
-	account?: Awaited<ReturnType<typeof getCodexAccount>>;
-	attempt?: CodexLoginAttempt;
-	busy: string;
-	error?: unknown;
-	isLoading: boolean;
-	relayEnabled: boolean;
-	onCancel: () => void;
-	onLogin: () => void;
-	onLogout: () => void;
-	onReopen: () => void;
-	onUseOfficial: () => void;
-}> = ({
-	account,
-	attempt,
-	busy,
-	error,
-	isLoading,
-	relayEnabled,
-	onCancel,
-	onLogin,
-	onLogout,
-	onReopen,
-	onUseOfficial,
-}) => {
-	const loggedIn = account?.status === "loggedIn";
-	const pending = attempt?.status === "pending";
-	return (
-		<div className="rounded-md border border-border bg-card p-4">
-			<div className="flex flex-wrap items-start justify-between gap-4">
-				<div className="min-w-0">
-					<div className="flex flex-wrap items-center gap-2">
-						<h3 className="text-sm font-semibold text-foreground">ChatGPT 官方订阅</h3>
-						<span
-							className={cn(
-								"rounded-control border px-2 py-0.5 text-[11px] font-medium",
-								relayEnabled
-									? "border-border text-muted-foreground"
-									: "border-primary/30 bg-primary/10 text-primary",
-							)}
-						>
-							{relayEnabled ? "未使用" : "当前渠道"}
-						</span>
-					</div>
-					<p className="mt-1 text-xs text-muted-foreground">
-						复用全局 Codex 登录态，无需另外安装或重复配置 Codex。
-					</p>
-					{isLoading ? (
-						<p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-							<Loader2 className="size-3.5 animate-spin" />
-							正在读取全局账号
-						</p>
-					) : error ? (
-						<p className="mt-3 text-xs text-error-foreground">内置 Codex 账号服务不可用。</p>
-					) : loggedIn ? (
-						<div className="mt-3 space-y-1 text-xs">
-							<p className="flex items-center gap-2 text-success-foreground">
-								<CheckCircle2 className="size-3.5" />
-								已登录
-							</p>
-							{account.email ? <p className="text-foreground">{account.email}</p> : null}
-							<p className="text-muted-foreground">
-								{planLabel(account.planType)} · {account.codexHome}
-							</p>
-						</div>
-					) : (
-						<p className="mt-3 text-xs text-muted-foreground">尚未登录全局 Codex 账号。</p>
-					)}
-				</div>
-				<div className="flex flex-wrap items-center gap-2">
-					{relayEnabled ? (
-						<Button disabled={busy !== ""} variant="outline" onClick={onUseOfficial}>
-							{busy === "official" ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-							使用官方渠道
-						</Button>
-					) : null}
-					{pending ? (
-						<>
-							<Button
-								disabled={!attempt?.authUrl || busy !== ""}
-								variant="outline"
-								onClick={onReopen}
-							>
-								<ExternalLink />
-								重新打开浏览器
-							</Button>
-							<Button disabled={busy !== ""} variant="outline" onClick={onCancel}>
-								{busy === "cancel" ? <Loader2 className="animate-spin" /> : null}取消
-							</Button>
-						</>
-					) : loggedIn ? (
-						<Button disabled={busy !== ""} variant="outline" onClick={onLogout}>
-							<LogOut />
-							退出全局账号
-						</Button>
-					) : (
-						<Button disabled={busy !== "" || Boolean(error)} onClick={onLogin}>
-							{busy === "login" ? <Loader2 className="animate-spin" /> : <LogIn />}
-							使用 ChatGPT 登录
-						</Button>
-					)}
-				</div>
-			</div>
-		</div>
 	);
 };
 
