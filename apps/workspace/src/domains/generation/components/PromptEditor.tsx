@@ -392,9 +392,6 @@ function findPromptSlashMatchFromText(
 	const slashIndex = textBeforeCursor.lastIndexOf("/");
 	if (slashIndex < 0) return null;
 
-	const previousCharacter = slashIndex > 0 ? textBeforeCursor[slashIndex - 1] : "";
-	if (previousCharacter && !/\s/u.test(previousCharacter)) return null;
-
 	const query = textBeforeCursor.slice(slashIndex + 1);
 	if (/^\s/u.test(query)) return null;
 
