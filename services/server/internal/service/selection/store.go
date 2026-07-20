@@ -1509,7 +1509,7 @@ func validateGenerationSettingsPromptOptimization(field FormField, value any) (m
 		return map[string]any{"enabled": false}, nil
 	}
 	resolved := map[string]any{"enabled": true}
-	for _, key := range []string{"routeId", "label", "referenceId", "referenceName", "referencePrompt"} {
+	for _, key := range []string{"executor", "routeId", "label", "referenceId", "referenceName", "referencePrompt"} {
 		raw, present := object[key]
 		if !present || raw == nil {
 			continue
@@ -1522,7 +1522,11 @@ func validateGenerationSettingsPromptOptimization(field FormField, value any) (m
 			resolved[key] = text
 		}
 	}
-	if _, ok := resolved["routeId"]; !ok {
+	executor, _ := resolved["executor"].(string)
+	if executor != "" && executor != "route" && executor != "codex" {
+		return nil, fmt.Errorf("form field %q expects promptOptimization.executor to be route or codex", field.ID)
+	}
+	if _, ok := resolved["routeId"]; !ok && executor != "codex" {
 		return nil, fmt.Errorf("form field %q requires promptOptimization.routeId when enabled", field.ID)
 	}
 	if _, hasPrompt := resolved["referencePrompt"]; !hasPrompt {
@@ -1609,7 +1613,7 @@ func validatePromptOptimizationValue(field FormField, value any) (any, error) {
 		return map[string]any{"enabled": false}, nil
 	}
 	resolved := map[string]any{"enabled": true}
-	for _, key := range []string{"routeId", "label", "referenceId", "referenceName", "referencePrompt"} {
+	for _, key := range []string{"executor", "routeId", "label", "referenceId", "referenceName", "referencePrompt"} {
 		raw, present := object[key]
 		if !present || raw == nil {
 			continue
@@ -1621,6 +1625,9 @@ func validatePromptOptimizationValue(field FormField, value any) (any, error) {
 		if text = strings.TrimSpace(text); text != "" {
 			resolved[key] = text
 		}
+	}
+	if executor, _ := resolved["executor"].(string); executor != "" && executor != "route" && executor != "codex" {
+		return nil, fmt.Errorf("form field %q expects executor to be route or codex", field.ID)
 	}
 	return resolved, nil
 }

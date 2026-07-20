@@ -27,6 +27,7 @@ import {
 	type PromptOptimizeModelOption,
 } from "@/domains/generation/hooks/usePromptOptimize";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
+import { useCodexTextAvailability } from "@/domains/generation/hooks/useCodexTextAvailability";
 import {
 	batchGenerationPromptSupplementEnabled,
 	useBatchGenerationSettingsPreferenceStore,
@@ -45,6 +46,7 @@ export interface UseGenerationSettingsFormOptions {
 
 export interface GenerationSettingsFormController {
 	catalog: GenerationModelsResponse;
+	codexAvailable: boolean;
 	error: string | null;
 	generationCountControl: ReturnType<typeof useGenerationCountControl>["generationCountControl"];
 	hasAvailableRoute: boolean;
@@ -96,6 +98,7 @@ export const useGenerationSettingsForm = ({
 	projectId,
 	uploadIdPrefix = "generation-settings",
 }: UseGenerationSettingsFormOptions): GenerationSettingsFormController => {
+	const codexAvailable = useCodexTextAvailability();
 	const storedSettings = useBatchGenerationSettingsPreferenceStore(
 		(state) => state.settingsByKind[kind] ?? null,
 	);
@@ -227,7 +230,7 @@ export const useGenerationSettingsForm = ({
 			next = {
 				...next,
 				promptOptimization: optimizationEnabled
-					? promptOptimizationValue(optimizationDraftItem, optimizationDraftModel)
+					? promptOptimizationValue(optimizationDraftItem, optimizationDraftModel, codexAvailable)
 					: { enabled: false },
 				promptSupplements: supplementEnabled
 					? promptSupplementValues(supplementDraftItemIds, workspace.promptReferenceItems)
@@ -286,7 +289,7 @@ export const useGenerationSettingsForm = ({
 		const next: GenerationSettingsValue = {
 			...normalized,
 			promptOptimization: current.promptOptimization.enabled
-				? promptOptimizationValue(optimizationDraftItem, optimizationDraftModel)
+				? promptOptimizationValue(optimizationDraftItem, optimizationDraftModel, codexAvailable)
 				: { enabled: false },
 			promptSupplements: promptSupplementEnabledRef.current
 				? promptSupplementValues(supplementDraftItemIds, workspace.promptReferenceItems)
@@ -295,6 +298,7 @@ export const useGenerationSettingsForm = ({
 		commitValue(next);
 	}, [
 		commitValue,
+		codexAvailable,
 		defaultValue,
 		initializationKey,
 		kind,
@@ -555,11 +559,12 @@ export const useGenerationSettingsForm = ({
 			const model = promptOptimizationModelOptions.find((option) => option.id === routeId);
 			commitValue({
 				...valueRef.current,
-				promptOptimization: promptOptimizationValue(item, model),
+				promptOptimization: promptOptimizationValue(item, model, codexAvailable),
 			});
 		},
 		[
 			commitValue,
+			codexAvailable,
 			promptItemsLoaded,
 			preferredPromptOptimizationModel,
 			promptOptimizationModelOptions,
@@ -581,10 +586,10 @@ export const useGenerationSettingsForm = ({
 				) ?? null;
 			commitValue({
 				...valueRef.current,
-				promptOptimization: promptOptimizationValue(item, model),
+				promptOptimization: promptOptimizationValue(item, model, codexAvailable),
 			});
 		},
-		[commitValue, promptOptimizationModelOptions, workspace.promptReferenceItems],
+		[commitValue, codexAvailable, promptOptimizationModelOptions, workspace.promptReferenceItems],
 	);
 	const setPromptOptimizationRouteId = useCallback(
 		(id: string) => {
@@ -599,10 +604,10 @@ export const useGenerationSettingsForm = ({
 			const model = promptOptimizationModelOptions.find((option) => option.id === id) ?? null;
 			commitValue({
 				...valueRef.current,
-				promptOptimization: promptOptimizationValue(item, model),
+				promptOptimization: promptOptimizationValue(item, model, codexAvailable),
 			});
 		},
-		[commitValue, promptOptimizationModelOptions, workspace.promptReferenceItems],
+		[commitValue, codexAvailable, promptOptimizationModelOptions, workspace.promptReferenceItems],
 	);
 
 	const supportsReferenceImages =
@@ -692,6 +697,7 @@ export const useGenerationSettingsForm = ({
 
 	return {
 		catalog: workspace.catalog,
+		codexAvailable,
 		error,
 		generationCountControl,
 		hasAvailableRoute,
@@ -749,8 +755,10 @@ const emptyGenerationSettingsValue = (kind: GenerationSettingsKind): GenerationS
 const promptOptimizationValue = (
 	item: PromptInsertItem | null | undefined,
 	model: PromptOptimizeModelOption | null | undefined,
+	codexAvailable: boolean,
 ) => ({
 	enabled: true,
+	...(!model && codexAvailable ? { executor: "codex" as const } : {}),
 	...(model ? { label: model.route.label.trim() || model.route.id, routeId: model.route.id } : {}),
 	...(item
 		? {

@@ -13,6 +13,7 @@ import {
 	isConfiguredRoute,
 	preferredRoute,
 } from "@/domains/generation/hooks/generationCatalog";
+import { useCodexTextAvailability } from "./useCodexTextAvailability";
 
 export interface PromptOptimizeInput {
 	currentPrompt: string;
@@ -64,12 +65,14 @@ export const usePromptOptimize = ({
 	const [isOptimizing, setIsOptimizing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const abortRef = useRef<AbortController | null>(null);
+	const codexAvailable = useCodexTextAvailability();
 
 	const textRoute = route ?? resolveTextRoute(catalog);
+	const textExecutor = textRoute ? "route" : codexAvailable ? "codex" : null;
 	const optimize = useCallback(
 		async (input: PromptOptimizeInput) => {
-			if (!textRoute) {
-				setError("没有可用的文本生成模型，请先配置 API Key。");
+			if (!textExecutor) {
+				setError("没有可用的文本生成模型，请配置文本模型或登录 Codex。");
 				return null;
 			}
 
@@ -95,24 +98,25 @@ export const usePromptOptimize = ({
 				await streamGenerationText(
 					{
 						kind: "text",
+						textExecutor,
 						conversationId: conversationId?.trim() || undefined,
 						scopeId: conversationScopeId?.trim() || undefined,
 						projectId: normalizedProjectId,
 						capabilityId,
-						familyId: textRoute.familyId,
-						versionId: textRoute.versionId,
-						routeId: textRoute.id,
-						provider: textRoute.provider,
-						modelId: textRoute.legacyModelId ?? "",
-						model: textRoute.model,
+						familyId: textRoute?.familyId,
+						versionId: textRoute?.versionId,
+						routeId: textRoute?.id ?? "",
+						provider: textRoute?.provider,
+						modelId: textRoute?.legacyModelId ?? "",
+						model: textRoute?.model ?? "",
 						prompt: opaqueReference ? input.currentPrompt : buildPromptOptimizeUserPrompt(input),
 						promptOptimization: opaqueReference
 							? {
-									model: textRoute.model,
+									model: textRoute?.model ?? "",
 									referenceId: input.referenceId?.trim() || undefined,
 									referenceName: input.referenceName,
 									referencePrompt: input.referencePrompt,
-									routeId: textRoute.id,
+									routeId: textRoute?.id,
 								}
 							: undefined,
 						sourceRefs: input.sourceRefs,
@@ -169,6 +173,7 @@ export const usePromptOptimize = ({
 			onOptimized,
 			onSuccess,
 			projectId,
+			textExecutor,
 			textRoute,
 		],
 	);
@@ -180,7 +185,8 @@ export const usePromptOptimize = ({
 	}, []);
 
 	return {
-		canOptimize: Boolean(textRoute),
+		canOptimize: Boolean(textExecutor),
+		codexAvailable,
 		error,
 		isOptimizing,
 		optimize,

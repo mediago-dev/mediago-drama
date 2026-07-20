@@ -105,13 +105,15 @@ const BatchGenerationSettingsDialogContent: React.FC<{
 			);
 			const referenceId = value.promptOptimization.referenceId?.trim();
 			const referencePrompt = value.promptOptimization.referencePrompt?.trim() ?? "";
-			if (!optimizationRoute || (!referenceId && !referencePrompt)) return;
+			const usesCodex = value.promptOptimization.executor === "codex";
+			if ((!optimizationRoute && !usesCodex) || (!referenceId && !referencePrompt)) return;
 			promptOptimization = {
-				model: optimizationRoute.model,
+				...(usesCodex ? { executor: "codex" as const } : {}),
+				model: optimizationRoute?.model,
 				referenceId,
 				referenceName: value.promptOptimization.referenceName,
 				referencePrompt,
-				routeId: optimizationRoute.id,
+				routeId: optimizationRoute?.id,
 			};
 		}
 

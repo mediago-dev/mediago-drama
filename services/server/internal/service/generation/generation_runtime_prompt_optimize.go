@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/textcompletion"
 )
 
 const promptOptimizationSystemInstructionText = `你是提示词优化助手，负责把“用户的输入”改写成一条可直接用于生成的高质量提示词。
@@ -28,6 +29,7 @@ func NormalizeGenerationPromptOptimizationRequest(request *GenerationPromptOptim
 	normalized.ConversationTitle = strings.TrimSpace(normalized.ConversationTitle)
 	normalized.ProjectID = GenerationProjectIDForRequest(normalized.ProjectID, "")
 	normalized.CapabilityID = strings.TrimSpace(normalized.CapabilityID)
+	normalized.Executor = strings.ToLower(strings.TrimSpace(normalized.Executor))
 	normalized.RouteID = strings.TrimSpace(normalized.RouteID)
 	normalized.Model = strings.TrimSpace(normalized.Model)
 	normalized.ReferenceID = strings.TrimSpace(normalized.ReferenceID)
@@ -44,6 +46,14 @@ func ValidateGenerationPromptOptimizationRequest(request *GenerationPromptOptimi
 	}
 	if request.ReferenceID == "" && request.ReferencePrompt == "" {
 		return fmt.Errorf("缺少提示词优化参考内容")
+	}
+	switch request.Executor {
+	case "", string(textcompletion.ExecutorAuto), string(textcompletion.ExecutorRoute), string(textcompletion.ExecutorCodex):
+	default:
+		return fmt.Errorf("unknown text executor %q", request.Executor)
+	}
+	if request.Executor == string(textcompletion.ExecutorCodex) {
+		return nil
 	}
 	if request.RouteID == "" {
 		return nil
@@ -141,8 +151,10 @@ func (workflow *GenerationService) CreatePromptOptimizedGenerationMessage(
 	if err := workflow.requireGenerationRouteConfigured(route); err != nil {
 		return GenerationOptimizeAndGenerateResponse{}, http.StatusServiceUnavailable, err
 	}
-	if _, err := workflow.resolveConfiguredTextRoute(payload.PromptOptimization.RouteID); err != nil {
-		return GenerationOptimizeAndGenerateResponse{}, http.StatusServiceUnavailable, err
+	if payload.PromptOptimization.Executor != string(textcompletion.ExecutorCodex) {
+		if _, err := workflow.resolveConfiguredTextRoute(payload.PromptOptimization.RouteID); err != nil {
+			return GenerationOptimizeAndGenerateResponse{}, http.StatusServiceUnavailable, err
+		}
 	}
 
 	conversation, status, err := workflow.resolveGenerationConversationWithScopeFilter(payload.ConversationID, payload.ScopeID, payload.Kind, hasScopeFilter)
@@ -229,6 +241,7 @@ func (workflow *GenerationService) createPromptOptimizationHistoryTask(
 		DocumentID:        generationPayload.DocumentID,
 		SectionID:         generationPayload.SectionID,
 		CapabilityID:      firstNonEmpty(optimization.CapabilityID, generationPayload.CapabilityID),
+		TextExecutor:      optimization.Executor,
 		RouteID:           optimization.RouteID,
 		Model:             optimization.Model,
 		Prompt:            promptOptimizationUserPrompt(optimization, generationPayload.Prompt),

@@ -17,6 +17,7 @@ type GenerationMessageInput struct {
 	FamilyID                string                             `json:"familyId,omitempty" jsonschema:"模型家族 ID。"`
 	VersionID               string                             `json:"versionId,omitempty" jsonschema:"模型版本 ID。"`
 	Provider                string                             `json:"provider,omitempty" jsonschema:"供应商。"`
+	TextExecutor            string                             `json:"textExecutor,omitempty" jsonschema:"内部文本执行器：auto、route 或 codex；媒体生成通常省略。"`
 	ModelID                 string                             `json:"modelId,omitempty" jsonschema:"旧版模型 ID。"`
 	Model                   string                             `json:"model,omitempty" jsonschema:"供应商模型名。"`
 	Prompt                  string                             `json:"prompt" jsonschema:"生成提示词。"`
@@ -97,6 +98,7 @@ type GenerationPromptOptimizationInput struct {
 	ConversationTitle string         `json:"conversationTitle,omitempty"`
 	ProjectID         string         `json:"projectId,omitempty"`
 	CapabilityID      string         `json:"capabilityId,omitempty"`
+	Executor          string         `json:"executor,omitempty" jsonschema:"文本执行器：auto、route 或 codex；默认 auto。"`
 	RouteID           string         `json:"routeId,omitempty"`
 	Model             string         `json:"model,omitempty"`
 	ReferenceID       string         `json:"referenceId,omitempty" jsonschema:"可选：技能包提示词 ID；正文受保护时由服务端在执行前解析。"`

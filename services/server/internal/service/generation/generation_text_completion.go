@@ -8,14 +8,17 @@ import (
 	"strings"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/textcompletion"
 )
 
 // TextCompletionRequest requests a non-persisted text model completion.
 type TextCompletionRequest struct {
-	Prompt  string
-	RouteID string
-	Model   string
-	Params  map[string]any
+	Prompt            string
+	SystemInstruction string
+	Executor          textcompletion.ExecutorType
+	RouteID           string
+	Model             string
+	Params            map[string]any
 }
 
 // CompleteText runs one text completion without creating a persisted generation task.
@@ -23,6 +26,52 @@ func (workflow *GenerationService) CompleteText(ctx context.Context, request Tex
 	if workflow == nil {
 		return "", fmt.Errorf("generation service is nil")
 	}
+	if workflow.textCompletion != nil {
+		result, err := workflow.textCompletion.Complete(ctx, textcompletion.Request{
+			Prompt:            request.Prompt,
+			SystemInstruction: request.SystemInstruction,
+			Executor:          request.Executor,
+			RouteID:           request.RouteID,
+			Model:             request.Model,
+			Params:            request.Params,
+		})
+		if err != nil {
+			return "", err
+		}
+		return result.Text, nil
+	}
+	return workflow.completeTextWithRoute(ctx, request)
+}
+
+// SetCodexTextBackend enables route-first text completion with Codex fallback.
+func (workflow *GenerationService) SetCodexTextBackend(
+	backend textcompletion.Backend,
+	available textcompletion.AvailabilityFunc,
+) {
+	if workflow == nil {
+		return
+	}
+	routeBackend := textcompletion.BackendFunc(func(ctx context.Context, request textcompletion.Request) (textcompletion.Result, error) {
+		text, err := workflow.completeTextWithRoute(ctx, TextCompletionRequest{
+			Prompt:            request.Prompt,
+			SystemInstruction: request.SystemInstruction,
+			RouteID:           request.RouteID,
+			Model:             request.Model,
+			Params:            request.Params,
+		})
+		if err != nil {
+			return textcompletion.Result{}, err
+		}
+		return textcompletion.Result{Text: text, Executor: textcompletion.ExecutorRoute, Model: request.Model}, nil
+	})
+	routeAvailable := func(_ context.Context, request textcompletion.Request) bool {
+		_, err := workflow.resolveConfiguredTextRoute(request.RouteID)
+		return err == nil
+	}
+	workflow.SetTextCompletionService(textcompletion.NewService(routeBackend, backend, routeAvailable, available))
+}
+
+func (workflow *GenerationService) completeTextWithRoute(ctx context.Context, request TextCompletionRequest) (string, error) {
 	prompt := strings.TrimSpace(request.Prompt)
 	if prompt == "" {
 		return "", fmt.Errorf("prompt is required")

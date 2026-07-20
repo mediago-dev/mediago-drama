@@ -57,6 +57,7 @@ type GenerationMessageRequest struct {
 	FamilyID           string                               `json:"familyId,omitempty"`
 	VersionID          string                               `json:"versionId,omitempty"`
 	Provider           string                               `json:"provider,omitempty"`
+	TextExecutor       string                               `json:"textExecutor,omitempty"`
 	ModelID            string                               `json:"modelId"`
 	Model              string                               `json:"model"`
 	Prompt             string                               `json:"prompt"`
@@ -151,6 +152,7 @@ type GenerationPromptOptimizationRequest struct {
 	ConversationTitle string         `json:"conversationTitle,omitempty"`
 	ProjectID         string         `json:"projectId,omitempty"`
 	CapabilityID      string         `json:"capabilityId,omitempty"`
+	Executor          string         `json:"executor,omitempty"`
 	RouteID           string         `json:"routeId"`
 	Model             string         `json:"model,omitempty"`
 	ReferenceID       string         `json:"referenceId,omitempty"`

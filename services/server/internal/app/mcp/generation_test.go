@@ -54,6 +54,19 @@ func TestGenerationMessageRequestFromMCPPreservesPromptSupplements(t *testing.T)
 	}
 }
 
+func TestGenerationMessageRequestFromMCPPreservesTextExecutors(t *testing.T) {
+	request := generationMessageRequestFromMCP(mediamcp.GenerationMessageInput{
+		TextExecutor: " codex ",
+		PromptOptimization: &mediamcp.GenerationPromptOptimizationInput{
+			Executor: " codex ",
+		},
+	}, "project-a")
+
+	if request.TextExecutor != "codex" || request.PromptOptimization == nil || request.PromptOptimization.Executor != "codex" {
+		t.Fatalf("request = %#v, want trimmed Codex executors", request)
+	}
+}
+
 func TestGenerationBatchRequestFromMCPPreservesPromptSupplements(t *testing.T) {
 	request := generationBatchRequestFromMCP(mediamcp.GenerationBatchInput{
 		Items: []mediamcp.GenerationBatchItemInput{

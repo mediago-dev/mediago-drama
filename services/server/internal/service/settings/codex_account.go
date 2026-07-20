@@ -1,18 +1,17 @@
 package settings
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/codexapp"
 )
 
 const (
@@ -43,21 +42,23 @@ type CodexAccountManager struct {
 	binPath    string
 	attempts   map[string]CodexLoginAttempt
 	pending    *codexPendingLogin
-	newSession func(context.Context, string) (*codexAppServerSession, error)
+	newSession func(context.Context, string) (codexapp.Client, error)
 }
 
 type codexPendingLogin struct {
 	attempt CodexLoginAttempt
 	cancel  context.CancelFunc
-	session *codexAppServerSession
+	session codexapp.Client
 }
 
 // NewCodexAccountManager creates an account manager for a bundled Codex executable.
 func NewCodexAccountManager(binPath string) *CodexAccountManager {
 	return &CodexAccountManager{
-		binPath:    strings.TrimSpace(binPath),
-		attempts:   make(map[string]CodexLoginAttempt),
-		newSession: startCodexAppServerSession,
+		binPath:  strings.TrimSpace(binPath),
+		attempts: make(map[string]CodexLoginAttempt),
+		newSession: func(ctx context.Context, binPath string) (codexapp.Client, error) {
+			return codexapp.Start(ctx, binPath)
+		},
 	}
 }
 
@@ -318,148 +319,4 @@ func sanitizeCodexAccountError(value string) string {
 		value = value[:240]
 	}
 	return value
-}
-
-type codexAppServerSession struct {
-	cancel context.CancelFunc
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	scan   *bufio.Scanner
-	mu     sync.Mutex
-	nextID int
-}
-
-type codexRPCMessage struct {
-	ID     json.RawMessage `json:"id,omitempty"`
-	Method string          `json:"method,omitempty"`
-	Params json.RawMessage `json:"params,omitempty"`
-	Result json.RawMessage `json:"result,omitempty"`
-	Error  *struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"error,omitempty"`
-}
-
-func startCodexAppServerSession(parent context.Context, binPath string) (*codexAppServerSession, error) {
-	if strings.TrimSpace(binPath) == "" {
-		return nil, ErrCodexAccountUnavailable
-	}
-	ctx, cancel := context.WithCancel(parent)
-	cmd := exec.CommandContext(ctx, binPath, "app-server", "--stdio")
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("opening app-server stdin: %w", err)
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("opening app-server stdout: %w", err)
-	}
-	cmd.Stderr = io.Discard
-	if err := cmd.Start(); err != nil {
-		cancel()
-		return nil, fmt.Errorf("starting app-server: %w", err)
-	}
-	session := &codexAppServerSession{cancel: cancel, cmd: cmd, stdin: stdin, scan: bufio.NewScanner(stdout)}
-	if err := session.initialize(ctx); err != nil {
-		session.Close()
-		return nil, err
-	}
-	return session, nil
-}
-
-func (session *codexAppServerSession) initialize(ctx context.Context) error {
-	var ignored map[string]any
-	if err := session.Call(ctx, "initialize", map[string]any{
-		"clientInfo": map[string]string{"name": "mediago-drama", "title": "MediaGo Drama", "version": "1"},
-	}, &ignored); err != nil {
-		return fmt.Errorf("initializing app-server: %w", err)
-	}
-	return session.write(map[string]any{"method": "initialized"})
-}
-
-func (session *codexAppServerSession) Call(ctx context.Context, method string, params any, output any) error {
-	session.mu.Lock()
-	defer session.mu.Unlock()
-	session.nextID++
-	id := session.nextID
-	request := map[string]any{"id": id, "method": method}
-	if params != nil {
-		request["params"] = params
-	}
-	if err := session.write(request); err != nil {
-		return err
-	}
-	for {
-		message, err := session.next(ctx)
-		if err != nil {
-			return err
-		}
-		var responseID int
-		if len(message.ID) == 0 || json.Unmarshal(message.ID, &responseID) != nil || responseID != id {
-			continue
-		}
-		if message.Error != nil {
-			return fmt.Errorf("app-server request failed (%d): %s", message.Error.Code, sanitizeCodexAccountError(message.Error.Message))
-		}
-		if output == nil || len(message.Result) == 0 {
-			return nil
-		}
-		if err := json.Unmarshal(message.Result, output); err != nil {
-			return fmt.Errorf("decoding app-server response: %w", err)
-		}
-		return nil
-	}
-}
-
-func (session *codexAppServerSession) Next(ctx context.Context) (codexRPCMessage, error) {
-	session.mu.Lock()
-	defer session.mu.Unlock()
-	return session.next(ctx)
-}
-
-func (session *codexAppServerSession) next(ctx context.Context) (codexRPCMessage, error) {
-	if err := ctx.Err(); err != nil {
-		return codexRPCMessage{}, err
-	}
-	if !session.scan.Scan() {
-		if err := session.scan.Err(); err != nil {
-			return codexRPCMessage{}, fmt.Errorf("reading app-server response: %w", err)
-		}
-		if err := ctx.Err(); err != nil {
-			return codexRPCMessage{}, err
-		}
-		return codexRPCMessage{}, io.EOF
-	}
-	var message codexRPCMessage
-	if err := json.Unmarshal(session.scan.Bytes(), &message); err != nil {
-		return codexRPCMessage{}, fmt.Errorf("decoding app-server message: %w", err)
-	}
-	return message, nil
-}
-
-func (session *codexAppServerSession) write(value any) error {
-	raw, err := json.Marshal(value)
-	if err != nil {
-		return fmt.Errorf("encoding app-server request: %w", err)
-	}
-	if _, err := session.stdin.Write(append(raw, '\n')); err != nil {
-		return fmt.Errorf("writing app-server request: %w", err)
-	}
-	return nil
-}
-
-func (session *codexAppServerSession) Close() {
-	if session == nil {
-		return
-	}
-	session.cancel()
-	_ = session.stdin.Close()
-	if session.cmd != nil && session.cmd.Process != nil {
-		_ = session.cmd.Process.Kill()
-	}
-	if session.cmd != nil {
-		_ = session.cmd.Wait()
-	}
 }

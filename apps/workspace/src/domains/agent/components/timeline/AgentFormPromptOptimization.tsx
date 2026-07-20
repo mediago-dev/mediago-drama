@@ -15,12 +15,14 @@ import { displayGenerationLabelWithoutAlias } from "@/domains/generation/compone
 import { PromptOptimizePicker } from "@/domains/generation/components/PromptOptimizePicker";
 import type { PromptInsertItem } from "@/domains/generation/components/PromptSlashCommand";
 import { promptOptimizeModelOptions } from "@/domains/generation/hooks/usePromptOptimize";
+import { useCodexTextAvailability } from "@/domains/generation/hooks/useCodexTextAvailability";
 import { promptInsertItemsFromPresets } from "@/domains/generation/lib/prompt-insertions";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/components/ui/select";
 import { cn } from "@/shared/lib/utils";
 
 export interface PromptOptimizationFieldValue {
 	enabled: boolean;
+	executor?: "route" | "codex";
 	routeId?: string;
 	label?: string;
 	referenceId?: string;
@@ -40,6 +42,7 @@ export const AgentFormPromptOptimization: React.FC<{
 	const { data: catalog } = useSWR(generationModelsKey, getGenerationModels);
 	const { data: presets } = useSWR(promptPresetsKey, () => listPromptPresets());
 	const { data: categories } = useSWR(promptCategoriesKey, listPromptCategories);
+	const codexAvailable = useCodexTextAvailability();
 
 	const resolved = normalizePromptOptimizationValue(value);
 	const modelOptions = useMemo(() => promptOptimizeModelOptions(catalog), [catalog]);
@@ -56,26 +59,35 @@ export const AgentFormPromptOptimization: React.FC<{
 	// still open, and the displayed fallback must also become the submitted
 	// value.
 	useEffect(() => {
-		if (!resolved.enabled || !selectedOption) return;
-		if (resolved.routeId === selectedOption.route.id) return;
-		onChange({
-			...resolved,
-			routeId: selectedOption.route.id,
-			label: selectedOption.label,
-		});
-	}, [resolved, selectedOption, onChange]);
+		if (!resolved.enabled) return;
+		if (selectedOption) {
+			if (resolved.routeId === selectedOption.route.id) return;
+			const { executor: _executor, ...routeValue } = resolved;
+			onChange({
+				...routeValue,
+				routeId: selectedOption.route.id,
+				label: selectedOption.label,
+			});
+			return;
+		}
+		if (!codexAvailable || resolved.executor === "codex") return;
+		onChange({ ...resolved, executor: "codex", routeId: undefined, label: "Codex" });
+	}, [codexAvailable, resolved, selectedOption, onChange]);
 
-	const setEnabled = (enabled: boolean) =>
+	const setEnabled = (enabled: boolean) => {
+		const { executor: _executor, ...routeValue } = resolved;
 		onChange(
 			enabled
 				? {
-						...resolved,
+						...routeValue,
 						enabled: true,
-						routeId: selectedOption?.route.id ?? resolved.routeId,
-						label: selectedOption?.label ?? resolved.label,
+						...(!selectedOption && codexAvailable ? { executor: "codex" as const } : {}),
+						routeId: selectedOption?.route.id ?? (codexAvailable ? undefined : resolved.routeId),
+						label: selectedOption?.label ?? (codexAvailable ? "Codex" : resolved.label),
 					}
 				: { enabled: false },
 		);
+	};
 
 	const selectPackage = (item: PromptInsertItem) =>
 		onChange({
@@ -157,6 +169,11 @@ export const AgentFormPromptOptimization: React.FC<{
 									))}
 								</SelectContent>
 							</Select>
+						) : codexAvailable ? (
+							<span className="inline-flex items-center gap-2 text-caption text-muted-foreground">
+								<GenerationBrandMark brand="openai" className="size-4 text-[0.5rem]" />
+								Codex · 当前登录账户
+							</span>
 						) : (
 							<span className="text-caption text-muted-foreground">无可用文本模型</span>
 						)}
@@ -180,8 +197,11 @@ export const normalizePromptOptimizationValue = (value: unknown): PromptOptimiza
 		const raw = object[key];
 		return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
 	};
+	const executor =
+		object.executor === "codex" || object.executor === "route" ? object.executor : undefined;
 	return {
 		enabled: object.enabled === true,
+		...(executor ? { executor } : {}),
 		routeId: text("routeId"),
 		label: text("label"),
 		referenceId: text("referenceId"),

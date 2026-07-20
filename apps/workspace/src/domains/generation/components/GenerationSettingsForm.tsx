@@ -62,7 +62,7 @@ export const GenerationSettingsForm: React.FC<GenerationSettingsFormProps> = ({
 	const promptSupplementReady = controller.selectedPromptSupplementItems.length > 0;
 	const promptOptimizationReady = Boolean(
 		controller.selectedPromptOptimizationItem?.id &&
-		controller.selectedPromptOptimizationModel?.route,
+		(controller.selectedPromptOptimizationModel?.route || controller.codexAvailable),
 	);
 	const primaryParamControls = primaryParamGroups.map((group) => {
 		const param = group.params[0];
@@ -357,6 +357,11 @@ export const GenerationSettingsForm: React.FC<GenerationSettingsFormProps> = ({
 											<span className="min-w-0 truncate">
 												{controller.selectedPromptOptimizationModel.label}
 											</span>
+										</>
+									) : controller.codexAvailable ? (
+										<>
+											<GenerationBrandMark brand="openai" className="size-4 text-[0.5rem]" />
+											<span className="min-w-0 truncate">Codex · 当前登录账户</span>
 										</>
 									) : (
 										<span className="min-w-0 truncate">无可用文本模型</span>

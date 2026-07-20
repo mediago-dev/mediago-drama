@@ -491,6 +491,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	]);
 	const {
 		canOptimize: canOptimizePrompt,
+		codexAvailable: codexPromptOptimizeAvailable,
 		error: promptOptimizeError,
 		isOptimizing: isPromptOptimizing,
 		optimize: optimizePrompt,
@@ -515,7 +516,8 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		ws.selectedRoute.status === "available" &&
 		ws.selectedRoute.configured;
 	const canSubmitWithPromptOptimization =
-		canSubmitPromptOverride && Boolean(selectedPromptOptimizeModel?.route);
+		canSubmitPromptOverride &&
+		(Boolean(selectedPromptOptimizeModel?.route) || codexPromptOptimizeAvailable);
 	const handlePromptOptimizeSelect = useCallback(
 		(item: (typeof ws.promptReferenceItems)[number]) => {
 			const referencePrompt = item.prompt.trim();
@@ -584,7 +586,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			}
 
 			const textRoute = selectedPromptOptimizeModel?.route;
-			if (!textRoute) {
+			if (!textRoute && !codexPromptOptimizeAvailable) {
 				toast.warning("没有可用文本模型", {
 					description: "请选择可用文本模型后再优化并生成。",
 				});
@@ -597,10 +599,11 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 					capabilityId: taskType ?? "studio",
 					conversationTitle: promptOptimizeConversationTitle ?? undefined,
 					projectId: (resolvedMediaAssetProjectId || projectId || "").trim() || undefined,
-					routeId: textRoute.id,
+					executor: textRoute ? "route" : "codex",
+					routeId: textRoute?.id,
 					scopeId: promptOptimizeConversationScopeId ?? undefined,
 					sessionId: promptOptimizeConversationId ?? undefined,
-					model: textRoute.model,
+					model: textRoute?.model,
 					referenceId: item.id,
 					referenceName: item.name,
 					referencePrompt,
@@ -609,6 +612,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		},
 		[
 			canSubmitPromptOverride,
+			codexPromptOptimizeAvailable,
 			projectId,
 			promptOptimizeConversationId,
 			promptOptimizeConversationScopeId,
@@ -1679,6 +1683,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 				promptOptimizeControl={
 					<PromptOptimizeControl
 						canOptimize={canOptimizePrompt}
+						codexAvailable={codexPromptOptimizeAvailable}
 						canGenerate={canSubmitWithPromptOptimization}
 						disabled={ws.isSubmitting}
 						isOptimizing={isPromptOptimizing}

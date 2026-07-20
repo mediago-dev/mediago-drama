@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/textcompletion"
 )
 
 // StreamGenerationText streams a text generation request and persists the final task.
@@ -32,8 +33,14 @@ func (workflow *GenerationService) StreamGenerationText(
 	payload.FamilyID = strings.TrimSpace(payload.FamilyID)
 	payload.VersionID = strings.TrimSpace(payload.VersionID)
 	payload.Provider = strings.TrimSpace(payload.Provider)
+	payload.TextExecutor = strings.ToLower(strings.TrimSpace(payload.TextExecutor))
 	payload.ModelID = strings.TrimSpace(payload.ModelID)
 	payload.Model = strings.TrimSpace(payload.Model)
+	switch textcompletion.ExecutorType(payload.TextExecutor) {
+	case "", textcompletion.ExecutorAuto, textcompletion.ExecutorRoute, textcompletion.ExecutorCodex:
+	default:
+		return http.StatusBadRequest, fmt.Errorf("unknown text executor %q", payload.TextExecutor)
+	}
 	if status, err := workflow.prepareTextPromptOptimization(ctx, &payload); err != nil {
 		return status, err
 	}
@@ -50,6 +57,9 @@ func (workflow *GenerationService) StreamGenerationText(
 	}
 	if status, err := workflow.authorizeContentUse(ctx, "call", payload.SourceRefs); err != nil {
 		return status, err
+	}
+	if workflow.shouldUseExecutorText(payload) {
+		return workflow.streamGenerationTextWithExecutor(ctx, payload, hasScopeFilter, emit)
 	}
 
 	route, err := ResolveGenerationRoute(payload)
@@ -219,6 +229,133 @@ func (workflow *GenerationService) StreamGenerationText(
 		Usage:   usage,
 	}
 	return workflow.finishGenerationTextTask(task, conversation, completedResponse, emit)
+}
+
+func (workflow *GenerationService) shouldUseExecutorText(payload GenerationMessageRequest) bool {
+	switch textcompletion.ExecutorType(payload.TextExecutor) {
+	case textcompletion.ExecutorCodex:
+		return true
+	case textcompletion.ExecutorRoute:
+		return false
+	case "", textcompletion.ExecutorAuto:
+		if workflow == nil || workflow.textCompletion == nil {
+			return false
+		}
+		_, err := workflow.resolveConfiguredTextRoute(payload.RouteID)
+		return err != nil
+	default:
+		return false
+	}
+}
+
+func (workflow *GenerationService) streamGenerationTextWithExecutor(
+	ctx context.Context,
+	payload GenerationMessageRequest,
+	hasScopeFilter bool,
+	emit func(GenerationTextStreamEvent) error,
+) (int, error) {
+	executor := textcompletion.ExecutorType(payload.TextExecutor)
+	if executor == "" {
+		executor = textcompletion.ExecutorAuto
+	}
+	if executor != textcompletion.ExecutorAuto && executor != textcompletion.ExecutorCodex {
+		return http.StatusBadRequest, fmt.Errorf("unknown text executor %q", payload.TextExecutor)
+	}
+
+	conversation, status, err := workflow.resolveGenerationConversationWithScopeFilter(
+		payload.ConversationID,
+		payload.ScopeID,
+		string(coregeneration.KindText),
+		hasScopeFilter,
+	)
+	if err != nil {
+		return status, err
+	}
+	payload.ConversationID = conversation.ID
+	if payload.ProjectID == "" {
+		payload.ProjectID = GenerationProjectIDFromScopeID(conversation.ScopeID)
+	}
+	if payload.ProjectName == "" {
+		payload.ProjectName = workflow.generationProjectName(payload.ProjectID)
+	}
+	workflow.appendStudioUserTranscript(conversation, payload)
+
+	taskID, err := workflow.generationTasks.idGenerator("generation")
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	initialResponse := GenerationMessageResponse{
+		ID:      taskID,
+		Role:    "assistant",
+		Status:  "running",
+		Message: "Codex 文本生成中...",
+		Assets:  []GenerationAsset{},
+		Usage:   GenerationUsage{},
+	}
+	requestModel := strings.TrimSpace(payload.Model)
+	displayModel := firstNonEmpty(requestModel, "codex")
+	payload.Model = displayModel
+	route := coregeneration.ModelRoute{
+		ID:        "codex/text",
+		FamilyID:  "codex-text",
+		VersionID: "codex-text",
+		Label:     "Codex",
+		Kind:      coregeneration.KindText,
+		Provider:  "codex",
+		Model:     displayModel,
+		Status:    coregeneration.RouteStatusAvailable,
+	}
+	task := GenerationTaskFromMessage(payload, route, initialResponse)
+	if err := workflow.generationTasks.Upsert(task); err != nil {
+		return http.StatusInternalServerError, err
+	}
+	_ = workflow.generationTasks.RecordAttempt(task.ID, "create", task.Status, task.Message, nil)
+	if err := emit(GenerationTextStreamEvent{
+		Type:           "start",
+		TaskID:         task.ID,
+		ConversationID: conversation.ID,
+		Status:         task.Status,
+		Message:        &initialResponse,
+	}); err != nil {
+		return http.StatusOK, err
+	}
+
+	text, err := workflow.CompleteText(ctx, TextCompletionRequest{
+		Prompt:            payload.Prompt,
+		SystemInstruction: stringGenerationParam(payload.Params, "system_instruction"),
+		Executor:          executor,
+		Model:             requestModel,
+		Params:            payload.Params,
+	})
+	if err != nil {
+		message := workflow.persistTextStreamFailure(task, "", err)
+		workflow.appendStudioAssistantTranscript(conversation, message)
+		return http.StatusOK, emit(GenerationTextStreamEvent{
+			Type:           "error",
+			TaskID:         task.ID,
+			ConversationID: conversation.ID,
+			Status:         "failed",
+			Error:          err.Error(),
+		})
+	}
+	completedResponse := GenerationMessageResponse{
+		ID:      task.ID,
+		Role:    "assistant",
+		Status:  "completed",
+		Message: "文本生成已完成。",
+		Text:    text,
+		Assets:  []GenerationAsset{},
+		Usage:   GenerationUsage{},
+	}
+	return workflow.finishGenerationTextTask(task, conversation, completedResponse, emit)
+}
+
+func stringGenerationParam(params map[string]any, name string) string {
+	if params == nil {
+		return ""
+	}
+	value, _ := params[name].(string)
+	return strings.TrimSpace(value)
 }
 
 func (workflow *GenerationService) prepareTextPromptOptimization(

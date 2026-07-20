@@ -26,6 +26,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/textcompletion"
 )
 
 func TestCacheGenerationResponseAssetsSavesBase64Locally(t *testing.T) {
@@ -1313,6 +1314,83 @@ func TestCreatePromptOptimizedGenerationMessageRecordsOptimizationAndImageTasks(
 	}
 }
 
+func TestCreatePromptOptimizedGenerationMessageUsesCodexWithoutTextRoute(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	repo, err := repository.NewGenerationTaskRepository(dbPath)
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{coregeneration.ProviderDMX: "sk-test"},
+	})
+	imageProvider := &blockingMultiAssetImageGenerateProvider{
+		started: make(chan coregeneration.Request, 1),
+		release: make(chan struct{}),
+	}
+	workflow := NewGenerationService(settingsSvc, store, media.NewMediaAssets(dbPath, t.TempDir()))
+	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
+		if route.ID != coregeneration.RouteDMXGPTImage2 {
+			t.Fatalf("route = %q, want image route only", route.ID)
+		}
+		return imageProvider, nil
+	}
+	var codexRequest textcompletion.Request
+	workflow.SetCodexTextBackend(
+		textcompletion.BackendFunc(func(_ context.Context, request textcompletion.Request) (textcompletion.Result, error) {
+			codexRequest = request
+			return textcompletion.Result{
+				Text:     "codex optimized prompt",
+				Executor: textcompletion.ExecutorCodex,
+				Model:    "codex",
+			}, nil
+		}),
+		func(context.Context, textcompletion.Request) bool { return true },
+	)
+
+	imageRoute, ok := coregeneration.FindRoute(coregeneration.RouteDMXGPTImage2)
+	if !ok {
+		t.Fatal("dmx gpt image route is missing")
+	}
+	response, status, err := workflow.CreatePromptOptimizedGenerationMessage(context.Background(), GenerationMessageRequest{
+		Kind:    string(coregeneration.KindImage),
+		RouteID: imageRoute.ID,
+		ModelID: imageRoute.LegacyModelID,
+		Model:   imageRoute.Model,
+		Prompt:  "原始角色提示词",
+		PromptOptimization: &GenerationPromptOptimizationRequest{
+			Executor:        string(textcompletion.ExecutorCodex),
+			ReferenceName:   "电影质感",
+			ReferencePrompt: "cinematic lighting",
+		},
+		Params: map[string]any{"n": 1},
+	})
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("CreatePromptOptimizedGenerationMessage() status = %d error = %v", status, err)
+	}
+	if response.OptimizedPrompt != "codex optimized prompt" || response.Optimization.Status != "completed" {
+		t.Fatalf("response = %+v, want completed Codex optimization", response)
+	}
+	if codexRequest.Executor != textcompletion.ExecutorCodex ||
+		codexRequest.SystemInstruction != promptOptimizationSystemInstructionText ||
+		!strings.Contains(codexRequest.Prompt, "原始角色提示词") {
+		t.Fatalf("codex request = %#v", codexRequest)
+	}
+
+	select {
+	case imageRequest := <-imageProvider.started:
+		if imageRequest.Prompt != "codex optimized prompt" {
+			t.Fatalf("image prompt = %q, want Codex optimized prompt", imageRequest.Prompt)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("image provider request did not start")
+	}
+	close(imageProvider.release)
+	waitForGenerationTask(t, store, response.Generation.ID, func(task GenerationTaskRecord) bool {
+		return task.Status == "completed"
+	})
+}
+
 func TestPromptOptimizationConversationTitle(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -1986,6 +2064,68 @@ func TestStreamGenerationTextFallsBackToNonStreamingProvider(t *testing.T) {
 	}
 }
 
+func TestStreamGenerationTextUsesCodexExecutorWithoutConfiguredRoute(t *testing.T) {
+	repo, err := repository.NewGenerationTaskRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
+	}
+	store := NewGenerationTaskServiceFromRepository(repo, nil, func(prefix string) (string, error) {
+		return prefix + "-codex", nil
+	})
+	workflow := NewGenerationService(
+		settings.NewSettings(&generationTestAPIKeyStore{values: map[string]string{}}),
+		store,
+		nil,
+	)
+	workflow.SetCodexTextBackend(
+		textcompletion.BackendFunc(func(_ context.Context, request textcompletion.Request) (textcompletion.Result, error) {
+			if request.SystemInstruction != "return only text" {
+				t.Fatalf("system instruction = %q", request.SystemInstruction)
+			}
+			if request.Model != "" {
+				t.Fatalf("model = %q, want Codex account default", request.Model)
+			}
+			return textcompletion.Result{Text: "codex optimized", Executor: textcompletion.ExecutorCodex, Model: "codex"}, nil
+		}),
+		func(context.Context, textcompletion.Request) bool { return true },
+	)
+
+	events := []GenerationTextStreamEvent{}
+	status, err := workflow.StreamGenerationText(context.Background(), GenerationMessageRequest{
+		Kind:         string(coregeneration.KindText),
+		TextExecutor: string(textcompletion.ExecutorCodex),
+		Prompt:       "write",
+		Params:       map[string]any{"system_instruction": "return only text"},
+	}, func(event GenerationTextStreamEvent) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("StreamGenerationText() status = %d error = %v", status, err)
+	}
+	if len(events) != 2 || events[0].Type != "start" || events[1].Type != "done" || events[1].Message == nil || events[1].Message.Text != "codex optimized" {
+		t.Fatalf("events = %#v", events)
+	}
+	task, ok, err := store.Get("generation-codex")
+	if err != nil || !ok {
+		t.Fatalf("Get() = %#v, %v", task, err)
+	}
+	if task.RouteID != "codex/text" || task.Provider != "codex" || task.Status != "completed" {
+		t.Fatalf("task = %#v", task)
+	}
+}
+
+func TestStreamGenerationTextRejectsUnknownExecutor(t *testing.T) {
+	workflow := NewGenerationService(nil, nil, nil)
+	status, err := workflow.StreamGenerationText(context.Background(), GenerationMessageRequest{
+		TextExecutor: "unexpected",
+		Prompt:       "write",
+	}, func(GenerationTextStreamEvent) error { return nil })
+	if status != http.StatusBadRequest || err == nil || !strings.Contains(err.Error(), "unknown text executor") {
+		t.Fatalf("StreamGenerationText() status = %d error = %v", status, err)
+	}
+}
+
 func TestCompleteTextUsesConfiguredTextRoute(t *testing.T) {
 	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
 		values: map[string]string{
@@ -2058,6 +2198,48 @@ func TestCompleteTextRequiresConfiguredTextRoute(t *testing.T) {
 	_, err := workflow.CompleteText(context.Background(), TextCompletionRequest{Prompt: "extract"})
 	if err == nil || !strings.Contains(err.Error(), "API Key 尚未配置") {
 		t.Fatalf("CompleteText() error = %v, want missing API key", err)
+	}
+}
+
+func TestCompleteTextFallsBackToCodexWhenNoRouteIsConfigured(t *testing.T) {
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{values: map[string]string{}})
+	workflow := NewGenerationService(settingsSvc, nil, nil)
+	codexCalls := 0
+	workflow.SetCodexTextBackend(
+		textcompletion.BackendFunc(func(_ context.Context, request textcompletion.Request) (textcompletion.Result, error) {
+			codexCalls++
+			if request.Prompt != "extract" {
+				t.Fatalf("prompt = %q", request.Prompt)
+			}
+			return textcompletion.Result{Text: "codex text", Executor: textcompletion.ExecutorCodex}, nil
+		}),
+		func(context.Context, textcompletion.Request) bool { return true },
+	)
+
+	text, err := workflow.CompleteText(context.Background(), TextCompletionRequest{Prompt: "extract"})
+	if err != nil || text != "codex text" || codexCalls != 1 {
+		t.Fatalf("CompleteText() = %q, %v, codex calls = %d", text, err, codexCalls)
+	}
+}
+
+func TestCompleteTextDoesNotRetryConfiguredRouteFailureThroughCodex(t *testing.T) {
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{values: map[string]string{"openai": "sk-openai"}})
+	workflow := NewGenerationService(settingsSvc, nil, nil)
+	workflow.generationProviderFactory = func(coregeneration.ModelRoute) (coregeneration.Provider, error) {
+		return nil, fmt.Errorf("route failed")
+	}
+	codexCalls := 0
+	workflow.SetCodexTextBackend(
+		textcompletion.BackendFunc(func(context.Context, textcompletion.Request) (textcompletion.Result, error) {
+			codexCalls++
+			return textcompletion.Result{Text: "codex text"}, nil
+		}),
+		func(context.Context, textcompletion.Request) bool { return true },
+	)
+
+	_, err := workflow.CompleteText(context.Background(), TextCompletionRequest{Prompt: "extract"})
+	if err == nil || !strings.Contains(err.Error(), "route failed") || codexCalls != 0 {
+		t.Fatalf("CompleteText() error = %v, codex calls = %d", err, codexCalls)
 	}
 }
 

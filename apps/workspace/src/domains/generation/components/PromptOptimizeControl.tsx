@@ -24,6 +24,7 @@ import { cn } from "@/shared/lib/utils";
 export interface PromptOptimizeControlProps {
 	canOptimize: boolean;
 	canGenerate?: boolean;
+	codexAvailable?: boolean;
 	disabled?: boolean;
 	isOptimizing: boolean;
 	items: PromptInsertItem[];
@@ -37,6 +38,7 @@ export interface PromptOptimizeControlProps {
 export const PromptOptimizeControl: React.FC<PromptOptimizeControlProps> = ({
 	canOptimize,
 	canGenerate = false,
+	codexAvailable = false,
 	disabled = false,
 	isOptimizing,
 	items,
@@ -195,6 +197,20 @@ export const PromptOptimizeControl: React.FC<PromptOptimizeControlProps> = ({
 								onSelect={(_versionId, routeId) => onSelectModel(routeId)}
 							/>
 						</div>
+					) : codexAvailable ? (
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							disabled
+							className={generationComposerSelectClassName("min-w-0 flex-1 justify-start")}
+						>
+							<GenerationBrandMark
+								brand={generationModelBrand({ route: { model: "OpenAI Codex" } })}
+								className="size-4 text-[0.5rem]"
+							/>
+							<span>Codex · 当前登录账户</span>
+						</Button>
 					) : (
 						<Button
 							type="button"

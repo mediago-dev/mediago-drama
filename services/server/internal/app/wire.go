@@ -39,6 +39,7 @@ import (
 	serviceselection "github.com/mediago-dev/mediago-drama/services/server/internal/service/selection"
 	servicesettings "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
+	servicetextcompletion "github.com/mediago-dev/mediago-drama/services/server/internal/service/textcompletion"
 	serviceworkspaceevent "github.com/mediago-dev/mediago-drama/services/server/internal/service/workspaceevent"
 )
 
@@ -131,7 +132,9 @@ func newAPIHandler(config Config) *apiHandler {
 	settings.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)
 	settings.SetLibTVCLIPaths(config.LibTVBinPath, config.LibTVBinDir)
 	settings.SetPippitCLIPaths(config.PippitBinPath, config.PippitBinDir)
-	if codexPath, err := backendService.CodexExecutable(); err == nil {
+	codexPath := ""
+	if resolvedCodexPath, err := backendService.CodexExecutable(); err == nil {
+		codexPath = resolvedCodexPath
 		settings.SetCodexCLIPath(codexPath)
 	}
 	settings.SetModelPlatforms(config.ModelPlatforms)
@@ -233,6 +236,15 @@ func newAPIHandler(config Config) *apiHandler {
 		draftlib.FFProbeReader{BinDir: config.FFmpegBinDir},
 	)
 	generationService := servicegeneration.NewGenerationService(settings, generationTasks, mediaAssets, generationPreferences)
+	if codexPath != "" {
+		generationService.SetCodexTextBackend(
+			servicetextcompletion.NewCodexBackend(codexPath, workspaceState.Dir()),
+			func(ctx context.Context, _ servicetextcompletion.Request) bool {
+				status, err := settings.GetCodexAccount(ctx)
+				return err == nil && status.Status == "loggedIn"
+			},
+		)
+	}
 	generationService.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)
 	generationService.SetLibTVCLIConfig(config.LibTVBinPath, config.LibTVBinDir, config.LibTVProjectID)
 	generationService.SetPippitCLIPaths(config.PippitBinPath, config.PippitBinDir)
@@ -379,11 +391,14 @@ func newAPIHandler(config Config) *apiHandler {
 				}
 				if selectedModel := strings.TrimSpace(request.Model.Value); selectedModel != "" {
 					routeID, model, ok := servicegeneration.TextRouteForAgentRuntimeModel(selectedModel)
-					if !ok {
-						return "", fmt.Errorf("selected agent model %q is unavailable for title generation", selectedModel)
+					if ok {
+						completion.Executor = servicetextcompletion.ExecutorRoute
+						completion.RouteID = routeID
+						completion.Model = model
+					} else {
+						completion.Executor = servicetextcompletion.ExecutorCodex
+						completion.Model = selectedModel
 					}
-					completion.RouteID = routeID
-					completion.Model = model
 				}
 				return generationService.CompleteText(ctx, completion)
 			},

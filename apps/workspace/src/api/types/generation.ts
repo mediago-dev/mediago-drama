@@ -172,6 +172,7 @@ export interface GenerationMessageRequest {
 	familyId?: string;
 	versionId?: string;
 	provider?: string;
+	textExecutor?: TextExecutorType;
 	modelId: string;
 	model: string;
 	prompt: string;
@@ -253,13 +254,16 @@ export interface GenerationPromptOptimizationRequest {
 	conversationTitle?: string;
 	projectId?: string;
 	capabilityId?: string;
-	routeId: string;
+	executor?: TextExecutorType;
+	routeId?: string;
 	model?: string;
 	referenceId?: string;
 	referenceName?: string;
 	referencePrompt: string;
 	params?: Record<string, unknown>;
 }
+
+export type TextExecutorType = "auto" | "route" | "codex";
 
 export interface GenerationOptimizeAndGenerateResponse {
 	optimization: GenerationMessageResponse;

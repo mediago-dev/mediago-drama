@@ -13,6 +13,7 @@ import (
 	configassets "github.com/mediago-dev/mediago-drama/services/server/configs"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/service/textcompletion"
 )
 
 const generationRequestTimeout = 1000 * time.Second
@@ -31,6 +32,7 @@ type GenerationService struct {
 	stylePreviews                 *StylePreviewStore
 	stylePrompts                  StylePromptSource
 	contentUseAuthorizer          ContentUseAuthorizer
+	textCompletion                *textcompletion.Service
 	mediagoBaseURL                string
 	mediagoModelCatalog           mediagoModelCatalogCache
 	jimengBinPath                 string
@@ -41,6 +43,11 @@ type GenerationService struct {
 	pippitBinPath                 string
 	pippitBinDir                  string
 	jimengSeedanceQueueMu         sync.Mutex
+}
+
+// SetTextCompletionService configures executor-neutral internal text completion.
+func (workflow *GenerationService) SetTextCompletionService(service *textcompletion.Service) {
+	workflow.textCompletion = service
 }
 
 type generationModelsResponse = GenerationModelsResponse

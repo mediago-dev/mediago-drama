@@ -381,6 +381,32 @@ describe("generation settings persistence adapters", () => {
 });
 
 describe("generationSettingsValueForSubmit", () => {
+	it("accepts Codex prompt optimization without a configured text route", () => {
+		const catalogWithoutText = {
+			...catalog,
+			routes: catalog.routes.filter((route) => route.kind !== "text"),
+		};
+		const ready = generationSettingsValueForSubmit(
+			catalogWithoutText,
+			{
+				kind: "image",
+				promptOptimization: {
+					enabled: true,
+					executor: "codex",
+					referenceId: "pack-optimize",
+				},
+				routeId: "route-image",
+			},
+			promptItems,
+		);
+
+		expect(ready?.promptOptimization).toMatchObject({
+			enabled: true,
+			executor: "codex",
+			referenceId: "pack-optimize",
+		});
+	});
+
 	it("accepts protected prompt references without browser-visible prompt bodies", () => {
 		const protectedItems: PromptInsertItem[] = [
 			{

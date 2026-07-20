@@ -1870,6 +1870,18 @@ func TestValidatePromptOptimizationFieldValues(t *testing.T) {
 		t.Fatal("empty label should be dropped")
 	}
 
+	codex, err := validateFormValue(field, map[string]any{
+		"enabled":         true,
+		"executor":        "codex",
+		"referencePrompt": "电影感光影",
+	})
+	if err != nil {
+		t.Fatalf("validateFormValue(Codex) error = %v", err)
+	}
+	if object, ok := codex.(map[string]any); !ok || object["executor"] != "codex" {
+		t.Fatalf("Codex value = %#v, want executor without route", codex)
+	}
+
 	if _, err := validateFormValue(field, "on"); err == nil {
 		t.Fatal("want error for non-object value")
 	}
@@ -1878,6 +1890,25 @@ func TestValidatePromptOptimizationFieldValues(t *testing.T) {
 	}
 	if _, err := validateFormValue(field, map[string]any{"enabled": true, "routeId": 42}); err == nil {
 		t.Fatal("want error for non-string routeId")
+	}
+}
+
+func TestValidateGenerationSettingsAcceptsCodexPromptOptimizationWithoutRoute(t *testing.T) {
+	field := FormField{ID: "settings", Type: FieldTypeGenerationSettings, Kind: "image"}
+	value := sampleImageGenerationSettingsValue()
+	value["promptOptimization"] = map[string]any{
+		"enabled":         true,
+		"executor":        "codex",
+		"referencePrompt": "电影感光影",
+	}
+	validated, err := validateFormValue(field, value)
+	if err != nil {
+		t.Fatalf("validateFormValue() error = %v", err)
+	}
+	settings := validated.(map[string]any)
+	optimization := settings["promptOptimization"].(map[string]any)
+	if optimization["executor"] != "codex" {
+		t.Fatalf("promptOptimization = %#v, want Codex executor without route", optimization)
 	}
 }
 

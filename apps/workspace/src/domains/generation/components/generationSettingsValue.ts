@@ -4,6 +4,7 @@ import type {
 	GenerationPreference,
 	GenerationRoute,
 } from "@/domains/generation/api/generation";
+import type { TextExecutorType } from "@/api/types/generation";
 import type { PromptInsertItem } from "@/domains/generation/components/PromptSlashCommand";
 import { resolveGenerationRouteParamControls } from "@/domains/generation/components/generationRouteParamControls";
 import { isConfiguredRoute, routeParamValues } from "@/domains/generation/hooks/generationCatalog";
@@ -19,6 +20,7 @@ export interface GenerationPromptSupplementValue {
 
 export interface GenerationPromptOptimizationValue {
 	enabled: boolean;
+	executor?: TextExecutorType;
 	label?: string;
 	referenceId?: string;
 	referenceName?: string;
@@ -109,7 +111,8 @@ export const generationSettingsValueForSubmit = (
 	if (
 		requestedOptimization &&
 		(!normalized.promptOptimization.enabled ||
-			!normalized.promptOptimization.routeId ||
+			(!normalized.promptOptimization.routeId &&
+				normalized.promptOptimization.executor !== "codex") ||
 			(!normalized.promptOptimization.referenceId?.trim() &&
 				!normalized.promptOptimization.referencePrompt?.trim()))
 	) {
@@ -263,6 +266,7 @@ const normalizePromptOptimization = (
 	if (referenceId && promptItems !== undefined && !liveItem) return { enabled: false };
 
 	const routeId = stringValue(raw.routeId);
+	const executor = stringValue(raw.executor) === "codex" ? "codex" : undefined;
 	const route = routeId
 		? catalog.routes.find(
 				(item) => item.id === routeId && item.kind === "text" && isConfiguredRoute(item),
@@ -273,6 +277,7 @@ const normalizePromptOptimization = (
 
 	return {
 		enabled: true,
+		...(!route && executor ? { executor } : {}),
 		...(route
 			? { label: route.label.trim() || route.id, routeId: route.id }
 			: routeId
