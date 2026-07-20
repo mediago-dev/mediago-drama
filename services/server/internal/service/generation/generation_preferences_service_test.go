@@ -1,11 +1,34 @@
 package generation
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 )
+
+func TestGenerationPreferenceServiceRequiresExplicitDBPath(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
+	t.Setenv("APPDATA", filepath.Join(homeDir, "AppData", "Roaming"))
+
+	service := NewGenerationPreferenceService("")
+	if _, err := service.GetPreference("agent"); err == nil || !strings.Contains(err.Error(), "path is required") {
+		t.Fatalf("GetPreference() error = %v, want required path error", err)
+	}
+
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatalf("UserConfigDir() error = %v", err)
+	}
+	legacySettingsDBPath := filepath.Join(configDir, "mediago-drama", "settings.db")
+	if _, err := os.Stat(legacySettingsDBPath); !os.IsNotExist(err) {
+		t.Fatalf("legacy settings db exists after empty path initialization: %v", err)
+	}
+}
 
 func TestGenerationPreferenceServicePersistToSQLite(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")

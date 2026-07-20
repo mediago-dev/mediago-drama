@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/config"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
@@ -24,8 +23,8 @@ type generationPreferenceModel = domain.GenerationPreferenceModel
 
 // NewGenerationPreferenceService returns a preference service backed by settings DB.
 func NewGenerationPreferenceService(dbPath string) *GenerationPreferenceService {
-	if dbPath == "" {
-		dbPath = config.DefaultSettingsDBPath()
+	if strings.TrimSpace(dbPath) == "" {
+		return &GenerationPreferenceService{initErr: errors.New("generation preference settings database path is required")}
 	}
 
 	service := &GenerationPreferenceService{}

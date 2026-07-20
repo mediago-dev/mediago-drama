@@ -5,15 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"path/filepath"
 	"sort"
 	"strings"
 	"unicode"
 
 	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/config"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 )
 
@@ -103,29 +100,9 @@ type Service struct {
 	initErr error
 }
 
-// NewService creates a prompt library service backed by the settings DB.
-func NewService() *Service {
-	repos, err := repository.OpenSettingsRepositories(config.DefaultSettingsDBPath())
-	return NewServiceFromPromptPack(promptpack.NewServiceFromRepository(repos.Packs, repos.PromptLibrary, err), err)
-}
-
 // NewServiceFromPromptPack creates a prompt library service from a prompt pack service.
 func NewServiceFromPromptPack(store *promptpack.Service, initErr error) *Service {
 	return &Service{store: store, initErr: initErr}
-}
-
-// NewServiceFromRepository is retained for older callers.
-func NewServiceFromRepository(repo *repository.PromptLibraryRepository, initErr error) *Service {
-	repos, err := repository.OpenSettingsRepositories(config.DefaultSettingsDBPath())
-	if initErr == nil {
-		initErr = err
-	}
-	return NewServiceFromPromptPack(promptpack.NewServiceFromRepository(repos.Packs, repo, initErr), initErr)
-}
-
-// NewServiceWithRepository is retained for older tests and callers.
-func NewServiceWithRepository(_ fs.FS, _ string, repo *repository.PromptLibraryRepository, initErr error) *Service {
-	return NewServiceFromRepository(repo, initErr)
 }
 
 // List returns prompt entries from enabled packs.

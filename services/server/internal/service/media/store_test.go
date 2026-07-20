@@ -12,7 +12,6 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/mediago-dev/mediago-drama/services/server/internal/config"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
@@ -31,7 +30,8 @@ func TestNewMediaAssetsDefaultDBPathUsesWorkspaceAppDB(t *testing.T) {
 	if _, err := os.Stat(shared.WorkspacePathsFor("").DatabasePath()); err != nil {
 		t.Fatalf("workspace app.db was not created: %v", err)
 	}
-	if _, err := os.Stat(config.DefaultSettingsDBPath()); !os.IsNotExist(err) {
+	legacySettingsDBPath := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "mediago-drama", "settings.db")
+	if _, err := os.Stat(legacySettingsDBPath); !os.IsNotExist(err) {
 		t.Fatalf("settings db exists after media default path open: %v", err)
 	}
 }

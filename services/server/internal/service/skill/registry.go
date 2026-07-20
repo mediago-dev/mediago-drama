@@ -89,9 +89,8 @@ type skillFrontmatter struct {
 }
 
 var (
-	defaultStoreMu   sync.RWMutex
-	defaultStore     PackStore
-	defaultStoreOnce sync.Once
+	defaultStoreMu sync.RWMutex
+	defaultStore   PackStore
 )
 
 // SetPromptPackStore sets the default prompt pack store used by NewRegistry.
@@ -120,19 +119,6 @@ func NewRegistryWithStore(store PackStore) *Registry {
 }
 
 func currentDefaultStore() PackStore {
-	defaultStoreMu.RLock()
-	store := defaultStore
-	defaultStoreMu.RUnlock()
-	if store != nil {
-		return store
-	}
-	defaultStoreOnce.Do(func() {
-		defaultStoreMu.Lock()
-		defer defaultStoreMu.Unlock()
-		if defaultStore == nil {
-			defaultStore = promptpack.NewService()
-		}
-	})
 	defaultStoreMu.RLock()
 	defer defaultStoreMu.RUnlock()
 	return defaultStore

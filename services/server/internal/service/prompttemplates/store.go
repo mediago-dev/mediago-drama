@@ -5,14 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"sort"
 	"strings"
 
 	"github.com/mediago-dev/mediago-drama/packages/instructions/pkg/official"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/config"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 )
 
 const (
@@ -47,17 +44,6 @@ type Repository interface {
 type Service struct {
 	repo    Repository
 	initErr error
-}
-
-// NewService creates a prompt template service backed by the settings DB.
-func NewService() *Service {
-	repos, err := repository.OpenSettingsRepositories(config.DefaultSettingsDBPath())
-	return NewServiceFromRepository(repos.Instructions, err)
-}
-
-// NewServiceWithSource is retained for compatibility with older tests and callers.
-func NewServiceWithSource(_ fs.FS, _ string) *Service {
-	return NewService()
 }
 
 // NewServiceWithStore creates a prompt template service with an explicit repository.

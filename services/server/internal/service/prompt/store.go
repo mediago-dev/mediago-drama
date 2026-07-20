@@ -2,6 +2,7 @@ package prompt
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/prompttemplates"
@@ -13,10 +14,21 @@ type promptTemplateStore interface {
 }
 
 var (
-	promptTemplateStoreMu    sync.RWMutex
-	activePromptTemplate     promptTemplateStore
-	activePromptTemplateOnce sync.Once
+	promptTemplateStoreMu sync.RWMutex
+	activePromptTemplate  promptTemplateStore
 )
+
+var errPromptTemplateStoreNotConfigured = errors.New("prompt template store is not configured")
+
+type unconfiguredPromptTemplateStore struct{}
+
+func (unconfiguredPromptTemplateStore) Load(context.Context) (map[string]prompttemplates.PromptTemplate, error) {
+	return nil, errPromptTemplateStoreNotConfigured
+}
+
+func (unconfiguredPromptTemplateStore) Get(context.Context, string) (prompttemplates.PromptTemplate, error) {
+	return prompttemplates.PromptTemplate{}, errPromptTemplateStoreNotConfigured
+}
 
 // SetPromptTemplateStore sets the instruction template store used by runtime prompt rendering.
 func SetPromptTemplateStore(store promptTemplateStore) {
@@ -35,14 +47,5 @@ func currentPromptTemplateStore() promptTemplateStore {
 	if store != nil {
 		return store
 	}
-	activePromptTemplateOnce.Do(func() {
-		promptTemplateStoreMu.Lock()
-		defer promptTemplateStoreMu.Unlock()
-		if activePromptTemplate == nil {
-			activePromptTemplate = prompttemplates.NewService()
-		}
-	})
-	promptTemplateStoreMu.RLock()
-	defer promptTemplateStoreMu.RUnlock()
-	return activePromptTemplate
+	return unconfiguredPromptTemplateStore{}
 }

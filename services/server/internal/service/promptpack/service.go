@@ -21,7 +21,6 @@ import (
 	instructionpack "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack"
 	instructionbuiltin "github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack/builtin"
 	"github.com/mediago-dev/mediago-drama/packages/instructions/pkg/pack/codec"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/config"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 )
@@ -217,18 +216,6 @@ type Service struct {
 	initErr            error
 	seeded             bool
 	packFilesDir       string
-}
-
-// NewService creates a prompt pack service backed by the default settings DB.
-func NewService() *Service {
-	settingsDBPath := config.DefaultSettingsDBPath()
-	repos, err := repository.OpenSettingsRepositories(settingsDBPath)
-	return NewServiceFromRepositoryWithPackFilesDir(
-		repos.Packs,
-		repos.PromptLibrary,
-		err,
-		defaultPackFilesDir(settingsDBPath),
-	)
 }
 
 // NewServiceFromRepository creates a prompt pack service from settings repositories.
@@ -2354,12 +2341,4 @@ func (store *Service) parsePackFile(ctx context.Context, path string) (instructi
 	default:
 		return instructionpack.Bundle{}, fmt.Errorf("%w: expected .mgpack file", ErrInvalidPack)
 	}
-}
-
-func defaultPackFilesDir(settingsDBPath string) string {
-	settingsDBPath = strings.TrimSpace(settingsDBPath)
-	if settingsDBPath == "" {
-		return ""
-	}
-	return filepath.Join(filepath.Dir(settingsDBPath), "packs")
 }
