@@ -1110,7 +1110,8 @@ func TestGetDownloadsLibTVResultAsBase64Assets(t *testing.T) {
 	if gotArgs[0] != "download" ||
 		!stringSliceContains(gotArgs, "--node=node_123") ||
 		!stringSliceContains(gotArgs, "--project=project-123") ||
-		!stringSliceContains(gotArgs, "--without-ai-watermark") {
+		!stringSliceContains(gotArgs, "--without-ai-watermark") ||
+		!stringSliceContains(gotArgs, "--vip") {
 		t.Fatalf("args = %#v, want download flags", gotArgs)
 	}
 	if response.Status != "completed" ||
