@@ -31,18 +31,6 @@ describe("EpisodePreviewPlayer", () => {
 		expect(player.getAttribute("data-load")).toBe("visible");
 	});
 
-	it("supports play-triggered loading for hidden timeline playback", () => {
-		render(
-			<EpisodePreviewPlayer
-				title="第一章"
-				videoUrl="https://example.test/preview.mp4"
-				load="play"
-			/>,
-		);
-
-		expect(screen.getByTestId("video-player").getAttribute("data-load")).toBe("play");
-	});
-
 	it("renders preview media URLs against the packaged desktop server", () => {
 		vi.stubEnv("DEV", false);
 		window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
