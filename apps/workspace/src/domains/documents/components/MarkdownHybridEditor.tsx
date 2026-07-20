@@ -3,13 +3,7 @@ import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "r
 import { Settings2 } from "lucide-react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { PhotoSlider } from "react-photo-view";
-import {
-	Editor as CoreEditor,
-	mergeAttributes,
-	type Editor,
-	type Extensions,
-	type JSONContent,
-} from "@tiptap/core";
+import { mergeAttributes, type Editor, type Extensions } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import Image from "@tiptap/extension-image";
@@ -64,7 +58,9 @@ import type {
 import type { LockedHeadingPlan } from "@/domains/documents/lib/locked-headings";
 import type { TextAnchor } from "@/domains/documents/lib/operations";
 import type { DocumentComment } from "@/domains/documents/stores";
+import { useMarkdownEditorPerformance } from "@/hooks/useMarkdownEditorPerformance";
 import { apiResourceURL } from "@/shared/lib/api-base";
+import { createMarkdownEditorContentCache } from "@/shared/lib/markdown-editor-content-cache";
 import "@/styles/tiptap.css";
 import "react-photo-view/dist/react-photo-view.css";
 
@@ -103,40 +99,7 @@ export interface SelectionCoords {
 
 const defaultComments: DocumentComment[] = [];
 const defaultExtraExtensions: Extensions = [];
-const markdownChangeFlushDelayMs = 160;
-const parsedMarkdownCacheLimit = 8;
-
-interface ParsedMarkdownCacheEntry {
-	json: JSONContent;
-	markdown: string;
-}
-
-const parsedMarkdownCache = new Map<string, ParsedMarkdownCacheEntry>();
-
-const cachedParsedMarkdown = (documentId: string, markdown: string): JSONContent | null => {
-	const entry = parsedMarkdownCache.get(documentId);
-	if (!entry || entry.markdown !== markdown) return null;
-
-	parsedMarkdownCache.delete(documentId);
-	parsedMarkdownCache.set(documentId, entry);
-	return entry.json;
-};
-
-const rememberParsedMarkdown = (documentId: string, markdown: string, editor: Editor) => {
-	if (!markdown || editor.isDestroyed) return;
-
-	parsedMarkdownCache.delete(documentId);
-	parsedMarkdownCache.set(documentId, {
-		json: editor.getJSON(),
-		markdown,
-	});
-
-	while (parsedMarkdownCache.size > parsedMarkdownCacheLimit) {
-		const oldestKey = parsedMarkdownCache.keys().next().value;
-		if (!oldestKey) break;
-		parsedMarkdownCache.delete(oldestKey);
-	}
-};
+const writingMarkdownContentCache = createMarkdownEditorContentCache();
 
 const createMarkdownSchemaExtensions = (
 	extraExtensions: Extensions = defaultExtraExtensions,
@@ -221,16 +184,11 @@ export const prewarmMarkdownHybridEditorContent = ({
 	lockedHeadingPlan?: LockedHeadingPlan | null;
 	value: string;
 }) => {
-	if (!documentId || !value || cachedParsedMarkdown(documentId, value)) return;
-
-	const editor = new CoreEditor({
-		editable: false,
+	writingMarkdownContentCache.prewarm({
+		cacheKey: documentId,
 		extensions: createMarkdownParsingExtensions(extraExtensions, lockedHeadingPlan),
-		content: value,
-		contentType: "markdown",
+		markdown: value,
 	});
-	rememberParsedMarkdown(documentId, value, editor);
-	editor.destroy();
 };
 
 interface ImagePreviewState {
@@ -266,15 +224,27 @@ export const MarkdownHybridEditor = forwardRef<
 	},
 	ref,
 ) {
-	const onChangeRef = useRef(onChange);
 	const onHeadingActionRef = useRef(onHeadingAction);
 	const onSelectionChangeRef = useRef(onSelectionChange);
 	const onSelectionCoordChangeRef = useRef(onSelectionCoordChange);
 	const onSelectionRangeChangeRef = useRef(onSelectionRangeChange);
-	const emittedMarkdownRef = useRef(value);
 	const isStreamingRef = useRef(false);
-	const pendingMarkdownEditorRef = useRef<Editor | null>(null);
-	const pendingMarkdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const {
+		emittedMarkdownRef,
+		flushPendingMarkdownChange,
+		handleBlur,
+		handleUpdate,
+		hasPendingMarkdownChange,
+		onChangeRef,
+		shouldRerenderOnTransaction,
+	} = useMarkdownEditorPerformance({
+		isChangeSuppressed: () => isStreamingRef.current,
+		onChange,
+		onMarkdownSerialized: (markdown, nextEditor) => {
+			writingMarkdownContentCache.remember(documentId, markdown, nextEditor);
+		},
+		value,
+	});
 	const streamingTargetRef = useRef<StreamingBlockTarget | null>(null);
 	const editorSurfaceRef = useRef<HTMLDivElement>(null);
 	const clipboardEditorRef = useRef<Editor | null>(null);
@@ -284,7 +254,7 @@ export const MarkdownHybridEditor = forwardRef<
 	const [blockMenuRect, setBlockMenuRect] = useState<HoveredBlockRect | null>(null);
 	const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null);
 	const initialEditorContent = useMemo(
-		() => cachedParsedMarkdown(documentId, value) ?? value,
+		() => writingMarkdownContentCache.cached(documentId, value) ?? value,
 		[documentId, value],
 	);
 	const blockHandleExtension = useMemo(
@@ -312,10 +282,6 @@ export const MarkdownHybridEditor = forwardRef<
 	);
 
 	useEffect(() => {
-		onChangeRef.current = onChange;
-	}, [onChange]);
-
-	useEffect(() => {
 		onHeadingActionRef.current = onHeadingAction;
 	}, [onHeadingAction]);
 
@@ -331,39 +297,6 @@ export const MarkdownHybridEditor = forwardRef<
 		onSelectionRangeChangeRef.current = onSelectionRangeChange;
 	}, [onSelectionRangeChange]);
 
-	const clearPendingMarkdownTimer = useCallback(() => {
-		if (pendingMarkdownTimerRef.current === null) return;
-		clearTimeout(pendingMarkdownTimerRef.current);
-		pendingMarkdownTimerRef.current = null;
-	}, []);
-
-	const flushPendingMarkdownChange = useCallback(() => {
-		clearPendingMarkdownTimer();
-		const pendingEditor = pendingMarkdownEditorRef.current;
-		pendingMarkdownEditorRef.current = null;
-		if (!pendingEditor || pendingEditor.isDestroyed) return;
-
-		const markdown = pendingEditor.getMarkdown();
-		if (markdown === emittedMarkdownRef.current) return;
-
-		emittedMarkdownRef.current = markdown;
-		rememberParsedMarkdown(documentId, markdown, pendingEditor);
-		if (isStreamingRef.current) return;
-		onChangeRef.current(markdown);
-	}, [clearPendingMarkdownTimer, documentId]);
-
-	const scheduleMarkdownChangeFlush = useCallback(
-		(nextEditor: Editor) => {
-			pendingMarkdownEditorRef.current = nextEditor;
-			if (pendingMarkdownTimerRef.current !== null) return;
-
-			pendingMarkdownTimerRef.current = setTimeout(() => {
-				flushPendingMarkdownChange();
-			}, markdownChangeFlushDelayMs);
-		},
-		[flushPendingMarkdownChange],
-	);
-
 	const editor = useEditor(
 		{
 			extensions,
@@ -377,17 +310,14 @@ export const MarkdownHybridEditor = forwardRef<
 				clipboardTextSerializer: (slice) => sliceToCleanMarkdown(clipboardEditorRef.current, slice),
 			},
 			immediatelyRender: false,
-			shouldRerenderOnTransaction: false,
-			onBlur: () => {
-				flushPendingMarkdownChange();
-			},
+			shouldRerenderOnTransaction,
+			onBlur: handleBlur,
 			onCreate: ({ editor: nextEditor }) => {
 				clipboardEditorRef.current = nextEditor;
-				rememberParsedMarkdown(documentId, value, nextEditor);
+				writingMarkdownContentCache.remember(documentId, value, nextEditor);
 			},
 			onUpdate: ({ editor: nextEditor }) => {
-				if (isStreamingRef.current) return;
-				scheduleMarkdownChangeFlush(nextEditor);
+				handleUpdate(nextEditor);
 			},
 			onSelectionUpdate: ({ editor: nextEditor }) => {
 				const { from, to } = nextEditor.state.selection;
@@ -418,7 +348,7 @@ export const MarkdownHybridEditor = forwardRef<
 	useEffect(() => {
 		if (!editor) return;
 		return () => {
-			rememberParsedMarkdown(documentId, emittedMarkdownRef.current, editor);
+			writingMarkdownContentCache.remember(documentId, emittedMarkdownRef.current, editor);
 		};
 	}, [documentId, editor]);
 
@@ -432,17 +362,10 @@ export const MarkdownHybridEditor = forwardRef<
 		streamingTargetRef,
 	});
 
-	useEffect(
-		() => () => {
-			flushPendingMarkdownChange();
-		},
-		[flushPendingMarkdownChange],
-	);
-
 	useEffect(() => {
 		if (!editor) return;
 		if (isStreamingRef.current) return;
-		if (pendingMarkdownEditorRef.current) {
+		if (hasPendingMarkdownChange()) {
 			flushPendingMarkdownChange();
 			return;
 		}
@@ -482,7 +405,7 @@ export const MarkdownHybridEditor = forwardRef<
 		isStreamingRef.current = false;
 		streamingTargetRef.current = null;
 		restoreVisibleTextSelectionBookmark(editor, selectionBookmark);
-	}, [editor, flushPendingMarkdownChange, value]);
+	}, [editor, flushPendingMarkdownChange, hasPendingMarkdownChange, value]);
 
 	useEffect(() => {
 		if (!editor) return;
