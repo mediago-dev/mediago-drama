@@ -30,6 +30,12 @@ func SidecarToken(sidecarToken string, bridgeToken string) gin.HandlerFunc {
 			context.Next()
 			return
 		}
+		// Codex relay requests use their own bearer token, which the relay
+		// handler validates before forwarding anything upstream.
+		if isCodexRelayPath(context.Request.URL.Path) {
+			context.Next()
+			return
+		}
 		providedSidecarDigest := sha256.Sum256(
 			[]byte(strings.TrimSpace(context.GetHeader(SidecarTokenHeader))),
 		)
@@ -52,6 +58,10 @@ func SidecarToken(sidecarToken string, bridgeToken string) gin.HandlerFunc {
 
 		context.AbortWithStatus(http.StatusUnauthorized)
 	}
+}
+
+func isCodexRelayPath(path string) bool {
+	return path == "/api/v1/codex-relay" || strings.HasPrefix(path, "/api/v1/codex-relay/")
 }
 
 func isInternalAgentPath(path string) bool {

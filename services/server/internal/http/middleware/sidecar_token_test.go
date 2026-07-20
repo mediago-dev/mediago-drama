@@ -123,3 +123,52 @@ func TestSidecarTokenAllowsBridgeTokenOnlyOnInternalRoutes(t *testing.T) {
 		})
 	}
 }
+
+func TestSidecarTokenDefersCodexRelayAuthenticationToHandler(t *testing.T) {
+	const sidecarToken = "sidecar-token-with-at-least-thirty-two-bytes"
+	tests := []struct {
+		name       string
+		path       string
+		wantStatus int
+	}{
+		{
+			name:       "relay root",
+			path:       "/api/v1/codex-relay",
+			wantStatus: http.StatusNoContent,
+		},
+		{
+			name:       "relay responses endpoint",
+			path:       "/api/v1/codex-relay/v1/responses",
+			wantStatus: http.StatusNoContent,
+		},
+		{
+			name:       "lookalike route remains protected",
+			path:       "/api/v1/codex-relay-unsafe/v1/responses",
+			wantStatus: http.StatusUnauthorized,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.ReleaseMode)
+			handled := false
+			router := gin.New()
+			router.Use(SidecarToken(sidecarToken, ""))
+			router.POST(tt.path, func(context *gin.Context) {
+				handled = true
+				context.Status(http.StatusNoContent)
+			})
+
+			request := httptest.NewRequest(http.MethodPost, tt.path, nil)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+
+			if response.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", response.Code, tt.wantStatus)
+			}
+			if handled != (tt.wantStatus == http.StatusNoContent) {
+				t.Fatalf("handled = %v", handled)
+			}
+		})
+	}
+}
