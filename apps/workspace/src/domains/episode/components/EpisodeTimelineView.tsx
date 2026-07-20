@@ -598,11 +598,17 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 	}, [convertDocumentToWorkbenchDraft, episodeDocumentId]);
 
 	useEffect(() => {
-		if (selectedStoryboardVideoByClipId.size === 0) return;
+		if (
+			latestStoryboardVideoTaskByClipId.size === 0 &&
+			selectedStoryboardVideoByClipId.size === 0
+		) {
+			return;
+		}
 
 		const currentEpisode = useEpisodeStore.getState().episode;
-		const syncedEpisode = episodeWithSelectedStoryboardVideos(
+		const syncedEpisode = reconcileEpisodeStoryboardVideoState(
 			currentEpisode,
+			latestStoryboardVideoTaskByClipId,
 			selectedStoryboardVideoByClipId,
 		);
 		if (!syncedEpisode.changed) return;
@@ -617,44 +623,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 				await mutateMediaAssets();
 			})
 			.catch((error) => {
-				toast.error("剪辑台选中视频同步失败", {
-					description: toErrorMessage(error),
-				});
-			})
-			.finally(() => {
-				setIsSavingTaskSyncedEpisode(false);
-			});
-	}, [
-		episodeDocumentId,
-		mutateEpisodeState,
-		mutateMediaAssets,
-		projectId,
-		selectedStoryboardVideoByClipId,
-		setEpisode,
-		toast,
-	]);
-
-	useEffect(() => {
-		if (latestStoryboardVideoTaskByClipId.size === 0) return;
-
-		const currentEpisode = useEpisodeStore.getState().episode;
-		const syncedEpisode = episodeWithStoryboardVideoTaskStatuses(
-			currentEpisode,
-			latestStoryboardVideoTaskByClipId,
-		);
-		if (!syncedEpisode.changed) return;
-
-		setEpisode(syncedEpisode.episode);
-		if (!episodeDocumentId || !syncedEpisode.hasReadyVideo) return;
-
-		setIsSavingTaskSyncedEpisode(true);
-		void updateWorkspaceEpisode(episodeDocumentId, syncedEpisode.episode, projectId)
-			.then(async () => {
-				await mutateEpisodeState();
-				await mutateMediaAssets();
-			})
-			.catch((error) => {
-				toast.error("剪辑台状态同步失败", {
+				toast.error("剪辑台视频状态同步失败", {
 					description: toErrorMessage(error),
 				});
 			})
@@ -667,6 +636,7 @@ export const EpisodeTimelineView: React.FC<EpisodeTimelineViewProps> = ({
 		mutateEpisodeState,
 		mutateMediaAssets,
 		projectId,
+		selectedStoryboardVideoByClipId,
 		setEpisode,
 		toast,
 	]);
@@ -854,39 +824,6 @@ const latestStoryboardVideoTasksByClip = (
 	return latestByClipId;
 };
 
-const episodeWithStoryboardVideoTaskStatuses = (
-	episode: Episode,
-	taskByClipId: Map<string, GenerationTask>,
-) => {
-	let changed = false;
-	let hasReadyVideo = false;
-	const tracks = episode.tracks.map((track) => {
-		if (track.type !== "video") return track;
-
-		let trackChanged = false;
-		const clips = track.clips.map((clip) => {
-			const task = taskByClipId.get(clip.id);
-			if (!task) return clip;
-
-			const nextClip = clipWithStoryboardVideoTask(clip, task);
-			if (nextClip === clip) return clip;
-
-			trackChanged = true;
-			changed = true;
-			if (nextClip.status === "ready" && nextClip.videoUrl?.trim()) hasReadyVideo = true;
-			return nextClip;
-		});
-
-		return trackChanged ? { ...track, clips } : track;
-	});
-
-	return {
-		changed,
-		episode: changed ? { ...episode, tracks } : episode,
-		hasReadyVideo,
-	};
-};
-
 const selectedStoryboardVideosByClipId = (
 	assets: SelectedGenerationAsset[],
 	clipIdBySectionId: Map<string, string>,
@@ -904,8 +841,9 @@ const selectedStoryboardVideosByClipId = (
 	return next;
 };
 
-const episodeWithSelectedStoryboardVideos = (
+const reconcileEpisodeStoryboardVideoState = (
 	episode: Episode,
+	taskByClipId: Map<string, GenerationTask>,
 	assetByClipId: Map<string, SelectedGenerationAsset>,
 ) => {
 	let changed = false;
@@ -915,22 +853,19 @@ const episodeWithSelectedStoryboardVideos = (
 
 		let trackChanged = false;
 		const clips = track.clips.map((clip) => {
+			const task = taskByClipId.get(clip.id);
 			const asset = assetByClipId.get(clip.id);
-			if (!asset) return clip;
-
-			const videoUrl = firstVideoAssetSource([asset]);
-			if (!videoUrl) return clip;
-			const nextClip: TimelineClip = {
-				...clip,
-				status: "ready",
-				videoUrl,
-				...(asset.posterUrl ? { posterUrl: asset.posterUrl } : {}),
-			};
+			let nextClip = task ? clipWithStoryboardVideoTask(clip, task) : clip;
+			// 已选素材是当前可播放成片。即使最近一次重试失败，它也应覆盖任务的临时状态；
+			// 两路状态在同一次更新中合并，避免 ready/error 两个 effect 互相回写。
+			if (asset) nextClip = clipWithSelectedStoryboardVideo(nextClip, asset);
 			if (sameTimelineClipGenerationState(clip, nextClip)) return clip;
 
 			trackChanged = true;
 			changed = true;
-			hasReadyVideo = true;
+			if (asset && nextClip.status === "ready" && nextClip.videoUrl?.trim()) {
+				hasReadyVideo = true;
+			}
 			return nextClip;
 		});
 
@@ -942,6 +877,19 @@ const episodeWithSelectedStoryboardVideos = (
 		episode: changed ? { ...episode, tracks } : episode,
 		hasReadyVideo,
 	};
+};
+
+const clipWithSelectedStoryboardVideo = (clip: TimelineClip, asset: SelectedGenerationAsset) => {
+	const videoUrl = firstVideoAssetSource([asset]);
+	if (!videoUrl) return clip;
+
+	const nextClip: TimelineClip = {
+		...clip,
+		status: "ready",
+		videoUrl,
+		...(asset.posterUrl ? { posterUrl: asset.posterUrl } : {}),
+	};
+	return sameTimelineClipGenerationState(clip, nextClip) ? clip : nextClip;
 };
 
 const clipWithStoryboardVideoTask = (clip: TimelineClip, task: GenerationTask) => {
