@@ -76,7 +76,9 @@ export const emptyGenerationModelSelection = (): StoredGenerationModelSelection 
 
 interface GenerationWorkspacePreferenceStoreState {
 	modelSelection: StoredGenerationModelSelection;
+	promptOptimizeRouteId: string;
 	setModelSelection: (selection: StoredGenerationModelSelection) => void;
+	setPromptOptimizeRouteId: (routeId: string) => void;
 	setStylePresetId: (presetId: string) => void;
 	stylePresetId: string;
 }
@@ -88,10 +90,15 @@ export const useGenerationWorkspacePreferenceStore =
 		persist(
 			immer((set) => ({
 				modelSelection: readLegacyGenerationModelSelection(),
+				promptOptimizeRouteId: "",
 				stylePresetId: readLegacyGenerationStylePresetId(),
 				setModelSelection: (selection) =>
 					set((state) => {
 						state.modelSelection = normalizeStoredGenerationModelSelection(selection);
+					}),
+				setPromptOptimizeRouteId: (routeId) =>
+					set((state) => {
+						state.promptOptimizeRouteId = routeId.trim();
 					}),
 				setStylePresetId: (presetId) =>
 					set((state) => {
@@ -104,18 +111,26 @@ export const useGenerationWorkspacePreferenceStore =
 				version: 1,
 				partialize: (state) => ({
 					modelSelection: state.modelSelection,
+					promptOptimizeRouteId: state.promptOptimizeRouteId,
 					stylePresetId: state.stylePresetId,
 				}),
 				merge: (persisted, current) => {
 					const state =
 						(persisted as
 							| Partial<
-									Pick<GenerationWorkspacePreferenceStoreState, "modelSelection" | "stylePresetId">
+									Pick<
+										GenerationWorkspacePreferenceStoreState,
+										"modelSelection" | "promptOptimizeRouteId" | "stylePresetId"
+									>
 							  >
 							| undefined) ?? {};
 					return {
 						...current,
 						modelSelection: normalizeStoredGenerationModelSelection(state.modelSelection),
+						promptOptimizeRouteId:
+							typeof state.promptOptimizeRouteId === "string"
+								? state.promptOptimizeRouteId.trim()
+								: "",
 						stylePresetId: typeof state.stylePresetId === "string" ? state.stylePresetId : "",
 					};
 				},

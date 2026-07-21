@@ -16,7 +16,10 @@ import type {
 	GenerationParam,
 } from "@/domains/generation/api/generation";
 import type { MediaAsset } from "@/domains/workspace/api/media";
-import type { GenerationEntry } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
+import {
+	type GenerationEntry,
+	useGenerationWorkspacePreferenceStore,
+} from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useGenerationWorkspace } from "@/domains/generation/hooks/useGenerationWorkspace";
 import { ConfirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { MediaGenerationWorkspace } from "./MediaGenerationWorkspace";
@@ -517,6 +520,7 @@ describe("MediaGenerationWorkspace", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		useGenerationWorkspacePreferenceStore.getState().setPromptOptimizeRouteId("");
 		generationApiMocks.streamGenerationText.mockReset();
 		window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
 			callback(0);

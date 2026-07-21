@@ -21,6 +21,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/components/ui/select";
 import { cn } from "@/shared/lib/utils";
 
+const codexModelValue = "__codex__";
+
 export interface PromptOptimizeControlProps {
 	canOptimize: boolean;
 	canGenerate?: boolean;
@@ -56,7 +58,9 @@ export const PromptOptimizeControl: React.FC<PromptOptimizeControlProps> = ({
 		[items, selectedItemId],
 	);
 	const selectedModelOption =
-		modelOptions.find((option) => option.id === selectedModelRouteId) ?? modelOptions[0] ?? null;
+		modelOptions.find((option) => option.id === selectedModelRouteId) ??
+		(codexAvailable ? null : (modelOptions[0] ?? null));
+	const codexSelected = codexAvailable && !selectedModelOption;
 	const modelFamilies = useMemo(() => uniquePromptOptimizeFamilies(modelOptions), [modelOptions]);
 	const selectedFamily =
 		modelFamilies.find((family) => family.id === selectedModelOption?.family.id) ??
@@ -87,9 +91,13 @@ export const PromptOptimizeControl: React.FC<PromptOptimizeControlProps> = ({
 	const selectedFamilyLabel = selectedFamily
 		? displayGenerationLabelWithoutAlias(selectedFamily.label)
 		: "";
-	const modelSelectorDisabled = modelOptions.length === 0 || isOptimizing;
+	const modelSelectorDisabled = (!codexAvailable && modelOptions.length === 0) || isOptimizing;
 
 	const selectFamily = (familyId: string) => {
+		if (familyId === codexModelValue) {
+			onSelectModel("");
+			return;
+		}
 		const routes = modelOptions
 			.filter((option) => option.family.id === familyId)
 			.map((option) => option.route);
@@ -150,7 +158,58 @@ export const PromptOptimizeControl: React.FC<PromptOptimizeControlProps> = ({
 			>
 				<div className="mb-[var(--generation-popover-gap)] flex min-w-0 items-center gap-2">
 					<span className="shrink-0 text-2xs font-semibold text-muted-foreground">优化模型</span>
-					{selectedFamily && selectedRoute && selectedVersion ? (
+					{codexSelected ? (
+						<div className="flex min-w-0 flex-1 items-center gap-2">
+							<Select
+								value={codexModelValue}
+								disabled={modelSelectorDisabled}
+								onValueChange={selectFamily}
+							>
+								<SelectTrigger
+									aria-label="优化模型名称"
+									className={generationComposerSelectClassName("min-w-28 max-w-36 shrink-0")}
+								>
+									<GenerationBrandMark brand="openai" className="size-4 text-[0.5rem]" />
+									<span>Codex</span>
+								</SelectTrigger>
+								<SelectContent align="start">
+									<SelectItem value={codexModelValue} textValue="Codex">
+										<span className="flex min-w-0 items-center gap-2">
+											<GenerationBrandMark brand="openai" className="size-4 text-[0.5rem]" />
+											<span>Codex</span>
+										</span>
+									</SelectItem>
+									{modelFamilies.map((family) => (
+										<SelectItem
+											key={family.id}
+											value={family.id}
+											textValue={displayGenerationLabelWithoutAlias(family.label)}
+										>
+											<span className="flex min-w-0 items-center gap-2">
+												<GenerationBrandMark
+													brand={generationFamilyBrand(family)}
+													className="size-4 text-[0.5rem]"
+												/>
+												<span className="min-w-0 truncate">
+													{displayGenerationLabelWithoutAlias(family.label)}
+												</span>
+											</span>
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								disabled
+								className={generationComposerSelectClassName("min-w-0 flex-1 justify-start")}
+							>
+								<GenerationBrandMark brand="openai" className="size-4 text-[0.5rem]" />
+								<span>当前登录账户</span>
+							</Button>
+						</div>
+					) : selectedFamily && selectedRoute && selectedVersion ? (
 						<div className="flex min-w-0 flex-1 items-center gap-2">
 							<Select
 								value={selectedFamily.id}
@@ -168,6 +227,14 @@ export const PromptOptimizeControl: React.FC<PromptOptimizeControlProps> = ({
 									<span>{selectedFamilyLabel}</span>
 								</SelectTrigger>
 								<SelectContent align="start">
+									{codexAvailable ? (
+										<SelectItem value={codexModelValue} textValue="Codex">
+											<span className="flex min-w-0 items-center gap-2">
+												<GenerationBrandMark brand="openai" className="size-4 text-[0.5rem]" />
+												<span>Codex</span>
+											</span>
+										</SelectItem>
+									) : null}
 									{modelFamilies.map((family) => (
 										<SelectItem
 											key={family.id}
@@ -197,20 +264,6 @@ export const PromptOptimizeControl: React.FC<PromptOptimizeControlProps> = ({
 								onSelect={(_versionId, routeId) => onSelectModel(routeId)}
 							/>
 						</div>
-					) : codexAvailable ? (
-						<Button
-							type="button"
-							variant="outline"
-							size="sm"
-							disabled
-							className={generationComposerSelectClassName("min-w-0 flex-1 justify-start")}
-						>
-							<GenerationBrandMark
-								brand={generationModelBrand({ route: { model: "OpenAI Codex" } })}
-								className="size-4 text-[0.5rem]"
-							/>
-							<span>Codex · 当前登录账户</span>
-						</Button>
 					) : (
 						<Button
 							type="button"

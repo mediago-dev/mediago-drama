@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { removeStaleLocalPendingMessages } from "./generationWorkspaceState";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+	removeStaleLocalPendingMessages,
+	useGenerationWorkspacePreferenceStore,
+} from "./generationWorkspaceState";
 import type { ChatMessage } from "./generationTypes";
 
 const T0 = Date.parse("2026-06-04T00:00:00.000Z");
@@ -140,5 +143,26 @@ describe("removeStaleLocalPendingMessages", () => {
 		const result = removeStaleLocalPendingMessages(messages, tasks, T0 + 120_000);
 
 		expect(localIds(result)).toEqual(["task-1:prompt", "task-1"]);
+	});
+});
+
+describe("prompt optimization model preference", () => {
+	afterEach(() => {
+		useGenerationWorkspacePreferenceStore.getState().setPromptOptimizeRouteId("");
+		localStorage.clear();
+	});
+
+	it("persists the last explicitly selected text route and clears it for Codex", () => {
+		useGenerationWorkspacePreferenceStore.getState().setPromptOptimizeRouteId("openrouter.gpt-5.5");
+
+		expect(useGenerationWorkspacePreferenceStore.getState().promptOptimizeRouteId).toBe(
+			"openrouter.gpt-5.5",
+		);
+		expect(
+			JSON.parse(localStorage.getItem("generation.workspace-preferences.v1") ?? "{}"),
+		).toMatchObject({ state: { promptOptimizeRouteId: "openrouter.gpt-5.5" } });
+
+		useGenerationWorkspacePreferenceStore.getState().setPromptOptimizeRouteId("");
+		expect(useGenerationWorkspacePreferenceStore.getState().promptOptimizeRouteId).toBe("");
 	});
 });

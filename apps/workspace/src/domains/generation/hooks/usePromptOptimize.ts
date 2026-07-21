@@ -40,6 +40,7 @@ export interface UsePromptOptimizeOptions {
 	onOptimized: (prompt: string) => void;
 	onSuccess?: () => void;
 	projectId?: string | null;
+	preferCodex?: boolean;
 	route?: GenerationRoute | null;
 }
 
@@ -58,6 +59,7 @@ export const usePromptOptimize = ({
 	conversationScopeId,
 	conversationTitle,
 	onSuccess,
+	preferCodex = false,
 	projectId,
 	route,
 	onOptimized,
@@ -67,7 +69,7 @@ export const usePromptOptimize = ({
 	const abortRef = useRef<AbortController | null>(null);
 	const codexAvailable = useCodexTextAvailability();
 
-	const textRoute = route ?? resolveTextRoute(catalog);
+	const textRoute = preferCodex ? null : (route ?? resolveTextRoute(catalog));
 	const textExecutor = textRoute ? "route" : codexAvailable ? "codex" : null;
 	const optimize = useCallback(
 		async (input: PromptOptimizeInput) => {
@@ -173,6 +175,7 @@ export const usePromptOptimize = ({
 			onOptimized,
 			onSuccess,
 			projectId,
+			preferCodex,
 			textExecutor,
 			textRoute,
 		],

@@ -79,6 +79,7 @@ import {
 	promptOptimizeModelOptions as listPromptOptimizeModelOptions,
 	usePromptOptimize,
 } from "@/domains/generation/hooks/usePromptOptimize";
+import { useCodexTextAvailability } from "@/domains/generation/hooks/useCodexTextAvailability";
 import {
 	type GenerationEntry,
 	generationAssetSelectionKey,
@@ -87,6 +88,7 @@ import {
 	preferredRoute,
 	routeProviderLabel,
 	taskIdFromGenerationEntryId,
+	useGenerationWorkspacePreferenceStore,
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { useToast } from "@/hooks/useToast";
 import { Button } from "@/shared/components/ui/button";
@@ -423,7 +425,13 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	const resolvedMediaAssetProjectId =
 		mediaAssetProjectId === undefined ? (projectId?.trim() ?? "") : (mediaAssetProjectId ?? "");
 	const defaultDownloadTitle = selectedAssetTitle?.trim() || assetTitle?.trim() || undefined;
-	const [selectedPromptOptimizeRouteId, setSelectedPromptOptimizeRouteId] = useState("");
+	const selectedPromptOptimizeRouteId = useGenerationWorkspacePreferenceStore(
+		(state) => state.promptOptimizeRouteId,
+	);
+	const setSelectedPromptOptimizeRouteId = useGenerationWorkspacePreferenceStore(
+		(state) => state.setPromptOptimizeRouteId,
+	);
+	const codexAvailable = useCodexTextAvailability();
 	const promptOptimizeProjectName = useMemo(
 		() => projectNameFromConversationTitle(conversationTitle),
 		[conversationTitle],
@@ -458,22 +466,24 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		);
 	}, [promptOptimizeModelOptions]);
 	useEffect(() => {
+		if (!selectedPromptOptimizeRouteId || !ws.hasLiveCatalog) return;
 		if (promptOptimizeModelOptions.length === 0) {
-			if (selectedPromptOptimizeRouteId) setSelectedPromptOptimizeRouteId("");
+			setSelectedPromptOptimizeRouteId("");
 			return;
 		}
 		if (promptOptimizeModelOptions.some((option) => option.id === selectedPromptOptimizeRouteId)) {
 			return;
 		}
-		setSelectedPromptOptimizeRouteId(
-			preferredPromptOptimizeModel?.id ?? promptOptimizeModelOptions[0]?.id ?? "",
-		);
-	}, [preferredPromptOptimizeModel?.id, promptOptimizeModelOptions, selectedPromptOptimizeRouteId]);
+		setSelectedPromptOptimizeRouteId("");
+	}, [
+		promptOptimizeModelOptions,
+		selectedPromptOptimizeRouteId,
+		setSelectedPromptOptimizeRouteId,
+		ws.hasLiveCatalog,
+	]);
 	const selectedPromptOptimizeModel =
 		promptOptimizeModelOptions.find((option) => option.id === selectedPromptOptimizeRouteId) ??
-		preferredPromptOptimizeModel ??
-		promptOptimizeModelOptions[0] ??
-		null;
+		(codexAvailable ? null : preferredPromptOptimizeModel);
 	const refreshPromptOptimizeHistory = useCallback(() => {
 		const refreshConversationId = promptOptimizeConversationId?.trim() || undefined;
 		const refreshScopeId = promptOptimizeConversationScopeId?.trim() || undefined;
@@ -502,6 +512,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		conversationScopeId: promptOptimizeConversationScopeId,
 		conversationTitle: promptOptimizeConversationTitle,
 		onSuccess: refreshPromptOptimizeHistory,
+		preferCodex: codexAvailable && !selectedPromptOptimizeModel,
 		projectId: resolvedMediaAssetProjectId || projectId,
 		route: selectedPromptOptimizeModel?.route,
 		onOptimized: ws.setPrompt,

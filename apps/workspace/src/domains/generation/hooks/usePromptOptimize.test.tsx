@@ -40,6 +40,61 @@ const Harness = () => {
 	);
 };
 
+const CatalogHarness = ({ preferCodex }: { preferCodex: boolean }) => {
+	const optimizer = usePromptOptimize({
+		catalog: {
+			families: [{ id: "gpt", kind: "text", label: "GPT" }],
+			models: [],
+			providers: [],
+			routes: [
+				{
+					adapter: "openai.responses",
+					async: false,
+					configured: true,
+					docUrl: "",
+					familyId: "gpt",
+					id: "route-gpt",
+					kind: "text",
+					label: "GPT",
+					model: "gpt",
+					params: [],
+					provider: "openai",
+					status: "available",
+					supportsReferenceUrls: false,
+					versionId: "gpt-v1",
+				},
+			],
+			versions: [
+				{
+					canonicalModel: "gpt",
+					capabilities: { async: false, supportsReferenceUrls: false },
+					familyId: "gpt",
+					id: "gpt-v1",
+					kind: "text",
+					label: "GPT",
+				},
+			],
+		},
+		onOptimized: vi.fn(),
+		preferCodex,
+	});
+	return (
+		<button
+			type="button"
+			disabled={!optimizer.canOptimize}
+			onClick={() =>
+				void optimizer.optimize({
+					currentPrompt: "a hero",
+					referenceName: "cinematic",
+					referencePrompt: "cinematic lighting",
+				})
+			}
+		>
+			Optimize
+		</button>
+	);
+};
+
 describe("usePromptOptimize", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -67,6 +122,22 @@ describe("usePromptOptimize", () => {
 		expect(mocks.streamGenerationText.mock.calls[0]?.[0]).toMatchObject({
 			kind: "text",
 			model: "",
+			routeId: "",
+			textExecutor: "codex",
+		});
+	});
+
+	it("uses Codex when it is preferred even if a configured text route exists", async () => {
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<CatalogHarness preferCodex />
+			</SWRConfig>,
+		);
+
+		fireEvent.click(await screen.findByRole("button", { name: "Optimize" }));
+
+		await waitFor(() => expect(mocks.streamGenerationText).toHaveBeenCalledTimes(1));
+		expect(mocks.streamGenerationText.mock.calls[0]?.[0]).toMatchObject({
 			routeId: "",
 			textExecutor: "codex",
 		});
