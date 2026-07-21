@@ -3,13 +3,19 @@ package official
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 	"unicode/utf8"
 
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
@@ -78,7 +84,12 @@ func (provider *Provider) generateAliyunWanImage(ctx context.Context, request ge
 	if err := validateAliyunWanRequest(request); err != nil {
 		return generation.Response{}, err
 	}
+	return provider.aliyunWanScheduler(request.Model).run(ctx, func(runCtx context.Context) (generation.Response, error) {
+		return provider.generateAliyunWanImageAttempt(runCtx, request)
+	})
+}
 
+func (provider *Provider) generateAliyunWanImageAttempt(ctx context.Context, request generation.Request) (generation.Response, error) {
 	payload := aliyunWanPayload(request)
 	result := aliyunWanResponse{}
 	if err := provider.postJSON(
@@ -216,10 +227,253 @@ func aliyunWanResponseError(response aliyunWanResponse) error {
 	if message == "" {
 		message = "provider returned a non-success status"
 	}
-	if code := strings.TrimSpace(response.Code); code != "" {
+	code := strings.TrimSpace(response.Code)
+	if response.StatusCode == http.StatusTooManyRequests || isAliyunWanRateLimitCode(code) {
+		body := message
+		if code != "" {
+			body = fmt.Sprintf("%s: %s", code, message)
+		}
+		return &generation.HTTPError{
+			Provider:   "aliyun",
+			StatusCode: http.StatusTooManyRequests,
+			Body:       body,
+			Code:       "rate_limited",
+			Reason:     generation.FailureRateLimited,
+			Message:    "Provider rate limit exceeded.",
+			Retryable:  true,
+		}
+	}
+	if code != "" {
 		return fmt.Errorf("aliyun wan image generation failed (%s): %s", code, message)
 	}
 	return fmt.Errorf("aliyun wan image generation failed: %s", message)
+}
+
+func isAliyunWanRateLimitCode(code string) bool {
+	switch strings.ToLower(strings.TrimSpace(code)) {
+	case "throttling.ratequota", "throttling.burstrate", "limitrequests", "limit_requests", "limit_burst_rate":
+		return true
+	default:
+		return false
+	}
+}
+
+const (
+	aliyunWanMaxConcurrency = 5
+	aliyunWanMaxQueued      = 100
+	aliyunWanMaxAttempts    = 5
+	aliyunWanQueueTimeout   = 2 * time.Minute
+	aliyunWanStartInterval  = time.Second / aliyunWanMaxConcurrency
+	aliyunWanRetryBaseDelay = time.Second
+	aliyunWanRetryMaxDelay  = 16 * time.Second
+)
+
+type aliyunWanSchedulerConfig struct {
+	maxConcurrency int
+	maxQueued      int64
+	maxAttempts    int
+	queueTimeout   time.Duration
+	startInterval  time.Duration
+	retryBaseDelay time.Duration
+	retryMaxDelay  time.Duration
+}
+
+type aliyunWanScheduler struct {
+	config aliyunWanSchedulerConfig
+	slots  chan struct{}
+
+	waiting atomic.Int64
+	startMu sync.Mutex
+	nextRun time.Time
+}
+
+type aliyunWanSchedulerRegistry struct {
+	mu         sync.Mutex
+	schedulers map[string]*aliyunWanScheduler
+}
+
+var sharedAliyunWanSchedulers = aliyunWanSchedulerRegistry{
+	schedulers: map[string]*aliyunWanScheduler{},
+}
+
+func defaultAliyunWanSchedulerConfig() aliyunWanSchedulerConfig {
+	return aliyunWanSchedulerConfig{
+		maxConcurrency: aliyunWanMaxConcurrency,
+		maxQueued:      aliyunWanMaxQueued,
+		maxAttempts:    aliyunWanMaxAttempts,
+		queueTimeout:   aliyunWanQueueTimeout,
+		startInterval:  aliyunWanStartInterval,
+		retryBaseDelay: aliyunWanRetryBaseDelay,
+		retryMaxDelay:  aliyunWanRetryMaxDelay,
+	}
+}
+
+func newAliyunWanScheduler(config aliyunWanSchedulerConfig) *aliyunWanScheduler {
+	if config.maxConcurrency <= 0 {
+		config.maxConcurrency = aliyunWanMaxConcurrency
+	}
+	if config.maxQueued <= 0 {
+		config.maxQueued = aliyunWanMaxQueued
+	}
+	if config.maxAttempts <= 0 {
+		config.maxAttempts = 1
+	}
+	if config.queueTimeout <= 0 {
+		config.queueTimeout = aliyunWanQueueTimeout
+	}
+	if config.retryBaseDelay <= 0 {
+		config.retryBaseDelay = aliyunWanRetryBaseDelay
+	}
+	if config.retryMaxDelay < config.retryBaseDelay {
+		config.retryMaxDelay = config.retryBaseDelay
+	}
+
+	return &aliyunWanScheduler{
+		config: config,
+		slots:  make(chan struct{}, config.maxConcurrency),
+	}
+}
+
+func (registry *aliyunWanSchedulerRegistry) scheduler(key string) *aliyunWanScheduler {
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+
+	if scheduler := registry.schedulers[key]; scheduler != nil {
+		return scheduler
+	}
+	scheduler := newAliyunWanScheduler(defaultAliyunWanSchedulerConfig())
+	registry.schedulers[key] = scheduler
+	return scheduler
+}
+
+func (provider *Provider) aliyunWanScheduler(model string) *aliyunWanScheduler {
+	digest := sha256.Sum256([]byte(strings.TrimSpace(provider.apiKey)))
+	key := fmt.Sprintf("%s|%x|%s", provider.aliyunBaseURL, digest[:8], strings.TrimSpace(model))
+	return sharedAliyunWanSchedulers.scheduler(key)
+}
+
+func (scheduler *aliyunWanScheduler) run(
+	ctx context.Context,
+	operation func(context.Context) (generation.Response, error),
+) (generation.Response, error) {
+	for attempt := 0; attempt < scheduler.config.maxAttempts; attempt++ {
+		release, err := scheduler.acquire(ctx)
+		if err != nil {
+			return generation.Response{}, err
+		}
+		response, err := operation(ctx)
+		release()
+		if err == nil || !isAliyunWanRateLimit(err) || attempt+1 >= scheduler.config.maxAttempts {
+			return response, err
+		}
+		if err := waitForAliyunWanRetry(ctx, scheduler.retryDelay(attempt)); err != nil {
+			return generation.Response{}, err
+		}
+	}
+
+	return generation.Response{}, errors.New("aliyun wan image generation exhausted retry attempts")
+}
+
+func (scheduler *aliyunWanScheduler) acquire(ctx context.Context) (func(), error) {
+	if scheduler.waiting.Add(1) > scheduler.config.maxQueued {
+		scheduler.waiting.Add(-1)
+		return nil, aliyunWanQueueError("aliyun wan image queue is full")
+	}
+	defer scheduler.waiting.Add(-1)
+
+	waitCtx, cancel := context.WithTimeout(ctx, scheduler.config.queueTimeout)
+	defer cancel()
+	select {
+	case scheduler.slots <- struct{}{}:
+	case <-waitCtx.Done():
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return nil, aliyunWanQueueError("timed out waiting in aliyun wan image queue")
+	}
+
+	release := func() { <-scheduler.slots }
+	if err := scheduler.waitForStart(waitCtx); err != nil {
+		release()
+		if parentErr := ctx.Err(); parentErr != nil {
+			return nil, parentErr
+		}
+		return nil, aliyunWanQueueError("timed out waiting for aliyun wan image rate limit")
+	}
+	return release, nil
+}
+
+func (scheduler *aliyunWanScheduler) waitForStart(ctx context.Context) error {
+	scheduler.startMu.Lock()
+	now := time.Now()
+	startAt := now
+	if scheduler.nextRun.After(startAt) {
+		startAt = scheduler.nextRun
+	}
+	scheduler.nextRun = startAt.Add(scheduler.config.startInterval)
+	scheduler.startMu.Unlock()
+
+	delay := time.Until(startAt)
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (scheduler *aliyunWanScheduler) retryDelay(attempt int) time.Duration {
+	delay := scheduler.config.retryBaseDelay
+	for index := 0; index < attempt && delay < scheduler.config.retryMaxDelay; index++ {
+		delay *= 2
+		if delay > scheduler.config.retryMaxDelay {
+			delay = scheduler.config.retryMaxDelay
+		}
+	}
+	if delay <= 1 {
+		return delay
+	}
+	return delay + time.Duration(rand.Int63n(int64(delay/2)+1))
+}
+
+func waitForAliyunWanRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func isAliyunWanRateLimit(err error) bool {
+	var httpErr *generation.HTTPError
+	if errors.As(err, &httpErr) {
+		if httpErr.StatusCode == http.StatusTooManyRequests || httpErr.Reason == generation.FailureRateLimited {
+			return true
+		}
+		body := strings.ToLower(httpErr.Body)
+		return strings.Contains(body, "throttling.ratequota") || strings.Contains(body, "throttling.burstrate")
+	}
+	return false
+}
+
+func aliyunWanQueueError(message string) error {
+	return &generation.HTTPError{
+		Provider:   "aliyun",
+		StatusCode: http.StatusTooManyRequests,
+		Body:       message,
+		Code:       "provider_queue_full",
+		Reason:     generation.FailureRateLimited,
+		Message:    "Aliyun Wan image queue is busy.",
+		Retryable:  true,
+	}
 }
 
 const (
