@@ -45,8 +45,17 @@ import {
 import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
 import { EpisodeTimelineView } from "@/domains/episode/components/EpisodeTimelineView";
 import type { MarkdownSectionContext } from "@/domains/documents/components/MarkdownHybridEditor";
-import { useDocumentsStore } from "@/domains/documents/stores";
-import { generationAssetSource } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
+import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/stores";
+import {
+	buildMentionReferenceInputs,
+	resolveMentionPayloadWithSelectedAssets,
+	uniqueResolvedMention,
+} from "@/domains/documents/lib/mention-generation-references";
+import { parseMentionsFromMarkdown } from "@/domains/documents/lib/mention-resolver";
+import {
+	generationAssetSource,
+	uniqueStrings,
+} from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import {
 	BatchGenerationSettingsDialog,
 	type BatchGenerationSettings,
@@ -86,6 +95,7 @@ import {
 	type WorkspaceStoryboardVideoDocumentGroup,
 	type WorkspaceStoryboardVideoReel,
 } from "@/domains/workspace/api/workspace";
+import type { ProjectAsset } from "@/domains/workspace/api/project-assets";
 import { ProjectWorkspaceShell } from "@/domains/workspace/components/ProjectWorkspaceShell";
 import { getRouteProjectId, type AgentResourceType } from "@/domains/workspace/lib/workbench-route";
 import { useProjectStore } from "@/domains/projects/stores";
@@ -120,6 +130,12 @@ type OverviewBatchGenerationDialogState =
 			reels: WorkspaceStoryboardVideoReel[];
 	  };
 
+interface OverviewBatchGenerationReferenceContext {
+	allAssets: ProjectAsset[];
+	allDocuments: MarkdownDocument[];
+	selectedGenerationAssets: SelectedGenerationAsset[];
+}
+
 type StoryboardVideoResourcesDialogTab = "list" | "canvas" | "preview";
 
 export const ProjectOverview: React.FC = () => {
@@ -142,6 +158,8 @@ export const ProjectOverview: React.FC = () => {
 	const [storyboardVideoDocumentId, setStoryboardVideoDocumentId] = useState<string | null>(null);
 	const refreshedSelectedAssetTaskKeysRef = useRef<Set<string>>(new Set());
 	const hydrateWorkspaceDocuments = useDocumentsStore((state) => state.hydrateWorkspaceDocuments);
+	const mentionDocuments = useDocumentsStore((state) => state.documents);
+	const mentionAssets = useDocumentsStore((state) => state.assets);
 	const convertDocumentToWorkbenchDraft = useDocumentsStore(
 		(state) => state.convertDocumentToWorkbenchDraft,
 	);
@@ -386,7 +404,11 @@ export const ProjectOverview: React.FC = () => {
 		async (settings: BatchGenerationSettings) => {
 			if (!batchGenerationDialog || !projectId) return;
 			const kind = batchGenerationDialog.kind;
-			const items = overviewBatchGenerationItems(batchGenerationDialog, settings, projectId);
+			const items = overviewBatchGenerationItems(batchGenerationDialog, settings, projectId, {
+				allAssets: mentionAssets,
+				allDocuments: mentionDocuments,
+				selectedGenerationAssets,
+			});
 			if (items.length === 0) return;
 
 			setBatchGenerationDialog(null);
@@ -453,10 +475,13 @@ export const ProjectOverview: React.FC = () => {
 			config?.name,
 			markFailed,
 			markGenerating,
+			mentionAssets,
+			mentionDocuments,
 			mutateImageTasks,
 			mutateVideoTasks,
 			projectGenerationScopeId,
 			projectId,
+			selectedGenerationAssets,
 			toast,
 		],
 	);
@@ -1800,6 +1825,7 @@ const overviewBatchGenerationItems = (
 	dialog: OverviewBatchGenerationDialogState,
 	settings: BatchGenerationSettings,
 	projectId: string,
+	referenceContext: OverviewBatchGenerationReferenceContext,
 ): GenerationBatchRequest["items"] => {
 	if (dialog.kind === "image") {
 		return dialog.resources.map((resource) => ({
@@ -1815,6 +1841,7 @@ const overviewBatchGenerationItems = (
 				resourceType: resource.type,
 				section: documentResourceToSectionContext(resource),
 				settings,
+				referenceContext,
 			}),
 		}));
 	}
@@ -1832,6 +1859,7 @@ const overviewBatchGenerationItems = (
 			resourceType: "storyboard",
 			section: storyboardReelToSectionContext(dialog.group, reel),
 			settings,
+			referenceContext,
 		}),
 	}));
 };
@@ -1847,6 +1875,7 @@ const generationBatchRequestForSection = ({
 	resourceType,
 	section,
 	settings,
+	referenceContext,
 }: {
 	assetTitle: string;
 	capabilityId: string;
@@ -1858,6 +1887,7 @@ const generationBatchRequestForSection = ({
 	resourceType: AgentResourceType;
 	section: MarkdownSectionContext;
 	settings: BatchGenerationSettings;
+	referenceContext: OverviewBatchGenerationReferenceContext;
 }): GenerationMessageRequest => ({
 	assetTitle,
 	capabilityId,
@@ -1883,14 +1913,57 @@ const generationBatchRequestForSection = ({
 	promptSupplements: settings.promptSupplements,
 	promptOptimization: settings.promptOptimization,
 	provider: settings.route.provider,
-	referenceAssetIds: settings.referenceAssetIds ?? [],
-	referenceBindings: [],
-	referenceUrls: [],
+	...batchGenerationReferences(settings, section, prompt, kind, referenceContext),
 	resourceType,
 	routeId: settings.route.id,
 	sectionId: section.blockId,
 	versionId: settings.version.id,
 });
+
+const batchGenerationReferences = (
+	settings: BatchGenerationSettings,
+	section: MarkdownSectionContext,
+	prompt: string,
+	kind: "image" | "video",
+	context: OverviewBatchGenerationReferenceContext,
+): Pick<GenerationMessageRequest, "referenceAssetIds" | "referenceBindings" | "referenceUrls"> => {
+	if (!settings.route.supportsReferenceUrls) {
+		return { referenceAssetIds: [], referenceBindings: [], referenceUrls: [] };
+	}
+
+	const mentionReferences = batchMentionReferenceInputs(section, prompt, kind, context);
+	return {
+		referenceAssetIds: uniqueStrings([
+			...(settings.referenceAssetIds ?? []),
+			...mentionReferences.assetIds,
+		]),
+		referenceBindings: mentionReferences.bindings,
+		referenceUrls: mentionReferences.urls,
+	};
+};
+
+const batchMentionReferenceInputs = (
+	section: MarkdownSectionContext,
+	prompt: string,
+	kind: "image" | "video",
+	context: OverviewBatchGenerationReferenceContext,
+) => {
+	const mentionMarkdown = prompt.trim() ? `${section.markdown}\n\n${prompt}` : "";
+	const mentions = parseMentionsFromMarkdown(mentionMarkdown)
+		.map((reference) =>
+			resolveMentionPayloadWithSelectedAssets(
+				reference,
+				context.allDocuments,
+				context.allAssets,
+				context.selectedGenerationAssets,
+			),
+		)
+		.filter(uniqueResolvedMention);
+
+	return buildMentionReferenceInputs(mentions, {
+		includeSelectedAudios: kind === "video",
+	});
+};
 
 const generationBatchNotificationTarget = (
 	projectId: string,

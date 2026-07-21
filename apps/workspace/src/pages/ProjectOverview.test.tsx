@@ -341,6 +341,8 @@ describe("ProjectOverview", () => {
 									"## 林书彤",
 									"",
 									"冷静的调查记者。",
+									"",
+									"![林书彤参考](https://example.test/lintong.png)",
 								].join("\n"),
 								id: "characters",
 								isDirty: false,
@@ -444,7 +446,8 @@ describe("ProjectOverview", () => {
 								id: "character:characters:section_xulele",
 								markdown: "## 徐乐乐\n\n温和的同学。",
 								plainText: "徐乐乐\n\n温和的同学。",
-								prompt: "## 徐乐乐\n\n温和的同学。",
+								prompt:
+									"## 徐乐乐\n\n@[林书彤](mention://characters/section_lintong)身边温和的同学。",
 								sectionId: "section_xulele",
 								sourceCategory: "character",
 								summary: "温和的同学。",
@@ -1031,6 +1034,23 @@ describe("ProjectOverview", () => {
 					request: expect.objectContaining({
 						assetTitle: "徐乐乐",
 						documentContext: expect.objectContaining({ sectionId: "section_xulele" }),
+						prompt: "## 徐乐乐\n\n@[林书彤](mention://characters/section_lintong)身边温和的同学。",
+						referenceAssetIds: ["batch-ref", "character-a"],
+						referenceBindings: [
+							{
+								blockId: "section_lintong",
+								documentId: "characters",
+								kind: "section",
+								url: "https://example.test/lintong.png",
+							},
+							{
+								assetId: "character-a",
+								blockId: "section_lintong",
+								documentId: "characters",
+								kind: "section",
+							},
+						],
+						referenceUrls: ["https://example.test/lintong.png"],
 					}),
 				}),
 			],
