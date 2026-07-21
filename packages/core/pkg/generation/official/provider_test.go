@@ -3,11 +3,16 @@ package official
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 )
@@ -681,6 +686,151 @@ func TestAliyunWanImageAllowsLegacyNamedSize(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("validateAliyunWanRequest() error = %v, want legacy named size to remain supported", err)
+	}
+}
+
+func TestAliyunWanSchedulerLimitsConcurrency(t *testing.T) {
+	scheduler := newAliyunWanScheduler(aliyunWanSchedulerConfig{
+		maxConcurrency: 2,
+		maxQueued:      10,
+		maxAttempts:    1,
+		queueTimeout:   time.Second,
+		retryBaseDelay: time.Millisecond,
+		retryMaxDelay:  time.Millisecond,
+	})
+
+	var active atomic.Int64
+	var maxActive atomic.Int64
+	var waitGroup sync.WaitGroup
+	for index := 0; index < 6; index++ {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			_, err := scheduler.run(context.Background(), func(context.Context) (generation.Response, error) {
+				current := active.Add(1)
+				for current > maxActive.Load() && !maxActive.CompareAndSwap(maxActive.Load(), current) {
+				}
+				time.Sleep(20 * time.Millisecond)
+				active.Add(-1)
+				return generation.Response{}, nil
+			})
+			if err != nil {
+				t.Errorf("run() error = %v", err)
+			}
+		}()
+	}
+	waitGroup.Wait()
+
+	if got := maxActive.Load(); got != 2 {
+		t.Fatalf("max active = %d, want 2", got)
+	}
+}
+
+func TestAliyunWanSchedulerSmoothsStarts(t *testing.T) {
+	const startInterval = 20 * time.Millisecond
+	scheduler := newAliyunWanScheduler(aliyunWanSchedulerConfig{
+		maxConcurrency: 5,
+		maxQueued:      10,
+		maxAttempts:    1,
+		queueTimeout:   time.Second,
+		startInterval:  startInterval,
+		retryBaseDelay: time.Millisecond,
+		retryMaxDelay:  time.Millisecond,
+	})
+
+	starts := make([]time.Time, 0, 5)
+	var startsMu sync.Mutex
+	var waitGroup sync.WaitGroup
+	for index := 0; index < 5; index++ {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			_, err := scheduler.run(context.Background(), func(context.Context) (generation.Response, error) {
+				startsMu.Lock()
+				starts = append(starts, time.Now())
+				startsMu.Unlock()
+				return generation.Response{}, nil
+			})
+			if err != nil {
+				t.Errorf("run() error = %v", err)
+			}
+		}()
+	}
+	waitGroup.Wait()
+
+	sort.Slice(starts, func(left int, right int) bool { return starts[left].Before(starts[right]) })
+	for index := 1; index < len(starts); index++ {
+		if gap := starts[index].Sub(starts[index-1]); gap < startInterval-5*time.Millisecond {
+			t.Fatalf("start gap %d = %s, want at least %s", index, gap, startInterval-5*time.Millisecond)
+		}
+	}
+}
+
+func TestAliyunWanSchedulerRetriesOnlyRateLimits(t *testing.T) {
+	scheduler := newAliyunWanScheduler(aliyunWanSchedulerConfig{
+		maxConcurrency: 1,
+		maxQueued:      10,
+		maxAttempts:    3,
+		queueTimeout:   time.Second,
+		retryBaseDelay: time.Millisecond,
+		retryMaxDelay:  time.Millisecond,
+	})
+
+	var attempts atomic.Int64
+	_, err := scheduler.run(context.Background(), func(context.Context) (generation.Response, error) {
+		if attempts.Add(1) == 1 {
+			return generation.Response{}, &generation.HTTPError{
+				Provider:   "aliyun",
+				StatusCode: http.StatusTooManyRequests,
+				Reason:     generation.FailureRateLimited,
+				Retryable:  true,
+			}
+		}
+		return generation.Response{}, nil
+	})
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("attempts = %d, want 2", got)
+	}
+}
+
+func TestAliyunWanResponseRateLimitIsRetryable(t *testing.T) {
+	err := aliyunWanResponseError(aliyunWanResponse{
+		StatusCode: http.StatusTooManyRequests,
+		Code:       "Throttling.RateQuota",
+		Message:    "Requests rate limit exceeded",
+	})
+
+	var httpErr *generation.HTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("error type = %T, want *generation.HTTPError", err)
+	}
+	if httpErr.Reason != generation.FailureRateLimited || !httpErr.Retryable {
+		t.Fatalf("HTTP error = %#v, want retryable rate limit", httpErr)
+	}
+	if !isAliyunWanRateLimit(err) {
+		t.Fatal("isAliyunWanRateLimit() = false, want true")
+	}
+}
+
+func TestAliyunWanSchedulersAreSharedAcrossProviderInstances(t *testing.T) {
+	first, err := NewProvider(Config{AliyunBaseURL: "https://aliyun.example.test", APIKey: "shared-key"})
+	if err != nil {
+		t.Fatalf("NewProvider(first) error = %v", err)
+	}
+	second, err := NewProvider(Config{AliyunBaseURL: "https://aliyun.example.test", APIKey: "shared-key"})
+	if err != nil {
+		t.Fatalf("NewProvider(second) error = %v", err)
+	}
+
+	standard := first.aliyunWanScheduler(generation.ModelWan27Image)
+	if standard != second.aliyunWanScheduler(generation.ModelWan27Image) {
+		t.Fatal("providers with the same quota identity did not share a scheduler")
+	}
+	if standard == second.aliyunWanScheduler(generation.ModelWan27ImagePro) {
+		t.Fatal("different models unexpectedly shared a scheduler")
 	}
 }
 
