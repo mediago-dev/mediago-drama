@@ -110,9 +110,20 @@ export const useGenerationModelSelection = ({
 	const hasLiveCatalog = Boolean(
 		modelCatalog?.families?.length && modelCatalog.versions?.length && modelCatalog.routes?.length,
 	);
-	const configuredRoutes = useMemo(
-		() => (hasLiveCatalog ? catalog.routes.filter(isConfiguredRoute) : []),
+	const availableRoutes = useMemo(
+		() =>
+			(hasLiveCatalog ? catalog.routes : []).filter(
+				(routeItem) => routeItem.status === "available",
+			),
 		[catalog.routes, hasLiveCatalog],
+	);
+	const configuredRoutes = useMemo(
+		() => availableRoutes.filter(isConfiguredRoute),
+		[availableRoutes],
+	);
+	const availableRoutesForKind = useMemo(
+		() => availableRoutes.filter((routeItem) => routeItem.kind === kind),
+		[availableRoutes, kind],
 	);
 	const configuredRoutesForKind = useMemo(
 		() => configuredRoutes.filter((routeItem) => routeItem.kind === kind),
@@ -123,9 +134,9 @@ export const useGenerationModelSelection = ({
 			catalog.families.filter(
 				(family) =>
 					family.kind === kind &&
-					configuredRoutesForKind.some((routeItem) => routeItem.familyId === family.id),
+					availableRoutesForKind.some((routeItem) => routeItem.familyId === family.id),
 			),
-		[catalog.families, configuredRoutesForKind, kind],
+		[catalog.families, availableRoutesForKind, kind],
 	);
 
 	useEffect(() => {
@@ -151,13 +162,13 @@ export const useGenerationModelSelection = ({
 			catalog.versions.filter(
 				(versionItem) =>
 					versionItem.familyId === selectedFamily.id &&
-					configuredRoutes.some((routeItem) => routeItem.versionId === versionItem.id),
+					availableRoutes.some((routeItem) => routeItem.versionId === versionItem.id),
 			),
-		[catalog.versions, configuredRoutes, selectedFamily.id],
+		[catalog.versions, availableRoutes, selectedFamily.id],
 	);
 	const visibleFamilyRoutes = useMemo(
-		() => configuredRoutes.filter((routeItem) => routeItem.familyId === selectedFamily.id),
-		[configuredRoutes, selectedFamily.id],
+		() => availableRoutes.filter((routeItem) => routeItem.familyId === selectedFamily.id),
+		[availableRoutes, selectedFamily.id],
 	);
 
 	useEffect(() => {
@@ -166,7 +177,6 @@ export const useGenerationModelSelection = ({
 		setSelectedVersionIds((current) => {
 			const currentID = current[selectedFamily.id];
 			if (visibleVersions.some((versionItem) => versionItem.id === currentID)) return current;
-
 			return {
 				...current,
 				[selectedFamily.id]: visibleVersions[0].id,
@@ -181,8 +191,8 @@ export const useGenerationModelSelection = ({
 		visibleVersions[0] ??
 		fallbackCatalog.versions[0];
 	const visibleRoutes = useMemo(
-		() => configuredRoutes.filter((routeItem) => routeItem.versionId === selectedVersion.id),
-		[configuredRoutes, selectedVersion.id],
+		() => availableRoutes.filter((routeItem) => routeItem.versionId === selectedVersion.id),
+		[availableRoutes, selectedVersion.id],
 	);
 
 	useEffect(() => {
@@ -204,6 +214,7 @@ export const useGenerationModelSelection = ({
 		preferredRoute(visibleRoutes) ??
 		fallbackCatalog.routes[0];
 	const hasConfiguredRoutesForKind = configuredRoutesForKind.length > 0;
+	const hasAvailableRoutesForKind = availableRoutesForKind.length > 0;
 	const selectedParams = useMemo(
 		() => declaredRouteParamValues(selectedRoute.params, routeParams[selectedRoute.id]),
 		[routeParams, selectedRoute],
@@ -506,6 +517,7 @@ export const useGenerationModelSelection = ({
 	return {
 		catalog,
 		configuredRoutesForKind,
+		hasAvailableRoutesForKind,
 		hasConfiguredRoutesForKind,
 		hasLiveCatalog,
 		kind,

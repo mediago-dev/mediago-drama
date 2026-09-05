@@ -9,6 +9,11 @@ import { useProjectStore } from "@/domains/projects/stores";
 import { ConfirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { ProjectRenameDialog } from "@/domains/projects/components/ProjectRenameDialog";
 import type { ApiResponse } from "@/types/api";
+import {
+	productionStageStates,
+	productionTemplateById,
+	productionTemplateSnapshot,
+} from "@/lib/production/production-templates";
 
 vi.mock("@/shared/lib/http", () => ({
 	default: {
@@ -65,7 +70,10 @@ describe("Projects", () => {
 		isProjectDeleted = false;
 		activeProjectStatus = "active";
 		activeProjectName = activeProject.name;
-		vi.mocked(httpClient.get).mockImplementation(async (_url, config) => {
+		vi.mocked(httpClient.get).mockImplementation(async (url, config) => {
+			if (url === "/projects/project-111/config") {
+				return apiResponse(projectConfigForActiveProject(activeProjectName));
+			}
 			const status = config?.params?.status ?? "active";
 			const projects = projectsForStatus(
 				status,
@@ -126,9 +134,34 @@ describe("Projects", () => {
 		fireEvent.click(row);
 
 		await waitFor(() => {
-			expect(screen.getByTestId("location").textContent).toBe("/projects?projectId=project-111");
+			const location = new URL(
+				screen.getByTestId("location").textContent ?? "",
+				"http://localhost",
+			);
+			expect(location.pathname).toBe("/projects");
+			expect(location.searchParams.get("projectId")).toBe("project-111");
+			expect(location.searchParams.get("workspace")).toBe("workflow");
+			expect(location.searchParams.get("stageId")).toBe("stage-1");
 		});
 		expect(useProjectStore.getState().activeProjectId).toBe("project-111");
+	});
+
+	it("uses the durable project config when the list summary is stale", async () => {
+		render(
+			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+				<MemoryRouter>
+					<Projects />
+				</MemoryRouter>
+			</SWRConfig>,
+		);
+
+		// The list fixture intentionally has no production summary. The config request
+		// is the source of truth for the template, stage count and progress shown here.
+		expect(await screen.findByText("商业广告 · 9 个阶段")).toBeInTheDocument();
+		const projectCard = await screen.findByRole("button", { name: /短剧项目/ });
+		expect(projectCard).toHaveTextContent(/1 \/ 9 阶段/);
+		expect(projectCard).toHaveTextContent(/3%/);
+		expect(screen.getByText(/待审核/)).toBeInTheDocument();
 	});
 
 	it("archives an active project from the row context menu", async () => {
@@ -150,7 +183,7 @@ describe("Projects", () => {
 			expect(httpClient.post).toHaveBeenCalledWith("/projects/project-111/archive"),
 		);
 		await waitFor(() => expect(screen.queryByText("短剧项目")).not.toBeInTheDocument());
-		expect(screen.getByText("还没有项目")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "创建第一个项目" })).toBeInTheDocument();
 	});
 
 	it("renames an active project from the row context menu", async () => {
@@ -202,7 +235,7 @@ describe("Projects", () => {
 
 		await waitFor(() => expect(httpClient.delete).toHaveBeenCalledWith("/projects/project-111"));
 		await waitFor(() => expect(screen.queryByText("短剧项目")).not.toBeInTheDocument());
-		expect(screen.getByText("还没有项目")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "创建第一个项目" })).toBeInTheDocument();
 	});
 
 	it("refreshes the trash list after permanently deleting a project", async () => {
@@ -263,6 +296,37 @@ const projectWithStatus = (
 	trashedAt: status === "trashed" ? "2026-06-18T16:10:00Z" : undefined,
 	updatedAt: status === "active" ? activeProject.updatedAt : "2026-06-18T16:10:00Z",
 });
+
+const projectConfigForActiveProject = (name: string) => {
+	const template = productionTemplateById("commercial-film");
+	return {
+		schemaVersion: 1 as const,
+		projectId: activeProject.id,
+		name,
+		description: activeProject.description,
+		overview: {
+			production: {
+				template: productionTemplateSnapshot(template),
+				stageStates: {
+					...productionStageStates(template),
+					"stage-1": {
+						...productionStageStates(template)["stage-1"],
+						status: "REVIEW" as const,
+					},
+				},
+				currentStageId: "stage-1",
+				overallProgress: 3,
+				coreAssetCount: 0,
+				shotCount: 0,
+				completedShotCount: 0,
+				reviewShotCount: 0,
+				version: "V01",
+				updatedAt: "2026-06-18T16:05:00Z",
+			},
+		},
+		createdAt: activeProject.createdAt,
+	};
+};
 
 const apiResponse = <T,>(data: T): ApiResponse<T> => ({
 	code: 0,

@@ -6,12 +6,8 @@ type WorkspacePackage = {
 	name?: string;
 	version?: string;
 	license?: string;
-	dependencies?: {
-		"electron-updater"?: string;
-	};
 	devDependencies?: {
 		electron?: string;
-		"electron-updater"?: string;
 	};
 };
 
@@ -36,33 +32,19 @@ function main(): void {
 
 	const workspacePackage = readWorkspacePackage();
 	const electronVersion = normalizeVersion(workspacePackage.devDependencies?.electron);
-	const electronUpdaterVersion =
-		workspacePackage.dependencies?.["electron-updater"] ??
-		workspacePackage.devDependencies?.["electron-updater"];
-	if (!electronUpdaterVersion) {
-		throw new Error("missing electron-updater dependency in workspace package");
-	}
-	const stagedDependencies = { "electron-updater": electronUpdaterVersion };
-	const channel = readElectronChannel();
-	const githubPublisher = githubPublisherOptions(channel);
 	const appPackage = {
-		name: "mediago-drama",
-		productName: "MediaGo Drama",
+		name: "aigc-production-os",
+		productName: "心悦制作台",
 		version: workspacePackage.version ?? "0.0.0",
-		description: "MediaGo Drama desktop workspace",
-		author: "MediaGo Dev",
+		description: "本地 AIGC 制作管理工作台",
+		author: "Wuxin",
 		license: workspacePackage.license ?? "Apache-2.0",
-		repository: {
-			type: "git",
-			url: `https://github.com/${githubOwner}/${githubRepo}.git`,
-		},
 		private: true,
 		type: "module",
 		main: "main.js",
-		dependencies: stagedDependencies,
 		build: {
-			appId: "team.torchstellar.mediagodrama",
-			productName: "MediaGo Drama",
+			appId: "local.aigc.productionos",
+			productName: "心悦制作台",
 			asar: true,
 			// Flipping Electron fuses mutates the macOS framework binary. Only do so when
 			// the build will be signed afterwards; otherwise its embedded signature becomes
@@ -93,7 +75,6 @@ function main(): void {
 			directories: {
 				output: "../../release",
 			},
-			publish: [githubPublisher],
 			files: ["package.json", "*.js", "*.cjs", "renderer/**/*", "!**/*.map"],
 			extraResources: [
 				{
@@ -166,40 +147,6 @@ function ensureStagedServerBinary(): void {
 
 function normalizeVersion(version: string | undefined): string {
 	return version?.replace(/^[^\d]*/, "") || "42.4.1";
-}
-
-type GitHubReleaseType = "draft" | "prerelease" | "release";
-
-const githubOwner = "mediago-dev";
-const githubRepo = "mediago-drama";
-
-function readElectronChannel(): string {
-	const channel = process.env.MEDIAGO_ELECTRON_CHANNEL?.trim() || "beta";
-	if (!/^[a-z0-9-]+$/.test(channel)) {
-		throw new Error(`invalid MEDIAGO_ELECTRON_CHANNEL: ${channel}`);
-	}
-	return channel;
-}
-
-function githubPublisherOptions(channel: string): {
-	provider: "github";
-	releaseType: GitHubReleaseType;
-	owner: string;
-	repo: string;
-	channel: string;
-} {
-	const value = process.env.MEDIAGO_ELECTRON_RELEASE_TYPE?.trim() || "release";
-	if (value !== "draft" && value !== "prerelease" && value !== "release") {
-		throw new Error(`invalid MEDIAGO_ELECTRON_RELEASE_TYPE: ${value}`);
-	}
-
-	return {
-		provider: "github",
-		releaseType: value,
-		owner: githubOwner,
-		repo: githubRepo,
-		channel,
-	};
 }
 
 try {

@@ -94,6 +94,9 @@ func workspaceDocumentResourceRecordsFromDocuments(documents []mediamcp.Workspac
 		} else {
 			sections = levelDocumentResourceSections(sections, documentResourceDefaultHeadingLevel)
 		}
+		if strings.Contains(document.Content, "<!-- production-stage:") {
+			sections = productionDocumentResourceSections(sections)
+		}
 
 		for _, section := range sections {
 			plainText := workspaceDocumentResourcePlainText(section.markdown)
@@ -118,6 +121,27 @@ func workspaceDocumentResourceRecordsFromDocuments(documents []mediamcp.Workspac
 		}
 	}
 	return records
+}
+
+func productionDocumentResourceSections(sections []documentResourceHeadingSection) []documentResourceHeadingSection {
+	result := make([]documentResourceHeadingSection, 0, len(sections))
+	for _, section := range sections {
+		if isProductionStageScaffoldHeading(section.title) {
+			continue
+		}
+		result = append(result, section)
+	}
+	return result
+}
+
+func isProductionStageScaffoldHeading(title string) bool {
+	title = strings.TrimSpace(title)
+	switch title {
+	case "本阶段目的", "应交付内容", "输入与已锁定内容", "制作过程", "版本记录", "问题 / Blocker", "下一步行动":
+		return true
+	default:
+		return strings.HasPrefix(title, "Gate｜进入下一阶段前确认")
+	}
 }
 
 func isWorkspaceDocumentResourceCategory(category string) bool {

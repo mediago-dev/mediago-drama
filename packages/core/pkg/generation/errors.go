@@ -2,6 +2,7 @@ package generation
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -42,17 +43,22 @@ const (
 
 // FailureInfo carries provider error semantics without losing the raw detail.
 type FailureInfo struct {
-	Provider  string
-	Code      string
-	Reason    FailureReason
-	Message   string
-	Raw       string
-	Retryable bool
+	Provider   string
+	Model      string
+	Endpoint   string
+	StatusCode int
+	Code       string
+	Reason     FailureReason
+	Message    string
+	Raw        string
+	Retryable  bool
 }
 
 // HTTPError carries provider HTTP failure details while keeping a concise error string.
 type HTTPError struct {
 	Provider   string
+	Model      string
+	Endpoint   string
 	StatusCode int
 	Body       string
 	Code       string
@@ -89,6 +95,7 @@ func HTTPErrorFromResponse(provider string, response *http.Response) error {
 	}
 
 	body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+	bodyText := strings.TrimSpace(string(body))
 	statusCode := response.StatusCode
 	reason := FailureProviderError
 	code := "provider_http_error"
@@ -103,15 +110,34 @@ func HTTPErrorFromResponse(provider string, response *http.Response) error {
 		code = "authentication"
 		message = "Provider authentication failed."
 	}
+	if providerCode, providerMessage := providerErrorDetails(body); providerCode != "" || providerMessage != "" {
+		code = firstNonEmpty(providerCode, code)
+		message = firstNonEmpty(providerMessage, message)
+	}
 	return &HTTPError{
 		Provider:   provider,
 		StatusCode: statusCode,
-		Body:       strings.TrimSpace(string(body)),
+		Body:       bodyText,
 		Code:       code,
 		Reason:     reason,
 		Message:    message,
 		Retryable:  retryable,
 	}
+}
+
+func providerErrorDetails(body []byte) (string, string) {
+	var envelope struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if len(body) == 0 || json.Unmarshal(body, &envelope) != nil {
+		return "", ""
+	}
+	return firstNonEmpty(envelope.Error.Code, envelope.Code), firstNonEmpty(envelope.Error.Message, envelope.Message)
 }
 
 // FailureFromError extracts normalized provider failure details from an error.
@@ -123,12 +149,15 @@ func FailureFromError(err error) (FailureInfo, bool) {
 	var httpErr *HTTPError
 	if errors.As(err, &httpErr) {
 		return FailureInfo{
-			Provider:  httpErr.Provider,
-			Code:      firstNonEmpty(httpErr.Code, "provider_http_error"),
-			Reason:    failureReasonOrDefault(httpErr.Reason),
-			Message:   firstNonEmpty(httpErr.Message, "Provider request failed."),
-			Raw:       firstNonEmpty(httpErr.Body, httpErr.Error()),
-			Retryable: httpErr.Retryable,
+			Provider:   httpErr.Provider,
+			Model:      httpErr.Model,
+			Endpoint:   httpErr.Endpoint,
+			StatusCode: httpErr.StatusCode,
+			Code:       firstNonEmpty(httpErr.Code, "provider_http_error"),
+			Reason:     failureReasonOrDefault(httpErr.Reason),
+			Message:    firstNonEmpty(httpErr.Message, "Provider request failed."),
+			Raw:        firstNonEmpty(httpErr.Body, httpErr.Error()),
+			Retryable:  httpErr.Retryable,
 		}, true
 	}
 	if errors.Is(err, context.DeadlineExceeded) {

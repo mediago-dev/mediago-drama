@@ -143,6 +143,19 @@ func TestGenerationTaskServicePersistToSQLite(t *testing.T) {
 	}
 }
 
+func TestGenerationAssetDownloadPathToleratesMissingProjectRelation(t *testing.T) {
+	projectID := "deleted-project"
+	asset := domain.AssetModel{
+		ID:        "orphan-asset",
+		ProjectID: &projectID,
+		RelPath:   "assets/orphan.png",
+		Project:   nil,
+	}
+	if got := generationAssetDownloadPath(asset); got != "" {
+		t.Fatalf("generationAssetDownloadPath() = %q, want empty path for orphaned project asset", got)
+	}
+}
+
 func TestGenerationTaskForClientOmitsInternalParams(t *testing.T) {
 	task := GenerationTaskForClient(GenerationTaskRecord{
 		ID: "task-internal-params",

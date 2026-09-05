@@ -34,7 +34,7 @@ export const activePlanFromMessages = (
 /** Shows the active plan above the composer while an agent run is live. */
 export const AgentLivePlan: React.FC<AgentLivePlanProps> = ({ isRunning, messages, className }) => {
 	const plan = useMemo(() => activePlanFromMessages(messages), [messages]);
-	const [expanded, setExpanded] = useState(true);
+	const [expanded, setExpanded] = useState(false);
 	const reactId = useId();
 	const regionId = `agent-live-plan-${reactId}`;
 
@@ -51,17 +51,7 @@ export const AgentLivePlan: React.FC<AgentLivePlanProps> = ({ isRunning, message
 			data-testid="agent-live-plan"
 			aria-live="polite"
 		>
-			<div className="agent-live-plan-stack mx-auto flex w-full max-w-xl flex-col items-center">
-				{expanded ? (
-					<div
-						id={regionId}
-						role="region"
-						aria-label="执行计划"
-						className="agent-live-plan-card w-full"
-					>
-						<PlanBlock content="" entries={plan.entries} />
-					</div>
-				) : null}
+			<div className="agent-live-plan-stack mx-auto flex w-full max-w-4xl flex-col">
 				<button
 					type="button"
 					className="agent-live-plan-toggle"
@@ -75,13 +65,24 @@ export const AgentLivePlan: React.FC<AgentLivePlanProps> = ({ isRunning, message
 					) : (
 						<span className="agent-live-plan-dot" aria-hidden="true" />
 					)}
-					<span>{progressLabel}</span>
+					<span>执行进度</span>
+					<span className="text-muted-foreground">{progressLabel}</span>
 					{expanded ? (
-						<ChevronDown className="size-3.5" aria-hidden="true" />
+						<ChevronUp className="ml-auto size-3.5" aria-hidden="true" />
 					) : (
-						<ChevronUp className="size-3.5" aria-hidden="true" />
+						<ChevronDown className="ml-auto size-3.5" aria-hidden="true" />
 					)}
 				</button>
+				{expanded ? (
+					<div
+						id={regionId}
+						role="region"
+						aria-label="执行计划"
+						className="agent-live-plan-card w-full"
+					>
+						<PlanBlock content="" entries={plan.entries} />
+					</div>
+				) : null}
 			</div>
 		</aside>
 	);

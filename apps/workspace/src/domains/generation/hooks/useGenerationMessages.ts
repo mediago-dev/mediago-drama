@@ -4,6 +4,7 @@ import type { MediaAsset } from "@/domains/workspace/api/media";
 import type { GenerationModelsResponse, GenerationTask } from "@/domains/generation/api/generation";
 import {
 	entriesFromMessages,
+	isPendingGenerationMessage,
 	mergeConversationMessages,
 	messagesFromTasks,
 	readScopedGenerationMessages,
@@ -137,8 +138,23 @@ export const useGenerationMessages = ({
 		if (!historyScopeId || recentTasks.length === 0) return;
 
 		setMessages((current) => {
+			// 项目级图片会话共享后端任务池；切换到某个资产/章节时，旧版本曾把
+			// 其他节点的失败任务留在本地历史中，造成“本次一键生成失败”的假象。
+			// 只移除带有服务端 generation-* 标识、但不属于当前 section scope 的旧消息；
+			// 本地尚未落库的 pending 消息仍保留，避免提交瞬间闪退。
+			const scopedTaskIds = new Set(recentTasks.map((task) => task.id));
+			const scopedCurrent = current.filter((message) => {
+				const taskId =
+					message.role === "user" && message.id.endsWith(":prompt")
+						? message.id.slice(0, -":prompt".length)
+						: message.role === "assistant"
+							? message.id
+							: "";
+				if (!taskId?.startsWith("generation-") || scopedTaskIds.has(taskId)) return true;
+				return isPendingGenerationMessage(message);
+			});
 			const syncedMessages = syncScopedMessagesWithTasks(
-				current,
+				scopedCurrent,
 				recentTasks,
 				mediaAssets,
 				catalog,

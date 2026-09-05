@@ -8,9 +8,9 @@ import { cn } from "@/shared/lib/utils";
 import { useUIPreferencesStore } from "@/shared/stores/ui-preferences";
 
 export const workspaceSidebarWidth = {
-	default: 260,
-	max: 420,
-	min: 220,
+	default: 288,
+	max: 384,
+	min: 232,
 	resizeStep: 12,
 } as const;
 

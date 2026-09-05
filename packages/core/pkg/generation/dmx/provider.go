@@ -87,12 +87,6 @@ func (provider *Provider) Generate(ctx context.Context, request generation.Reque
 		switch route.Adapter {
 		case generation.AdapterDMXChatText:
 			return provider.generateText(ctx, request)
-		case generation.AdapterDMXResponsesImage:
-			return provider.generateImage(ctx, request)
-		case generation.AdapterDMXImagesGenerations:
-			return provider.generateImages(ctx, request)
-		case generation.AdapterDMXGeminiGenerate:
-			return provider.generateGeminiImage(ctx, request)
 		case generation.AdapterDMXResponsesVideo:
 			return provider.createResponsesVideo(ctx, request)
 		default:
@@ -101,8 +95,6 @@ func (provider *Provider) Generate(ctx context.Context, request generation.Reque
 	}
 
 	switch request.Kind {
-	case generation.KindImage:
-		return provider.generateImage(ctx, request)
 	case generation.KindVideo:
 		return provider.createVideo(ctx, request)
 	case generation.KindText:
@@ -359,11 +351,6 @@ func resolveCatalogRoute(request generation.Request) (generation.ModelRoute, boo
 	route, ok, err := generation.ResolveRequestRouteForProvider(request, generation.ProviderDMX)
 	if err != nil || ok {
 		return route, ok, err
-	}
-
-	if request.Kind == generation.KindImage && request.Model == "" {
-		route, err := generation.ResolveDefaultRouteForProvider(generation.KindImage, generation.ProviderDMX)
-		return route, err == nil, err
 	}
 
 	return generation.ModelRoute{}, false, nil

@@ -222,7 +222,7 @@ export const sampleEpisode: Episode = {
 					title: "产品标识",
 					start: 0,
 					end: 5,
-					content: "标题区域中的 MediaGo Drama 标识。",
+					content: "标题区域中的项目标识。",
 					status: "ready",
 					source: "品牌素材",
 				},

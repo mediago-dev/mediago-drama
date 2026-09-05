@@ -29,6 +29,7 @@ const routes: GenerationRoute[] = [
 	{
 		adapter: "test.image.mediago",
 		async: false,
+		configured: true,
 		docUrl: "https://example.com/mediago",
 		familyId: "image-family",
 		id: "route-mediago",
@@ -44,6 +45,7 @@ const routes: GenerationRoute[] = [
 	{
 		adapter: "test.image.openai",
 		async: false,
+		configured: true,
 		docUrl: "https://example.com/openai",
 		familyId: "image-family",
 		id: "route-openai",
@@ -118,6 +120,7 @@ const seedreamRoutes: GenerationRoute[] = [
 	{
 		adapter: "test.image.mediago",
 		async: false,
+		configured: true,
 		docUrl: "https://example.com/mediago",
 		familyId: "seedream",
 		id: "mediago.seedream-5-lite",
@@ -133,6 +136,7 @@ const seedreamRoutes: GenerationRoute[] = [
 	{
 		adapter: "test.image.dmx",
 		async: false,
+		configured: true,
 		docUrl: "https://example.com/dmx",
 		familyId: "seedream",
 		id: "dmx.seedream-5-lite",
@@ -148,6 +152,7 @@ const seedreamRoutes: GenerationRoute[] = [
 	{
 		adapter: "test.image.jimeng",
 		async: false,
+		configured: true,
 		docUrl: "https://example.com/jimeng",
 		familyId: "seedream",
 		id: "jimeng.seedream-5.0",
@@ -163,6 +168,7 @@ const seedreamRoutes: GenerationRoute[] = [
 	{
 		adapter: "test.image.jimeng",
 		async: false,
+		configured: true,
 		docUrl: "https://example.com/jimeng",
 		familyId: "seedream",
 		id: "jimeng.seedream-4.7",
@@ -196,6 +202,7 @@ const openRouterSeedreamRoute: GenerationRoute = {
 const libTVSeedreamRoute: GenerationRoute = {
 	adapter: "libtv.cli.image",
 	async: false,
+	configured: true,
 	docUrl: "https://www.liblib.tv/cli",
 	familyId: "seedream",
 	id: "libtv.seedream-5-lite",
@@ -277,7 +284,7 @@ describe("GenerationModelRoutePicker", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
 		const menu = screen
-			.getByText("提供方")
+			.getByText("执行渠道")
 			.closest('[aria-label="模型版本和供应商"]') as HTMLElement;
 		expect(menu).toBeTruthy();
 		expect(menu).toHaveClass("h-[var(--generation-route-picker-menu-height)]");
@@ -291,7 +298,7 @@ describe("GenerationModelRoutePicker", () => {
 		expect(screen.getByRole("button", { name: "MediaGo" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "DMX" })).toBeTruthy();
 
-		fireEvent.pointerEnter(screen.getByRole("button", { name: "Seedream 4.7" }), {
+		fireEvent.pointerEnter(screen.getByRole("button", { name: /Seedream 4\.7/ }), {
 			clientX: 160,
 			clientY: 130,
 		});
@@ -352,7 +359,7 @@ describe("GenerationModelRoutePicker", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
 		const menu = screen
-			.getByText("提供方")
+			.getByText("执行渠道")
 			.closest('[aria-label="模型版本和供应商"]') as HTMLElement;
 		expect(menu.getAttribute("style")).toContain(
 			"5 * var(--generation-model-popover-option-height)",
@@ -441,7 +448,7 @@ describe("GenerationModelRoutePicker", () => {
 		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
 		const versionList = document.querySelector("[data-generation-version-list]");
 		expect(versionList).toBeTruthy();
-		const lastVersionButton = screen.getByRole("button", { name: "Seedance 2.0 VIP" });
+		const lastVersionButton = screen.getByRole("button", { name: /Seedance 2\.0 VIP/ });
 		setScrollableList(versionList as HTMLElement, {
 			clientHeight: 160,
 			scrollHeight: 192,
@@ -456,7 +463,7 @@ describe("GenerationModelRoutePicker", () => {
 		expect(document.querySelector("[data-generation-version-scroll-hint]")).toBeNull();
 	});
 
-	it("shows only the version name for slash-delimited model labels", () => {
+	it("shows the user-facing version name for slash-delimited model labels", () => {
 		render(
 			<GenerationModelRoutePicker
 				onSelect={vi.fn()}
@@ -468,16 +475,16 @@ describe("GenerationModelRoutePicker", () => {
 		);
 
 		expect(screen.getByRole("button", { name: "模型版本和供应商" })).toHaveTextContent(
-			"Gemini · OpenAI",
+			"Nano Banana · Gemini · OpenAI",
 		);
 
 		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
 
-		expect(screen.getByRole("button", { name: "Gemini" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: /^Nano Banana(?! 2)/ })).toBeTruthy();
 		expect(screen.queryByRole("button", { name: "Nano Banana / Gemini" })).toBeNull();
 	});
 
-	it("hides gated and unconfigured providers in the provider menu", () => {
+	it("hides gated providers and labels unconfigured providers", () => {
 		const onSelect = vi.fn();
 		render(
 			<GenerationModelRoutePicker
@@ -493,7 +500,7 @@ describe("GenerationModelRoutePicker", () => {
 
 		expect(screen.getByRole("button", { name: "OpenAI" })).toBeEnabled();
 		expect(screen.queryByRole("button", { name: "MediaGo" })).toBeNull();
-		expect(screen.queryByRole("button", { name: "OpenRouter" })).toBeNull();
+		expect(screen.getByRole("button", { name: "OpenRouter需配置 Key" })).toBeEnabled();
 		expect(onSelect).not.toHaveBeenCalled();
 	});
 
@@ -523,9 +530,9 @@ describe("GenerationModelRoutePicker", () => {
 		renderRoutePicker();
 
 		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
-		const activeVersionButton = screen.getByRole("button", { name: "Nano Banana 2" });
-		const nextVersionButton = screen.getByRole("button", { name: "Gemini" });
-		const routePanel = screen.getByText("提供方").closest("section");
+		const activeVersionButton = screen.getByRole("button", { name: /Nano Banana 2/ });
+		const nextVersionButton = screen.getByRole("button", { name: /^Nano Banana(?! 2)/ });
+		const routePanel = screen.getByText("执行渠道").closest("section");
 		expect(routePanel).toBeTruthy();
 		vi.spyOn(activeVersionButton, "getBoundingClientRect").mockReturnValue(
 			testRect({ bottom: 124, left: 20, right: 220, top: 80 }),
@@ -548,9 +555,9 @@ describe("GenerationModelRoutePicker", () => {
 		renderRoutePicker();
 
 		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
-		const activeVersionButton = screen.getByRole("button", { name: "Nano Banana 2" });
-		const nextVersionButton = screen.getByRole("button", { name: "Gemini" });
-		const routePanel = screen.getByText("提供方").closest("section");
+		const activeVersionButton = screen.getByRole("button", { name: /Nano Banana 2/ });
+		const nextVersionButton = screen.getByRole("button", { name: /^Nano Banana(?! 2)/ });
+		const routePanel = screen.getByText("执行渠道").closest("section");
 		expect(routePanel).toBeTruthy();
 		vi.spyOn(activeVersionButton, "getBoundingClientRect").mockReturnValue(
 			testRect({ bottom: 124, left: 20, right: 220, top: 80 }),
@@ -578,9 +585,9 @@ describe("GenerationModelRoutePicker", () => {
 		renderRoutePicker();
 
 		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
-		const activeVersionButton = screen.getByRole("button", { name: "Nano Banana 2" });
-		const nextVersionButton = screen.getByRole("button", { name: "Gemini" });
-		const routePanel = screen.getByText("提供方").closest("section");
+		const activeVersionButton = screen.getByRole("button", { name: /Nano Banana 2/ });
+		const nextVersionButton = screen.getByRole("button", { name: /^Nano Banana(?! 2)/ });
+		const routePanel = screen.getByText("执行渠道").closest("section");
 		expect(routePanel).toBeTruthy();
 		vi.spyOn(activeVersionButton, "getBoundingClientRect").mockReturnValue(
 			testRect({ bottom: 124, left: 20, right: 220, top: 80 }),
@@ -602,8 +609,8 @@ describe("GenerationModelRoutePicker", () => {
 		renderRoutePicker();
 
 		fireEvent.click(screen.getByRole("button", { name: "模型版本和供应商" }));
-		const routePanel = screen.getByText("提供方").closest("section");
-		const crossedVersionButton = screen.getByRole("button", { name: "Gemini" });
+		const routePanel = screen.getByText("执行渠道").closest("section");
+		const crossedVersionButton = screen.getByRole("button", { name: /^Nano Banana(?! 2)/ });
 		expect(routePanel).toBeTruthy();
 
 		fireEvent.pointerLeave(routePanel as HTMLElement);

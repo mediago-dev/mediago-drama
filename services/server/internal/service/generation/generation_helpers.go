@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/whereslowimage"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 )
@@ -17,6 +18,9 @@ const agentGenerationConversationScopeID = "agent"
 const generationProjectScopePrefix = "project-"
 const generationInternalParamPrefix = "_mediago_"
 const generationAssetTitleRequestOption = "_mediago_asset_title"
+const generationBaseURLRequestOption = "_mediago_image_base_url"
+const generationProtocolRequestOption = "_mediago_image_protocol"
+const generationEndpointRequestOption = "_mediago_image_endpoint"
 
 var generationConversationIDPartPattern = regexp.MustCompile(`[^a-z0-9_-]+`)
 
@@ -163,6 +167,22 @@ func generationParamsWithAssetTitle(params map[string]any, assetTitle string) ma
 	return next
 }
 
+func generationParamsWithCustomImageMetadata(
+	params map[string]any,
+	baseURL string,
+	model string,
+	protocol whereslowimage.Protocol,
+) map[string]any {
+	next := make(map[string]any, len(params)+3)
+	for key, value := range params {
+		next[key] = value
+	}
+	next[generationBaseURLRequestOption] = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	next[generationProtocolRequestOption] = string(protocol)
+	next[generationEndpointRequestOption] = whereslowimage.Endpoint(baseURL, model, protocol)
+	return next
+}
+
 func generationParamsForClient(params map[string]any) map[string]any {
 	if len(params) == 0 {
 		return params
@@ -182,16 +202,20 @@ func FailedGenerationResponse(id string, err error) GenerationMessageResponse {
 	failure := GenerationFailureDetailsFromError(err)
 	errorMessage := generationSafeFailureError(failure)
 	return GenerationMessageResponse{
-		ID:        ValueOrFallback(id, shared.MustRandomID("generation")),
-		Role:      "assistant",
-		Status:    "failed",
-		Message:   failure.Message,
-		Assets:    []GenerationAsset{},
-		Usage:     GenerationUsage{},
-		Error:     errorMessage,
-		ErrorCode: failure.Code,
-		ErrorType: failure.Type,
-		Retryable: failure.Retryable,
+		ID:              ValueOrFallback(id, shared.MustRandomID("generation")),
+		Role:            "assistant",
+		Status:          "failed",
+		Message:         failure.Message,
+		Assets:          []GenerationAsset{},
+		Usage:           GenerationUsage{},
+		Error:           errorMessage,
+		ErrorCode:       failure.Code,
+		ErrorType:       failure.Type,
+		ErrorProvider:   failure.Provider,
+		ErrorModel:      failure.Model,
+		ErrorEndpoint:   failure.Endpoint,
+		ErrorHTTPStatus: failure.HTTPStatus,
+		Retryable:       failure.Retryable,
 	}
 }
 
@@ -240,17 +264,21 @@ func SubmittedGenerationResponse(id string, kind coregeneration.Kind) Generation
 // GenerationResponseFromTask maps one stored task to a message response.
 func GenerationResponseFromTask(task GenerationTaskRecord) GenerationMessageResponse {
 	return GenerationMessageResponse{
-		ID:        task.ID,
-		Role:      "assistant",
-		Status:    task.Status,
-		Message:   task.Message,
-		Text:      task.Text,
-		Assets:    task.Assets,
-		Usage:     task.Usage,
-		Error:     task.Error,
-		ErrorCode: task.ErrorCode,
-		ErrorType: task.ErrorType,
-		Retryable: task.Retryable,
+		ID:              task.ID,
+		Role:            "assistant",
+		Status:          task.Status,
+		Message:         task.Message,
+		Text:            task.Text,
+		Assets:          task.Assets,
+		Usage:           task.Usage,
+		Error:           task.Error,
+		ErrorCode:       task.ErrorCode,
+		ErrorType:       task.ErrorType,
+		ErrorProvider:   task.ErrorProvider,
+		ErrorModel:      task.ErrorModel,
+		ErrorEndpoint:   task.ErrorEndpoint,
+		ErrorHTTPStatus: task.ErrorHTTPStatus,
+		Retryable:       task.Retryable,
 	}
 }
 
@@ -514,11 +542,15 @@ func BoolFromMetadata(metadata map[string]any, key string) bool {
 }
 
 type generationFailureDetails struct {
-	Code      string
-	Type      string
-	Message   string
-	Raw       string
-	Retryable bool
+	Code       string
+	Type       string
+	Message    string
+	Raw        string
+	Retryable  bool
+	Provider   string
+	Model      string
+	Endpoint   string
+	HTTPStatus int
 }
 
 // GenerationFailureDetailsFromError maps a provider error to API-facing failure fields.
@@ -529,11 +561,15 @@ func GenerationFailureDetailsFromError(err error) generationFailureDetails {
 
 	if failure, ok := coregeneration.FailureFromError(err); ok {
 		return generationFailureDetails{
-			Code:      strings.TrimSpace(failure.Code),
-			Type:      string(failure.Reason),
-			Message:   generationFailureMessage(failure),
-			Raw:       shared.FirstNonEmpty(failure.Raw, err.Error()),
-			Retryable: failure.Retryable,
+			Code:       strings.TrimSpace(failure.Code),
+			Type:       string(failure.Reason),
+			Message:    generationFailureMessage(failure),
+			Raw:        shared.FirstNonEmpty(failure.Raw, err.Error()),
+			Retryable:  failure.Retryable,
+			Provider:   strings.TrimSpace(failure.Provider),
+			Model:      strings.TrimSpace(failure.Model),
+			Endpoint:   strings.TrimSpace(failure.Endpoint),
+			HTTPStatus: failure.StatusCode,
 		}
 	}
 	if isGenerationTimeoutError(err) {
@@ -565,6 +601,13 @@ func isGenerationTimeoutError(err error) bool {
 }
 
 func generationFailureMessage(failure coregeneration.FailureInfo) string {
+	if failure.Provider == coregeneration.ProviderWhereslowImage && strings.TrimSpace(failure.Message) != "" {
+		return strings.TrimSpace(failure.Message)
+	}
+	if strings.EqualFold(strings.TrimSpace(failure.Code), "model_not_found") ||
+		strings.Contains(strings.ToLower(failure.Raw), "no available channel for model") {
+		return "当前网关的 default 分组没有所选模型的可用渠道。请在网关后台启用对应渠道，或更换属于可用分组的 API Key 后重试。"
+	}
 	switch failure.Reason {
 	case coregeneration.FailurePolicyViolation:
 		return "生成结果触发供应商内容安全策略，未返回可用结果。"
@@ -609,6 +652,7 @@ func GenerationTaskFromMessage(
 		ProjectID:         GenerationProjectIDForRequest(request.ProjectID, request.ScopeID),
 		DocumentID:        documentID,
 		SectionID:         strings.TrimSpace(request.SectionID),
+		ShotIDs:           uniqueCompactStrings(request.ShotIDs),
 		CapabilityID:      GenerationCapabilityIDForRequest(request.CapabilityID, route),
 		ResourceType:      GenerationResourceTypeForRequest(request),
 		Kind:              string(route.Kind),
@@ -616,6 +660,9 @@ func GenerationTaskFromMessage(
 		FamilyID:          route.FamilyID,
 		VersionID:         route.VersionID,
 		Provider:          route.Provider,
+		BaseURL:           stringFromGenerationParam(request.Params, generationBaseURLRequestOption),
+		Protocol:          stringFromGenerationParam(request.Params, generationProtocolRequestOption),
+		Endpoint:          stringFromGenerationParam(request.Params, generationEndpointRequestOption),
 		ModelID:           request.ModelID,
 		Model:             request.Model,
 		Prompt:            request.Prompt,
@@ -626,15 +673,19 @@ func GenerationTaskFromMessage(
 			generationParamsWithAssetTitle(request.Params, assetTitle),
 			request.ReferenceBindings,
 		),
-		Status:    response.Status,
-		Message:   response.Message,
-		Text:      response.Text,
-		Assets:    response.Assets,
-		Usage:     response.Usage,
-		Error:     responseError,
-		ErrorCode: response.ErrorCode,
-		ErrorType: response.ErrorType,
-		Retryable: response.Retryable,
+		Status:          response.Status,
+		Message:         response.Message,
+		Text:            response.Text,
+		Assets:          response.Assets,
+		Usage:           response.Usage,
+		Error:           responseError,
+		ErrorCode:       response.ErrorCode,
+		ErrorType:       response.ErrorType,
+		ErrorProvider:   response.ErrorProvider,
+		ErrorModel:      response.ErrorModel,
+		ErrorEndpoint:   response.ErrorEndpoint,
+		ErrorHTTPStatus: response.ErrorHTTPStatus,
+		Retryable:       response.Retryable,
 	}
 }
 
@@ -780,17 +831,37 @@ func GenerationTaskWithMessage(task GenerationTaskRecord, response GenerationMes
 	if response.ErrorType != "" {
 		task.ErrorType = response.ErrorType
 	}
+	if response.ErrorProvider != "" {
+		task.ErrorProvider = response.ErrorProvider
+	}
+	if response.ErrorModel != "" {
+		task.ErrorModel = response.ErrorModel
+	}
+	if response.ErrorEndpoint != "" {
+		task.ErrorEndpoint = response.ErrorEndpoint
+	}
+	if response.ErrorHTTPStatus != 0 {
+		task.ErrorHTTPStatus = response.ErrorHTTPStatus
+	}
 	task.Retryable = response.Retryable
 	if IsActiveGenerationStatus(response.Status) {
 		task.Error = ""
 		task.ErrorCode = ""
 		task.ErrorType = ""
+		task.ErrorProvider = ""
+		task.ErrorModel = ""
+		task.ErrorEndpoint = ""
+		task.ErrorHTTPStatus = 0
 		task.Retryable = false
 	}
 	if response.Status == "completed" {
 		task.Error = ""
 		task.ErrorCode = ""
 		task.ErrorType = ""
+		task.ErrorProvider = ""
+		task.ErrorModel = ""
+		task.ErrorEndpoint = ""
+		task.ErrorHTTPStatus = 0
 		task.Retryable = false
 	}
 	// A failed batch that still produced stored assets is a partial success:

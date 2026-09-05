@@ -421,6 +421,7 @@ describe("AgentTimeline", () => {
 			/>,
 		);
 
+		fireEvent.click(screen.getByRole("button", { name: /正在处理/ }));
 		fireEvent.click(screen.getByRole("button", { name: /1 项调用/ }));
 		fireEvent.click(screen.getByRole("button", { name: /rg --files/ }));
 
@@ -535,9 +536,9 @@ describe("AgentTimeline", () => {
 		let disclosure = screen.getByRole("button", { name: /正在处理/ });
 
 		fireEvent.click(disclosure);
-		expect(disclosure).toHaveAttribute("aria-expanded", "false");
-		fireEvent.click(disclosure);
 		expect(disclosure).toHaveAttribute("aria-expanded", "true");
+		fireEvent.click(disclosure);
+		expect(disclosure).toHaveAttribute("aria-expanded", "false");
 
 		view.rerender(<AgentTimeline isRunning={false} messages={completedMessages} />);
 
@@ -546,7 +547,7 @@ describe("AgentTimeline", () => {
 		expect(disclosureRegion(disclosure)).toHaveAttribute("aria-hidden", "true");
 	});
 
-	it("expands the process disclosure by default for a running turn", () => {
+	it("keeps the running process compact until the user asks for details", () => {
 		render(
 			<AgentTimeline
 				isRunning
@@ -569,7 +570,8 @@ describe("AgentTimeline", () => {
 		);
 
 		const disclosure = screen.getByRole("button", { name: /正在处理/ });
-		expect(disclosure).toHaveAttribute("aria-expanded", "true");
+		expect(disclosure).toHaveAttribute("aria-expanded", "false");
+		fireEvent.click(disclosure);
 		expect(screen.getByText("正在读取项目资料。")).toBeInTheDocument();
 	});
 
@@ -722,10 +724,11 @@ describe("AgentTimeline", () => {
 		expect(document.querySelectorAll(".agent-process-disclosure")).toHaveLength(1);
 		expect(screen.getByRole("button", { name: /正在处理/ })).toHaveAttribute(
 			"aria-expanded",
-			"true",
+			"false",
 		);
 		expect(screen.getByText("检查已有资料。确认目标文件。")).toBeInTheDocument();
 
+		fireEvent.click(screen.getByRole("button", { name: /正在处理/ }));
 		const toolGroup = screen.getByRole("button", { name: /已探索 1 个文件 · 1 处编辑/ });
 		expect(toolGroup).toHaveAttribute("aria-expanded", "false");
 		fireEvent.click(toolGroup);

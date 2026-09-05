@@ -73,6 +73,7 @@ export interface GenerationSubmitOverrides {
 	referenceUrls?: string[];
 	resetPrompt?: boolean;
 	sectionId?: string | null;
+	shotIds?: string[];
 	selectedFamily?: GenerationFamily;
 	selectedParams?: Record<string, unknown>;
 	selectedRoute?: GenerationRoute;
@@ -163,6 +164,7 @@ interface UseGenerationSubmitOptions {
 	requireConversation?: boolean;
 	resolvedConversationScopeId?: string;
 	sectionId?: string;
+	shotIds?: string[];
 	taskType?: GenerationTaskType;
 	selectedFamily: GenerationFamily;
 	selectedParams: Record<string, unknown>;
@@ -202,6 +204,7 @@ export const useGenerationSubmit = ({
 	requireConversation = false,
 	resolvedConversationScopeId,
 	sectionId,
+	shotIds = [],
 	taskType = "studio",
 	selectedFamily,
 	selectedParams,
@@ -226,6 +229,7 @@ export const useGenerationSubmit = ({
 			const requestReferenceUrls = overrides.referenceUrls ?? effectiveReferenceUrls;
 			const requestNotificationTarget = overrides.notificationTarget ?? notificationTarget;
 			const requestSectionId = overrides.sectionId ?? sectionId;
+			const requestShotIds = overrides.shotIds ?? shotIds;
 			const requestTaskType = overrides.taskType ?? taskType;
 			const requestDocumentContext = overrides.documentContext ?? documentContext;
 			const requestAssetTitle = (overrides.assetTitle ?? assetTitle)?.trim() ?? "";
@@ -371,6 +375,7 @@ export const useGenerationSubmit = ({
 							projectId: mediaAssetProjectId || undefined,
 							documentId: requestDocumentId || undefined,
 							sectionId: requestSectionId || undefined,
+							shotIds: requestShotIds.length > 0 ? requestShotIds : undefined,
 							documentContext: requestDocumentContext ?? undefined,
 							capabilityId: requestTaskType,
 							notificationTarget: requestNotificationTarget ?? undefined,
@@ -468,6 +473,7 @@ export const useGenerationSubmit = ({
 					projectId: mediaAssetProjectId || undefined,
 					documentId: requestDocumentId || undefined,
 					sectionId: requestSectionId || undefined,
+					shotIds: requestShotIds.length > 0 ? requestShotIds : undefined,
 					documentContext: requestDocumentContext ?? undefined,
 					capabilityId: requestTaskType,
 					notificationTarget: requestNotificationTarget ?? undefined,
@@ -628,6 +634,7 @@ export const useGenerationSubmit = ({
 			requireConversation,
 			resolvedConversationScopeId,
 			sectionId,
+			shotIds,
 			taskType,
 			selectedFamily.id,
 			selectedParams,

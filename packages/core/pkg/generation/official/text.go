@@ -69,12 +69,14 @@ func (provider *Provider) generateText(ctx context.Context, request generation.R
 }
 
 type officialChatTextRequest struct {
-	Model         string                `json:"model"`
-	Messages      []officialChatMessage `json:"messages"`
-	Stream        bool                  `json:"stream"`
-	StreamOptions map[string]any        `json:"stream_options,omitempty"`
-	Temperature   *float64              `json:"temperature,omitempty"`
-	MaxTokens     *int                  `json:"max_tokens,omitempty"`
+	Model               string                `json:"model"`
+	Messages            []officialChatMessage `json:"messages"`
+	Stream              bool                  `json:"stream"`
+	StreamOptions       map[string]any        `json:"stream_options,omitempty"`
+	Temperature         *float64              `json:"temperature,omitempty"`
+	MaxTokens           *int                  `json:"max_tokens,omitempty"`
+	MaxCompletionTokens *int                  `json:"max_completion_tokens,omitempty"`
+	ReasoningEffort     *string               `json:"reasoning_effort,omitempty"`
 }
 
 type officialChatMessage struct {
@@ -83,14 +85,20 @@ type officialChatMessage struct {
 }
 
 func officialChatTextPayload(request generation.Request) officialChatTextRequest {
-	return officialChatTextRequest{
+	payload := officialChatTextRequest{
 		Model:         request.Model,
 		Messages:      []officialChatMessage{{Role: "user", Content: request.Prompt}},
 		Stream:        true,
 		StreamOptions: map[string]any{"include_usage": true},
-		Temperature:   paramFloatPointer(request.Params, "temperature"),
-		MaxTokens:     paramIntPointer(request.Params, "maxTokens"),
 	}
+	if request.Model == "gpt-5.6-sol" || request.Model == "gpt-5.6" {
+		payload.MaxCompletionTokens = paramIntPointer(request.Params, "maxTokens")
+		payload.ReasoningEffort = paramStringPointer(request.Params, "reasoningEffort")
+		return payload
+	}
+	payload.Temperature = paramFloatPointer(request.Params, "temperature")
+	payload.MaxTokens = paramIntPointer(request.Params, "maxTokens")
+	return payload
 }
 
 func (provider *Provider) chatTextEndpoint(route generation.ModelRoute) (string, error) {
@@ -117,5 +125,20 @@ func paramFloatPointer(params map[string]any, key string) *float64 {
 		return nil
 	}
 
+	return &value
+}
+
+func paramStringPointer(params map[string]any, key string) *string {
+	if len(params) == 0 {
+		return nil
+	}
+	value, ok := params[key].(string)
+	if !ok {
+		return nil
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
 	return &value
 }

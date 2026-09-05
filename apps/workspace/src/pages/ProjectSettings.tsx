@@ -1,4 +1,4 @@
-import { Archive, FolderOpen, Loader2, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Archive, FolderOpen, Loader2, SlidersHorizontal, Trash2, Upload } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
@@ -6,9 +6,11 @@ import useSWR, { useSWRConfig } from "swr";
 import {
 	archiveProject,
 	deleteProject,
+	getProjectConfig,
 	getProjects,
 	projectsKey,
 	projectsKeyForStatus,
+	updateProjectConfig,
 	type WorkspaceProject,
 } from "@/domains/projects/api/projects";
 import { workspaceStateKey } from "@/domains/workspace/api/workspace";
@@ -17,6 +19,7 @@ import { Button } from "@/shared/components/ui/button";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { useToast } from "@/hooks/useToast";
 import { isDesktopRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
+import { openNativePath, pickDesktopDirectory } from "@/shared/desktop/actions";
 import { useDocumentsStore } from "@/domains/documents/stores";
 import { useProjectStore } from "@/domains/projects/stores";
 import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
@@ -33,9 +36,14 @@ export const ProjectSettings: React.FC = () => {
 	const documentsProjectId = useDocumentsStore((state) => state.projectId);
 	const workspaceDir = useDocumentsStore((state) => state.workspaceDir);
 	const { data, isLoading } = useSWR(projectsKey, getProjects);
+	const { data: projectConfig, mutate: mutateProjectConfig } = useSWR(
+		projectId ? `${projectsKey}/${encodeURIComponent(projectId)}/config` : null,
+		() => getProjectConfig(projectId ?? ""),
+	);
 	const [isArchiving, setIsArchiving] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [isOpeningProjectFolder, setIsOpeningProjectFolder] = useState(false);
+	const [isSavingOutputDirectory, setIsSavingOutputDirectory] = useState(false);
 
 	useEffect(() => {
 		if (projectId && activeProjectId !== projectId) setActiveProjectId(projectId);
@@ -134,6 +142,52 @@ export const ProjectSettings: React.FC = () => {
 		}
 	};
 
+	const chooseOutputDirectory = async () => {
+		if (!projectId || isSavingOutputDirectory) return;
+		const directory = await pickDesktopDirectory("选择项目生成结果保存目录");
+		if (!directory) return;
+		setIsSavingOutputDirectory(true);
+		try {
+			await updateProjectConfig(projectId, { overview: { outputDirectory: directory } });
+			await mutateProjectConfig();
+			toast.success("输出目录已保存", { description: directory });
+		} catch (err) {
+			toast.error("保存输出目录失败", {
+				description: projectSettingsErrorMessage(err, "请稍后重试。"),
+			});
+		} finally {
+			setIsSavingOutputDirectory(false);
+		}
+	};
+
+	const clearOutputDirectory = async () => {
+		if (!projectId || isSavingOutputDirectory) return;
+		setIsSavingOutputDirectory(true);
+		try {
+			await updateProjectConfig(projectId, { overview: { outputDirectory: null } });
+			await mutateProjectConfig();
+			toast.success("已恢复默认输出目录");
+		} catch (err) {
+			toast.error("清除输出目录失败", {
+				description: projectSettingsErrorMessage(err, "请稍后重试。"),
+			});
+		} finally {
+			setIsSavingOutputDirectory(false);
+		}
+	};
+
+	const openOutputDirectory = async () => {
+		const directory = projectConfig?.overview.outputDirectory?.trim();
+		if (!directory) return;
+		try {
+			await openNativePath(directory);
+		} catch (err) {
+			toast.error("打开输出目录失败", {
+				description: projectSettingsErrorMessage(err, "请确认目录仍然存在。"),
+			});
+		}
+	};
+
 	return (
 		<div className="h-full min-h-0 overflow-hidden bg-ide-editor text-ide-editor-foreground">
 			<ProjectSettingsGeneralPanel
@@ -143,10 +197,15 @@ export const ProjectSettings: React.FC = () => {
 				project={project}
 				projectDir={projectDir}
 				projectName={projectName}
+				outputDirectory={projectConfig?.overview.outputDirectory ?? ""}
+				isSavingOutputDirectory={isSavingOutputDirectory}
 				isOpeningProjectFolder={isOpeningProjectFolder}
 				onArchive={() => void archiveCurrentProject()}
 				onDelete={confirmDeleteCurrentProject}
 				onOpenProjectFolder={openCurrentProjectFolder}
+				onChooseOutputDirectory={() => void chooseOutputDirectory()}
+				onClearOutputDirectory={() => void clearOutputDirectory()}
+				onOpenOutputDirectory={() => void openOutputDirectory()}
 			/>
 		</div>
 	);
@@ -157,23 +216,33 @@ const ProjectSettingsGeneralPanel: React.FC<{
 	isDeleting: boolean;
 	isLoading: boolean;
 	isOpeningProjectFolder: boolean;
+	isSavingOutputDirectory: boolean;
 	onArchive: () => void;
 	onDelete: () => void;
 	onOpenProjectFolder: () => void;
+	onChooseOutputDirectory: () => void;
+	onClearOutputDirectory: () => void;
+	onOpenOutputDirectory: () => void;
 	project: WorkspaceProject | null;
 	projectDir: string;
 	projectName: string;
+	outputDirectory: string;
 }> = ({
 	isArchiving,
 	isDeleting,
 	isLoading,
 	isOpeningProjectFolder,
+	isSavingOutputDirectory,
 	onArchive,
 	onDelete,
 	onOpenProjectFolder,
+	onChooseOutputDirectory,
+	onClearOutputDirectory,
+	onOpenOutputDirectory,
 	project,
 	projectDir,
 	projectName,
+	outputDirectory,
 }) => (
 	<SettingsPanelLayout
 		title="基础设置"
@@ -211,6 +280,47 @@ const ProjectSettingsGeneralPanel: React.FC<{
 							{isOpeningProjectFolder ? <Loader2 className="animate-spin" /> : <FolderOpen />}
 							<span>打开项目文件夹</span>
 						</Button>
+					</div>
+				) : null}
+
+				{isDesktopRuntime() ? (
+					<div className={projectSettingsRowClassName}>
+						<div className="min-w-0 flex-1">
+							<p className="text-sm font-medium text-foreground">生成结果保存位置</p>
+							<p className="mt-1 truncate text-xs leading-5 text-muted-foreground">
+								{outputDirectory || "未指定，将使用项目默认媒体目录。"}
+							</p>
+							<p className="mt-1 text-xs leading-5 text-muted-foreground">
+								图片、视频和导出结果会保留在项目任务记录中，不会因为切换阶段而丢失。
+							</p>
+						</div>
+						<div className="flex shrink-0 flex-wrap gap-2">
+							{outputDirectory ? (
+								<Button type="button" variant="ghost" onClick={onOpenOutputDirectory}>
+									<FolderOpen />
+									<span>打开</span>
+								</Button>
+							) : null}
+							<Button
+								type="button"
+								variant="secondary"
+								onClick={onChooseOutputDirectory}
+								disabled={isSavingOutputDirectory}
+							>
+								{isSavingOutputDirectory ? <Loader2 className="animate-spin" /> : <Upload />}
+								<span>{outputDirectory ? "更换目录" : "选择目录"}</span>
+							</Button>
+							{outputDirectory ? (
+								<Button
+									type="button"
+									variant="ghost"
+									onClick={onClearOutputDirectory}
+									disabled={isSavingOutputDirectory}
+								>
+									<span>恢复默认</span>
+								</Button>
+							) : null}
+						</div>
 					</div>
 				) : null}
 

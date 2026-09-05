@@ -3,8 +3,8 @@ version: "3"
 vars:
   ROOT_DIR:
     sh: pwd
-  AGENT: '{{.AGENT | default "codex"}}'
-  GENERATION_CLIS: '{{.GENERATION_CLIS | default "dreamina,libtv,pippit"}}'
+  AGENT: '{{.AGENT | default "none"}}'
+  GENERATION_CLIS: '{{.GENERATION_CLIS | default "none"}}'
   MODEL_PLATFORM: '{{.MODEL_PLATFORM | default "mediago,openrouter,dmxapi"}}'
   MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: '{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL | default "http://127.0.0.1:3001/api/v1"}}'
   TOOL: '{{.TOOL | default "ffmpeg"}}'
@@ -15,7 +15,6 @@ vars:
   GOEXE:
     sh: go env GOEXE
   DEV_SERVER_BIN: '{{.DEV_SERVER_BIN | default (printf "bin/mediago-server%s" .GOEXE)}}'
-  DEV_DOCUMENT_MCP_BIN: '{{.DEV_DOCUMENT_MCP_BIN | default (printf "bin/mediago-document-mcp%s" .GOEXE)}}'
   SERVER_CONFIG: services/server/configs/server.yaml
   VENDOR_BIN_DIR: "{{.ROOT_DIR}}/packages/vendor/dist"
   VENDOR_TOOL_DIR: "{{.VENDOR_BIN_DIR}}/tools"
@@ -42,13 +41,7 @@ tasks:
       MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
     cmds:
-      - task: prepare-agent
-        vars:
-          AGENT: "{{.AGENT}}"
       - task: prepare-media-tools
-      - task: prepare-generation-clis
-        vars:
-          GENERATION_CLIS: "{{.GENERATION_CLIS}}"
       - task: workspace:build
       - task: sync:workspace-dist
       - task: build:server
@@ -77,13 +70,7 @@ tasks:
       MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
     cmds:
-      - task: prepare-agent
-        vars:
-          AGENT: "{{.AGENT}}"
       - task: prepare-media-tools
-      - task: prepare-generation-clis
-        vars:
-          GENERATION_CLIS: "{{.GENERATION_CLIS}}"
       - task: workspace:build
       - task: sync:workspace-dist
       - task: build:server
@@ -101,8 +88,8 @@ tasks:
       PLATFORM: '{{.PLATFORM | default ""}}'
       ELECTRON_SCRIPT: '{{.ELECTRON_SCRIPT | default (printf "electron:build:%s" .PLATFORM)}}'
     preconditions:
-      - sh: 'case "{{.PLATFORM}}" in darwin-arm64|windows-x64) ;; *) exit 1 ;; esac'
-        msg: "PLATFORM must be one of: darwin-arm64, windows-x64"
+      - sh: 'case "{{.PLATFORM}}" in darwin-arm64|darwin-x64|windows-x64) ;; *) exit 1 ;; esac'
+        msg: "PLATFORM must be one of: darwin-arm64, darwin-x64, windows-x64"
     env:
       MEDIAGO_AGENT_ID: "{{.AGENT}}"
       MEDIAGO_MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
@@ -111,16 +98,8 @@ tasks:
       MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.SERVER_PORT}}"
     cmds:
-      - task: prepare-agent
-        vars:
-          AGENT: "{{.AGENT}}"
-          PLATFORM: "{{.PLATFORM}}"
       - task: prepare-media-tools
         vars:
-          PLATFORM: "{{.PLATFORM}}"
-      - task: prepare-generation-clis
-        vars:
-          GENERATION_CLIS: "{{.GENERATION_CLIS}}"
           PLATFORM: "{{.PLATFORM}}"
       - task: workspace:build
       - task: sync:workspace-dist
@@ -175,7 +154,7 @@ tasks:
   prepare-generation-clis:
     vars:
       PLATFORM: '{{.PLATFORM | default ""}}'
-      GENERATION_CLIS: '{{.GENERATION_CLIS | default "dreamina"}}'
+      GENERATION_CLIS: '{{.GENERATION_CLIS | default "none"}}'
     cmds:
       - task -d packages/vendor prepare:generation-clis GENERATION_CLIS="{{.GENERATION_CLIS}}" PLATFORM="{{.PLATFORM}}"
 
@@ -185,13 +164,7 @@ tasks:
       - task: build:server
         vars:
           INCLUDE_WORKSPACE_DIST: "0"
-      - task: prepare-agent
-        vars:
-          AGENT: "{{.AGENT}}"
       - task: prepare-media-tools
-      - task: prepare-generation-clis
-        vars:
-          GENERATION_CLIS: "{{.GENERATION_CLIS}}"
     env:
       MEDIAGO_AGENT_ID: "{{.AGENT}}"
       MEDIAGO_MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
@@ -229,13 +202,7 @@ tasks:
       - task: build:server
         vars:
           INCLUDE_WORKSPACE_DIST: "0"
-      - task: prepare-agent
-        vars:
-          AGENT: "{{.AGENT}}"
       - task: prepare-media-tools
-      - task: prepare-generation-clis
-        vars:
-          GENERATION_CLIS: "{{.GENERATION_CLIS}}"
     env:
       MEDIAGO_AGENT_ID: "{{.AGENT}}"
       MEDIAGO_MODEL_PLATFORM: "{{.MODEL_PLATFORM}}"
@@ -262,11 +229,6 @@ tasks:
           echo "run: pnpm build:server"
           exit 1
         fi
-        if [ ! -s "{{.DEV_DOCUMENT_MCP_BIN}}" ]; then
-          echo "missing dev document MCP binary: {{.DEV_DOCUMENT_MCP_BIN}}"
-          echo "run: pnpm build:server"
-          exit 1
-        fi
 
   build:server:
     desc: Build the server-side binaries used by dev:server and dev
@@ -275,17 +237,15 @@ tasks:
       SERVER_BUILD_TAGS: '{{if eq .INCLUDE_WORKSPACE_DIST "1"}}workspace_dist{{end}}'
     cmds:
       - mkdir -p bin
-      - 'go build {{if .SERVER_BUILD_TAGS}}-tags "{{.SERVER_BUILD_TAGS}}"{{end}} -o "{{.DEV_SERVER_BIN}}" ./services/server/cmd/mediago-server'
-      - go build -o "{{.DEV_DOCUMENT_MCP_BIN}}" ./services/server/cmd/mediago-document-mcp
-      - go build -o "bin/mediago-generation-mcp{{.GOEXE}}" ./services/server/cmd/mediago-generation-mcp
+      - 'go build {{if .SERVER_BUILD_TAGS}}-tags "{{.SERVER_BUILD_TAGS}}"{{end}} -ldflags "-s -w" -o "{{.DEV_SERVER_BIN}}" ./services/server/cmd/mediago-server'
 
   build:server:target:
     desc: Cross-build the server-side binaries for one target platform
     vars:
       PLATFORM: '{{.PLATFORM | default ""}}'
     preconditions:
-      - sh: 'case "{{.PLATFORM}}" in darwin-arm64|windows-x64) ;; *) exit 1 ;; esac'
-        msg: "PLATFORM must be one of: darwin-arm64, windows-x64"
+      - sh: 'case "{{.PLATFORM}}" in darwin-arm64|darwin-x64|windows-x64) ;; *) exit 1 ;; esac'
+        msg: "PLATFORM must be one of: darwin-arm64, darwin-x64, windows-x64"
     cmds:
       - node scripts/build-server-target.mjs "{{.PLATFORM}}"
 
@@ -294,7 +254,7 @@ tasks:
       PLATFORM: '{{.PLATFORM | default ""}}'
       MODEL_PLATFORM: '{{.MODEL_PLATFORM | default "mediago,openrouter,dmxapi"}}'
       MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: '{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL | default ""}}'
-      GENERATION_CLIS: '{{.GENERATION_CLIS | default "dreamina"}}'
+      GENERATION_CLIS: '{{.GENERATION_CLIS | default "none"}}'
     cmds:
       - node apps/workspace/scripts/stage-electron.ts "{{.AGENT}}" "{{.PLATFORM}}" "{{.MODEL_PLATFORM}}" "{{.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL}}" "{{.GENERATION_CLIS}}"
 

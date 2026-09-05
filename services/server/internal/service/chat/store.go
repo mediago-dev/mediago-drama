@@ -422,6 +422,26 @@ func (store *Service) Close() error {
 	return result
 }
 
+// CloseProject releases buffered agent history files for one project before
+// its directory is moved to trash. This is required on Windows, where an open
+// file handle prevents the containing project directory from being removed.
+func (store *Service) CloseProject(projectID string) error {
+	if store == nil {
+		return nil
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	projectID = domain.CleanProjectID(projectID)
+	if projectID == "" {
+		return nil
+	}
+	sessionsDir, err := store.agentSessionHistoryDirFor(projectID)
+	if err != nil {
+		return err
+	}
+	return store.closeAgentEventWritersWithPrefixLocked(sessionsDir + string(filepath.Separator))
+}
+
 func (store *Service) closeAgentEventWritersWithPrefixLocked(prefix string) error {
 	var result error
 	for path, writer := range store.agentEventWriters {

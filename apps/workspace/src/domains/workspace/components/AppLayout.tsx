@@ -9,6 +9,7 @@ import { useDesktopWindowDrag as useDesktopWindowDragHandler } from "@/domains/w
 interface AppLayoutProps {
 	children: React.ReactNode;
 	headerActions?: React.ReactNode;
+	headerLeading?: React.ReactNode;
 	headerTitle: React.ReactNode;
 	showHeader?: boolean;
 	sidebar: React.ReactNode;
@@ -23,6 +24,7 @@ interface AppLayoutProps {
 export const AppLayout: React.FC<AppLayoutProps> = ({
 	children,
 	headerActions,
+	headerLeading,
 	headerTitle,
 	showHeader = true,
 	sidebar,
@@ -45,7 +47,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 			onSidebarWidthChange={setNavigatorWidth}
 		>
 			<div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-ide-editor text-ide-editor-foreground">
-				{showHeader ? <AppHeader title={headerTitle} actions={headerActions} /> : null}
+				{showHeader ? (
+					<AppHeader title={headerTitle} actions={headerActions} leading={headerLeading} />
+				) : null}
 				<div className="min-h-0 flex-1 overflow-hidden">{children}</div>
 			</div>
 		</SidebarContentLayout>
@@ -54,6 +58,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
 interface AppHeaderProps {
 	actions?: React.ReactNode;
+	leading?: React.ReactNode;
 	title: React.ReactNode;
 }
 
@@ -61,17 +66,18 @@ interface AppHeaderProps {
  * AppHeader is the draggable title bar for the right content area.
  * Interactive actions opt out of the drag region so they remain clickable.
  */
-export const AppHeader: React.FC<AppHeaderProps> = ({ actions, title }) => {
+export const AppHeader: React.FC<AppHeaderProps> = ({ actions, leading, title }) => {
 	const startWindowDrag = useDesktopWindowDragHandler();
 
 	return (
 		<header
-			className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border bg-ide-toolbar/95 px-3 text-ide-toolbar-foreground"
+			className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-card/95 px-5 text-ide-toolbar-foreground backdrop-blur"
 			data-desktop-drag-region
 			onPointerDown={startWindowDrag}
 		>
-			<div className="flex h-full min-w-0 flex-1 items-center">
-				<h1 className="min-w-0 truncate text-sm font-medium text-foreground">{title}</h1>
+			<div className="flex h-full min-w-0 flex-1 items-center gap-2">
+				{leading ? <div data-desktop-no-drag>{leading}</div> : null}
+				<h1 className="min-w-0 truncate text-sm font-semibold text-foreground">{title}</h1>
 			</div>
 			{actions ? (
 				<div className="flex shrink-0 items-center gap-2" data-desktop-no-drag>

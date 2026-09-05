@@ -76,6 +76,45 @@ func TestGenerateOpenAIImage(t *testing.T) {
 	}
 }
 
+func TestEditOpenAIImageUsesMultipartReferences(t *testing.T) {
+	var model, prompt string
+	var imageCount int
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1/images/edits" {
+			t.Fatalf("path = %q, want /v1/images/edits", request.URL.Path)
+		}
+		if err := request.ParseMultipartForm(2 << 20); err != nil {
+			t.Fatalf("ParseMultipartForm() error = %v", err)
+		}
+		model = request.FormValue("model")
+		prompt = request.FormValue("prompt")
+		imageCount = len(request.MultipartForm.File["image[]"])
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"created":1,"data":[{"b64_json":"edited"}]}`))
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(Config{OpenAIBaseURL: server.URL, APIKey: "sk-test"})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+	response, err := provider.Generate(context.Background(), generation.Request{
+		Kind:          generation.KindImage,
+		RouteID:       generation.RouteOfficialGPTImage2,
+		Prompt:        "保留产品，迁移灯光",
+		ReferenceURLs: []string{"data:image/png;base64,YWJj", "data:image/jpeg;base64,ZGVm"},
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if model != "gpt-image-2" || prompt != "保留产品，迁移灯光" || imageCount != 2 {
+		t.Fatalf("multipart fields = model %q prompt %q images %d", model, prompt, imageCount)
+	}
+	if len(response.Assets) != 1 || response.Assets[0].Base64 != "edited" {
+		t.Fatalf("response assets = %#v", response.Assets)
+	}
+}
+
 func TestGenerateTextStream(t *testing.T) {
 	var authHeader string
 	var payload officialChatTextRequest
@@ -133,6 +172,50 @@ func TestGenerateTextStream(t *testing.T) {
 	}
 	if _, err = stream.Recv(); err != io.EOF {
 		t.Fatalf("Recv() final = %v, want EOF", err)
+	}
+}
+
+func TestGenerateGPT56SolTextStreamUsesReasoningParameters(t *testing.T) {
+	var payload officialChatTextRequest
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(Config{OpenAIBaseURL: server.URL, APIKey: "sk-test"})
+	if err != nil {
+		t.Fatalf("NewProvider() error = %v", err)
+	}
+	stream, err := provider.GenerateTextStream(context.Background(), generation.Request{
+		Kind:    generation.KindText,
+		RouteID: generation.RouteOfficialGPT56SolText,
+		Prompt:  "分析镜头连续性",
+		Params: map[string]any{
+			"reasoningEffort": "high",
+			"maxTokens":       float64(4096),
+			"temperature":     float64(0.7),
+		},
+	})
+	if err != nil {
+		t.Fatalf("GenerateTextStream() error = %v", err)
+	}
+	defer stream.Close()
+
+	if payload.Model != "gpt-5.6-sol" {
+		t.Fatalf("model = %q, want gpt-5.6-sol", payload.Model)
+	}
+	if payload.ReasoningEffort == nil || *payload.ReasoningEffort != "high" {
+		t.Fatalf("reasoning_effort = %#v, want high", payload.ReasoningEffort)
+	}
+	if payload.MaxCompletionTokens == nil || *payload.MaxCompletionTokens != 4096 {
+		t.Fatalf("max_completion_tokens = %#v, want 4096", payload.MaxCompletionTokens)
+	}
+	if payload.Temperature != nil || payload.MaxTokens != nil {
+		t.Fatalf("legacy params must be omitted: temperature=%#v max_tokens=%#v", payload.Temperature, payload.MaxTokens)
 	}
 }
 

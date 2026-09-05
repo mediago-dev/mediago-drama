@@ -19,7 +19,7 @@ func TestBuiltinPackParses(t *testing.T) {
 	}
 	if bundle.Manifest.ID != "builtin" ||
 		bundle.Manifest.Name != "默认技能包" ||
-		counts[pack.KindSkill] != 9 ||
+		counts[pack.KindSkill] != 10 ||
 		counts[pack.KindPrompt] != 10 {
 		t.Fatalf("builtin manifest=%#v counts=%#v", bundle.Manifest, counts)
 	}
@@ -33,7 +33,7 @@ func TestBuiltinPackParses(t *testing.T) {
 			foundAutoMentionResolver = true
 			continue
 		}
-		if entry.Slug == "image-generation" || entry.Slug == "video-generation" {
+		if entry.Slug == "image-generation" || entry.Slug == "video-generation" || entry.Slug == "commercial-ad-production" {
 			if hidden, _ := entry.Metadata["hidden"].(bool); hidden {
 				t.Fatalf("%s hidden = %#v, want visible so load_skill can resolve it", entry.Slug, entry.Metadata["hidden"])
 			}
@@ -59,6 +59,42 @@ func TestBuiltinPackParses(t *testing.T) {
 	if !foundAutoMentionResolver {
 		t.Fatal("builtin skills missing auto-mention-resolver")
 	}
+}
+
+func TestCommercialAdProductionSkillKeepsTheExistingWorkbench(t *testing.T) {
+	bundle, err := Builtin(context.Background())
+	if err != nil {
+		t.Fatalf("Builtin() error = %v", err)
+	}
+
+	for _, entry := range bundle.Entries {
+		if entry.Kind != pack.KindSkill || entry.Slug != "commercial-ad-production" {
+			continue
+		}
+		body := entry.Description + "\n" + entry.Body
+		for _, fragment := range []string{
+			"分镜拆解",
+			"资产锁定",
+			"单镜执行设计",
+			"生成失败诊断",
+			"粗剪连续性审核",
+			"项目复盘",
+			"保持项目现有阶段、按钮、文档和生成接口不变",
+			"不得覆盖已经锁定的脚本、分镜、资产或人工选择",
+			"open state",
+			"close state",
+			"连续两个批次没有改善时",
+			"image-generation",
+			"video-generation",
+		} {
+			if !strings.Contains(body, fragment) {
+				t.Fatalf("commercial-ad-production missing rule %q:\n%s", fragment, body)
+			}
+		}
+		return
+	}
+
+	t.Fatal("builtin skills missing commercial-ad-production")
 }
 
 func TestImageGenerationSkillOwnsAgentImageWorkflow(t *testing.T) {

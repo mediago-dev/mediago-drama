@@ -6,29 +6,29 @@
 		   取值对齐设计稿 handoff(冷调蓝灰 + 品牌蓝 + 分类/功能色)。
 		   ============================================================ */
 
-		/* 中性 Neutral —— 冷调蓝灰,白 → 近黑 */
+		/* 中性 Neutral —— 专业影视工具使用的低彩度石墨灰，避免企业后台式冷蓝灰。 */
 		--slate-0: rgb(255 255 255);
-		--slate-25: rgb(250 251 253);
-		--slate-50: rgb(243 246 250);
-		--slate-100: rgb(237 241 247);
-		--slate-150: rgb(233 238 245);
-		--slate-200: rgb(230 235 242);
-		--slate-250: rgb(225 231 240);
-		--slate-300: rgb(214 222 234);
-		--slate-400: rgb(201 211 226);
-		--slate-500: rgb(154 166 186);
-		--slate-600: rgb(102 116 140);
-		--slate-650: rgb(86 98 120);
-		--slate-700: rgb(70 84 111);
-		--slate-800: rgb(46 58 82);
-		--slate-900: rgb(11 21 38);
+		--slate-25: rgb(250 250 249);
+		--slate-50: rgb(246 246 244);
+		--slate-100: rgb(239 239 236);
+		--slate-150: rgb(234 234 231);
+		--slate-200: rgb(226 226 222);
+		--slate-250: rgb(218 218 214);
+		--slate-300: rgb(205 205 200);
+		--slate-400: rgb(181 181 175);
+		--slate-500: rgb(139 140 137);
+		--slate-600: rgb(102 103 101);
+		--slate-650: rgb(83 84 82);
+		--slate-700: rgb(67 68 67);
+		--slate-800: rgb(42 43 44);
+		--slate-900: rgb(24 25 27);
 
 		/* 品牌蓝 Brand */
-		--blue-50: rgb(238 244 255);
-		--blue-100: rgb(230 238 255);
-		--blue-200: rgb(179 204 255);
-		--blue-500: rgb(77 137 255);
-		--blue-600: rgb(48 98 218);
+		--blue-50: rgb(246 244 255);
+		--blue-100: rgb(237 233 255);
+		--blue-200: rgb(211 203 255);
+		--blue-500: rgb(108 86 232);
+		--blue-600: rgb(83 65 199);
 
 		/* 功能 / 分类 Functional & Category */
 		--green-50: rgb(233 247 242);
@@ -147,9 +147,9 @@
 		   组件 / 布局 tokens —— 全部引用原始层(尺寸 / 间距 / 圆角),不留裸数字。
 		   vh / % 为视口相对值,无对应原始档,保留原样。
 		   ============================================================ */
-		--workspace-sidebar-default-width: var(--size-260);
-		--workspace-sidebar-min-width: var(--size-220);
-		--workspace-sidebar-max-width: var(--size-420);
+		--workspace-sidebar-default-width: var(--size-280);
+		--workspace-sidebar-min-width: var(--size-232);
+		--workspace-sidebar-max-width: var(--size-384);
 		/* Match the drag-region height so sidebar content starts below the macOS traffic
 		   lights instead of colliding with them. */
 		--desktop-titlebar-offset: var(--size-44);
@@ -273,7 +273,7 @@
 		   语义 Token · 浅色  SEMANTIC / Light
 		   按「用途」命名,全部引用原始层;组件 / 工具类只用语义层。
 		   ============================================================ */
-		--background: var(--slate-50);
+		--background: rgb(246 247 252);
 		--foreground: var(--slate-900);
 		--card: var(--slate-0);
 		--card-foreground: var(--slate-900);
@@ -281,16 +281,16 @@
 		--popover-foreground: var(--slate-900);
 		--primary: var(--blue-500);
 		--primary-foreground: var(--slate-0);
-		--secondary: var(--blue-100);
+		--secondary: rgb(240 237 255);
 		--secondary-foreground: var(--blue-600);
-		--muted: var(--slate-100);
+		--muted: rgb(244 244 249);
 		--muted-foreground: var(--slate-600);
-		--accent: var(--blue-50);
+		--accent: rgb(243 240 255);
 		--accent-foreground: var(--blue-600);
 		--destructive: var(--red-500);
 		--destructive-foreground: var(--slate-0);
-		--border: var(--slate-200);
-		--input: var(--slate-300);
+		--border: rgb(231 231 240);
+		--input: rgb(218 217 230);
 		--ring: var(--blue-500);
 		--success-surface: var(--green-50);
 		--success-border: var(--green-200);
@@ -311,36 +311,31 @@
 		--doc-category-storyboard: var(--violet-600);
 		--doc-category-reference: var(--muted-foreground);
 
-		--surface-subtle: color-mix(in srgb, var(--slate-50) 84%, transparent);
+		--surface-subtle: rgb(249 249 252);
 		--surface-raised: var(--slate-0);
 		--text-muted: var(--muted-foreground);
-		--app-background-image: linear-gradient(
-			180deg,
-			var(--slate-50) 0%,
-			var(--slate-50) 70%,
-			var(--sky-50) 100%
-		);
+		--app-background-image: linear-gradient(145deg, rgb(248 249 255) 0%, rgb(243 241 255) 100%);
 
-		--ide-titlebar: var(--slate-50);
+		--ide-titlebar: rgb(255 255 255);
 		--ide-titlebar-foreground: var(--slate-900);
-		--ide-activity-bar: var(--slate-100);
-		--ide-activity-bar-foreground: var(--slate-600);
-		--ide-sidebar: var(--slate-50);
+		--ide-activity-bar: rgb(103 83 232);
+		--ide-activity-bar-foreground: rgb(255 255 255);
+		--ide-sidebar: rgb(255 255 255);
 		--ide-sidebar-foreground: var(--slate-650);
-		--ide-editor: var(--slate-0);
+		--ide-editor: rgb(250 250 253);
 		--ide-editor-foreground: var(--slate-900);
-		--ide-panel: var(--slate-50);
+		--ide-panel: rgb(248 248 252);
 		--ide-panel-foreground: var(--slate-900);
-		--ide-toolbar: var(--slate-50);
+		--ide-toolbar: rgb(255 255 255);
 		--ide-toolbar-foreground: var(--slate-650);
 		--ide-statusbar: var(--blue-500);
 		--ide-statusbar-foreground: var(--slate-0);
-		--ide-list-hover: var(--blue-50);
-		--ide-list-active: var(--blue-100);
+		--ide-list-hover: rgb(247 245 255);
+		--ide-list-active: rgb(239 235 255);
 		--ide-list-active-foreground: var(--blue-500);
 		--ide-selection: var(--blue-200);
 		--ide-gutter: var(--slate-200);
-		--ide-preview: var(--slate-100);
+		--ide-preview: rgb(241 242 248);
 		--toast-action-foreground: var(--primary-foreground);
 		--timeline-video: var(--info-surface);
 		--timeline-video-border: var(--info-border);
@@ -423,7 +418,7 @@
 		--accent-foreground: var(--blue-300);
 		--destructive: var(--red-600);
 		--destructive-foreground: var(--slate-0);
-		--border: var(--ink-600);
+		--border: var(--ink-700);
 		--input: var(--ink-500);
 		--ring: var(--blue-400);
 		--success-surface: var(--green-950);
@@ -457,11 +452,11 @@
 
 		--ide-titlebar: var(--ink-800);
 		--ide-titlebar-foreground: var(--ink-100);
-		--ide-activity-bar: var(--ink-700);
+		--ide-activity-bar: var(--ink-900);
 		--ide-activity-bar-foreground: var(--ink-300);
 		--ide-sidebar: var(--ink-800);
 		--ide-sidebar-foreground: var(--ink-200);
-		--ide-editor: var(--ink-800);
+		--ide-editor: var(--ink-900);
 		--ide-editor-foreground: var(--ink-100);
 		--ide-panel: var(--ink-700);
 		--ide-panel-foreground: var(--ink-100);
@@ -474,7 +469,7 @@
 		--ide-list-active-foreground: var(--blue-300);
 		--ide-selection: var(--blue-900);
 		--ide-gutter: var(--ink-600);
-		--ide-preview: var(--ink-900);
+		--ide-preview: rgb(18 19 21);
 		--toast-action-foreground: var(--primary-foreground);
 		--timeline-video: var(--info-surface);
 		--timeline-video-border: var(--info-border);

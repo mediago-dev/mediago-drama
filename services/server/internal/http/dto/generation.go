@@ -39,16 +39,19 @@ type GenerationStylePreset struct {
 
 // GenerationMessageRequest creates or retries a generation request.
 type GenerationMessageRequest struct {
-	BatchID            string                               `json:"-"`
-	BatchItemID        string                               `json:"-"`
-	BatchIndex         int                                  `json:"-"`
-	Kind               string                               `json:"kind" ts:"Kind"`
-	ConversationID     string                               `json:"sessionId,omitempty"`
-	ScopeID            string                               `json:"-"`
-	ProjectID          string                               `json:"projectId,omitempty"`
-	ProjectName        string                               `json:"-"`
-	DocumentID         string                               `json:"documentId,omitempty"`
-	SectionID          string                               `json:"sectionId,omitempty"`
+	BatchID        string `json:"-"`
+	BatchItemID    string `json:"-"`
+	BatchIndex     int    `json:"-"`
+	Kind           string `json:"kind" ts:"Kind"`
+	ConversationID string `json:"sessionId,omitempty"`
+	ScopeID        string `json:"-"`
+	ProjectID      string `json:"projectId,omitempty"`
+	ProjectName    string `json:"-"`
+	DocumentID     string `json:"documentId,omitempty"`
+	SectionID      string `json:"sectionId,omitempty"`
+	// ShotIDs records every production shot that should receive this result.
+	// SectionID remains the legacy single-section target for older callers.
+	ShotIDs            []string                             `json:"shotIds,omitempty"`
 	DocumentContext    *GenerationDocumentContext           `json:"documentContext,omitempty"`
 	CapabilityID       string                               `json:"capabilityId,omitempty"`
 	ResourceType       string                               `json:"resourceType,omitempty"`
@@ -69,6 +72,26 @@ type GenerationMessageRequest struct {
 	Params             map[string]any                       `json:"params"`
 	PromptOptimization *GenerationPromptOptimizationRequest `json:"promptOptimization,omitempty"`
 	SourceRefs         []ContentSourceRef                   `json:"sourceRefs,omitempty"`
+}
+
+// CodexImageRequest asks the locally logged-in Codex image skill to create one
+// production asset. The result is stored in the project media library and
+// selected for the specified production resource before this request returns.
+type CodexImageRequest struct {
+	Prompt        string   `json:"prompt"`
+	ReferenceURLs []string `json:"referenceUrls,omitempty"`
+	ResourceID    string   `json:"resourceId"`
+	ResourceTitle string   `json:"resourceTitle"`
+	ResourceType  string   `json:"resourceType"`
+	ShotIDs       []string `json:"shotIds,omitempty"`
+}
+
+// CodexImageResponse reports the media-library and selected-resource records
+// created by a Codex image request.
+type CodexImageResponse struct {
+	MediaAssetID string                         `json:"mediaAssetId"`
+	URL          string                         `json:"url"`
+	Selected     *SelectedGenerationAssetRecord `json:"selected,omitempty"`
 }
 
 // ContentSourceRef identifies formal content inserted from an installed pack.
@@ -205,17 +228,21 @@ type ImportGenerationMediaAssetsRequest struct {
 
 // GenerationMessageResponse is returned by generation create/poll/retry calls.
 type GenerationMessageResponse struct {
-	ID        string            `json:"id"`
-	Role      string            `json:"role"`
-	Status    string            `json:"status"`
-	Message   string            `json:"message"`
-	Text      string            `json:"text,omitempty"`
-	Assets    []GenerationAsset `json:"assets"`
-	Usage     GenerationUsage   `json:"usage"`
-	Error     string            `json:"error,omitempty"`
-	ErrorCode string            `json:"errorCode,omitempty"`
-	ErrorType string            `json:"errorType,omitempty"`
-	Retryable bool              `json:"retryable,omitempty"`
+	ID              string            `json:"id"`
+	Role            string            `json:"role"`
+	Status          string            `json:"status"`
+	Message         string            `json:"message"`
+	Text            string            `json:"text,omitempty"`
+	Assets          []GenerationAsset `json:"assets"`
+	Usage           GenerationUsage   `json:"usage"`
+	Error           string            `json:"error,omitempty"`
+	ErrorCode       string            `json:"errorCode,omitempty"`
+	ErrorType       string            `json:"errorType,omitempty"`
+	ErrorProvider   string            `json:"errorProvider,omitempty"`
+	ErrorModel      string            `json:"errorModel,omitempty"`
+	ErrorEndpoint   string            `json:"errorEndpoint,omitempty"`
+	ErrorHTTPStatus int               `json:"errorHTTPStatus,omitempty"`
+	Retryable       bool              `json:"retryable,omitempty"`
 }
 
 // GenerationTextStreamEvent is one server-sent event for text generation.
@@ -316,6 +343,7 @@ type GenerationTaskRecord struct {
 	ProjectID         string                        `json:"projectId,omitempty"`
 	DocumentID        string                        `json:"documentId,omitempty"`
 	SectionID         string                        `json:"sectionId,omitempty"`
+	ShotIDs           []string                      `json:"shotIds,omitempty"`
 	CapabilityID      string                        `json:"capabilityId,omitempty"`
 	ResourceType      string                        `json:"resourceType,omitempty"`
 	Kind              string                        `json:"kind" ts:"Kind"`
@@ -323,6 +351,9 @@ type GenerationTaskRecord struct {
 	FamilyID          string                        `json:"familyId"`
 	VersionID         string                        `json:"versionId"`
 	Provider          string                        `json:"provider"`
+	BaseURL           string                        `json:"baseUrl,omitempty"`
+	Protocol          string                        `json:"protocol,omitempty"`
+	Endpoint          string                        `json:"endpoint,omitempty"`
 	ModelID           string                        `json:"modelId"`
 	Model             string                        `json:"model"`
 	Prompt            string                        `json:"prompt"`
@@ -340,6 +371,10 @@ type GenerationTaskRecord struct {
 	Error             string                        `json:"error,omitempty"`
 	ErrorCode         string                        `json:"errorCode,omitempty"`
 	ErrorType         string                        `json:"errorType,omitempty"`
+	ErrorProvider     string                        `json:"errorProvider,omitempty"`
+	ErrorModel        string                        `json:"errorModel,omitempty"`
+	ErrorEndpoint     string                        `json:"errorEndpoint,omitempty"`
+	ErrorHTTPStatus   int                           `json:"errorHTTPStatus,omitempty"`
 	Retryable         bool                          `json:"retryable,omitempty"`
 	CreatedAt         string                        `json:"createdAt"`
 	UpdatedAt         string                        `json:"updatedAt"`
@@ -374,26 +409,27 @@ type UpdateGenerationTaskAssetRequest struct {
 
 // UpdateSelectedGenerationAssetRequest selects or unselects one project asset.
 type UpdateSelectedGenerationAssetRequest struct {
-	Selected         *bool  `json:"selected,omitempty"`
-	ResourceType     string `json:"resourceType,omitempty"`
-	ResourceID       string `json:"resourceId,omitempty"`
-	ResourceTitle    string `json:"resourceTitle,omitempty"`
-	MediaAssetID     string `json:"mediaAssetId,omitempty"`
-	Kind             string `json:"kind,omitempty" ts:"Kind"`
-	Title            string `json:"title,omitempty"`
-	URL              string `json:"url,omitempty"`
-	PosterURL        string `json:"posterUrl,omitempty"`
-	Base64           string `json:"base64,omitempty"`
-	MIMEType         string `json:"mimeType,omitempty"`
-	DownloadPath     string `json:"downloadPath,omitempty"`
-	SourceType       string `json:"sourceType,omitempty"`
-	TaskID           string `json:"taskId,omitempty"`
-	AssetIndex       *int   `json:"assetIndex,omitempty"`
-	SourceTaskID     string `json:"sourceTaskId,omitempty"`
-	SourceAssetIndex *int   `json:"sourceAssetIndex,omitempty"`
-	SourceDocumentID string `json:"sourceDocumentId,omitempty"`
-	SourceKey        string `json:"sourceKey,omitempty"`
-	SortOrder        int    `json:"sortOrder,omitempty"`
+	Selected         *bool    `json:"selected,omitempty"`
+	ResourceType     string   `json:"resourceType,omitempty"`
+	ResourceID       string   `json:"resourceId,omitempty"`
+	ResourceTitle    string   `json:"resourceTitle,omitempty"`
+	MediaAssetID     string   `json:"mediaAssetId,omitempty"`
+	Kind             string   `json:"kind,omitempty" ts:"Kind"`
+	Title            string   `json:"title,omitempty"`
+	URL              string   `json:"url,omitempty"`
+	PosterURL        string   `json:"posterUrl,omitempty"`
+	Base64           string   `json:"base64,omitempty"`
+	MIMEType         string   `json:"mimeType,omitempty"`
+	DownloadPath     string   `json:"downloadPath,omitempty"`
+	SourceType       string   `json:"sourceType,omitempty"`
+	TaskID           string   `json:"taskId,omitempty"`
+	AssetIndex       *int     `json:"assetIndex,omitempty"`
+	SourceTaskID     string   `json:"sourceTaskId,omitempty"`
+	SourceAssetIndex *int     `json:"sourceAssetIndex,omitempty"`
+	SourceDocumentID string   `json:"sourceDocumentId,omitempty"`
+	SourceKey        string   `json:"sourceKey,omitempty"`
+	SortOrder        int      `json:"sortOrder,omitempty"`
+	ShotIDs          []string `json:"shotIds,omitempty"`
 }
 
 // UpdateSelectedGenerationAssetResponse returns the selected asset mutation result.
@@ -404,28 +440,29 @@ type UpdateSelectedGenerationAssetResponse struct {
 
 // SelectedGenerationAssetRecord is one asset selected into a project's resource overview.
 type SelectedGenerationAssetRecord struct {
-	ID               string `json:"id"`
-	TaskID           string `json:"taskId,omitempty"`
-	AssetIndex       int    `json:"assetIndex"`
-	ResourceType     string `json:"resourceType"`
-	ResourceID       string `json:"resourceId,omitempty"`
-	ResourceTitle    string `json:"resourceTitle,omitempty"`
-	MediaAssetID     string `json:"mediaAssetId,omitempty"`
-	Kind             string `json:"kind" ts:"Kind"`
-	Title            string `json:"title,omitempty"`
-	URL              string `json:"url,omitempty"`
-	PosterURL        string `json:"posterUrl,omitempty"`
-	Base64           string `json:"base64,omitempty"`
-	MIMEType         string `json:"mimeType,omitempty"`
-	DownloadPath     string `json:"downloadPath,omitempty"`
-	SourceType       string `json:"sourceType,omitempty"`
-	SourceTaskID     string `json:"sourceTaskId,omitempty"`
-	SourceAssetIndex int    `json:"sourceAssetIndex,omitempty"`
-	SourceDocumentID string `json:"sourceDocumentId,omitempty"`
-	SourceKey        string `json:"sourceKey,omitempty"`
-	SortOrder        int    `json:"sortOrder,omitempty"`
-	CreatedAt        string `json:"createdAt,omitempty"`
-	UpdatedAt        string `json:"updatedAt,omitempty"`
+	ID               string   `json:"id"`
+	TaskID           string   `json:"taskId,omitempty"`
+	AssetIndex       int      `json:"assetIndex"`
+	ResourceType     string   `json:"resourceType"`
+	ResourceID       string   `json:"resourceId,omitempty"`
+	ResourceTitle    string   `json:"resourceTitle,omitempty"`
+	MediaAssetID     string   `json:"mediaAssetId,omitempty"`
+	Kind             string   `json:"kind" ts:"Kind"`
+	Title            string   `json:"title,omitempty"`
+	URL              string   `json:"url,omitempty"`
+	PosterURL        string   `json:"posterUrl,omitempty"`
+	Base64           string   `json:"base64,omitempty"`
+	MIMEType         string   `json:"mimeType,omitempty"`
+	DownloadPath     string   `json:"downloadPath,omitempty"`
+	SourceType       string   `json:"sourceType,omitempty"`
+	SourceTaskID     string   `json:"sourceTaskId,omitempty"`
+	SourceAssetIndex int      `json:"sourceAssetIndex,omitempty"`
+	SourceDocumentID string   `json:"sourceDocumentId,omitempty"`
+	SourceKey        string   `json:"sourceKey,omitempty"`
+	SortOrder        int      `json:"sortOrder,omitempty"`
+	ShotIDs          []string `json:"shotIds,omitempty"`
+	CreatedAt        string   `json:"createdAt,omitempty"`
+	UpdatedAt        string   `json:"updatedAt,omitempty"`
 }
 
 // SelectedGenerationAssetsResponse lists project-selected creative resources.

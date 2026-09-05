@@ -1,4 +1,13 @@
-import { Bot, ChevronDown, History, Loader2, Plus } from "lucide-react";
+import {
+	Bot,
+	ChevronDown,
+	ChevronsDown,
+	History,
+	Loader2,
+	Maximize2,
+	Minimize2,
+	Plus,
+} from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -25,14 +34,18 @@ import {
 import { setPersistedAgentSessionId } from "@/domains/agent/stores/persistence";
 import { useProjectStore } from "@/domains/projects/stores";
 import {
-	agentProjectPath,
 	agentProjectRouteState,
 	getRouteProjectId,
 	isAgentRoute,
 } from "@/domains/workspace/lib/workbench-route";
 import { cn } from "@/shared/lib/utils";
+import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
 
-export const AgentPanel: React.FC<{ width?: number }> = ({ width }) => {
+export const AgentPanel: React.FC<{
+	width?: number;
+	embedded?: boolean;
+	hideHeader?: boolean;
+}> = ({ width, embedded = false, hideHeader = false }) => {
 	const isRunning = useAgentStore(selectAgentIsRunning);
 	const activeSessionId = useAgentStore(selectAgentSessionId);
 	const composerSeed = useAgentStore(selectAgentComposerSeed);
@@ -46,6 +59,9 @@ export const AgentPanel: React.FC<{ width?: number }> = ({ width }) => {
 	const { mutate } = useSWRConfig();
 	const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 	const [isCreatingSession, setIsCreatingSession] = useState(false);
+	const panelSize = useAgentLayoutStore((state) => state.panelSize);
+	const setPanelSize = useAgentLayoutStore((state) => state.setPanelSize);
+	const setAgentLayoutTab = useAgentLayoutStore((state) => state.setTab);
 	const historyMenuRef = useRef<HTMLDivElement>(null);
 	currentRouteProjectIdRef.current = routeProjectId;
 
@@ -61,7 +77,12 @@ export const AgentPanel: React.FC<{ width?: number }> = ({ width }) => {
 			if (!projectId || !trimmedSessionId || !isAgentRoute(location.pathname)) return;
 
 			if (options.cleanAgentRoute) {
-				const nextUrl = agentProjectPath(projectId, { agentSessionId: trimmedSessionId });
+				// Starting a new assistant session should only replace the session id.
+				// Keep the user's current production workspace and selected stage intact.
+				const params = new URLSearchParams(location.search);
+				params.set("projectId", projectId);
+				params.set("agentSessionId", trimmedSessionId);
+				const nextUrl = `${location.pathname}?${params.toString()}`;
 				if (nextUrl === `${location.pathname}${location.search}`) return;
 				navigate(nextUrl, {
 					replace: options.replace ?? false,
@@ -150,66 +171,104 @@ export const AgentPanel: React.FC<{ width?: number }> = ({ width }) => {
 			className="agent-panel-shell flex h-full min-h-0 w-full shrink-0 flex-col bg-ide-panel text-ide-panel-foreground"
 			style={width ? { width } : undefined}
 		>
-			<header className="agent-panel-header flex items-center justify-between gap-3 border-b border-border bg-ide-toolbar/95 px-3 py-2 text-ide-toolbar-foreground">
-				<div className="flex min-w-0 items-center gap-2">
-					<div className="agent-brand-mark flex size-8 items-center justify-center rounded-sm bg-primary text-primary-foreground">
-						<Bot className="size-4" />
+			{!hideHeader ? (
+				<header
+					className={cn(
+						"agent-panel-header flex items-center justify-between gap-3 border-b border-border bg-ide-toolbar/95 px-3 py-2 text-ide-toolbar-foreground",
+						!embedded && "mt-2",
+					)}
+				>
+					<div className="flex min-w-0 items-center gap-2">
+						<div className="agent-brand-mark flex size-8 items-center justify-center rounded-sm bg-primary text-primary-foreground">
+							<Bot className="size-4" />
+						</div>
+						<div className="min-w-0">
+							<h1 className="truncate text-sm font-semibold text-foreground">制作助理</h1>
+							<p className="truncate text-xs text-muted-foreground">协助处理当前项目与制作任务</p>
+						</div>
 					</div>
-					<div className="min-w-0">
-						<h1 className="truncate text-sm font-semibold text-foreground">文档智能体</h1>
-						<p className="truncate text-xs text-muted-foreground">通过操作更新文档</p>
-					</div>
-				</div>
-				<div className="flex shrink-0 items-center gap-1">
-					<span className="agent-status-pill hidden items-center gap-1.5 rounded-sm border border-border bg-ide-panel px-2 py-1 text-caption text-muted-foreground sm:flex">
-						<span
-							className={cn(
-								"size-1.5 rounded-full",
-								isRunning ? "animate-pulse bg-success-foreground" : "bg-muted-foreground",
-							)}
-							aria-hidden="true"
-						/>
-						{isRunning ? "运行中" : "就绪"}
-					</span>
-					<div ref={historyMenuRef} className="relative">
+					<div className="flex shrink-0 items-center gap-1">
+						<span className="agent-status-pill hidden items-center gap-1.5 rounded-sm border border-border bg-ide-panel px-2 py-1 text-caption text-muted-foreground sm:flex">
+							<span
+								className={cn(
+									"size-1.5 rounded-full",
+									isRunning ? "animate-pulse bg-success-foreground" : "bg-muted-foreground",
+								)}
+								aria-hidden="true"
+							/>
+							{isRunning ? "运行中" : "就绪"}
+						</span>
+						<div ref={historyMenuRef} className="relative">
+							<Button
+								variant={isHistoryOpen ? "secondary" : "ghost"}
+								size="sm"
+								className="agent-header-button"
+								onClick={() => setIsHistoryOpen((open) => !open)}
+								aria-expanded={isHistoryOpen}
+								aria-haspopup="menu"
+								title="历史会话"
+							>
+								<History />
+								<span className="hidden sm:inline">历史会话</span>
+								<ChevronDown
+									className={cn("transition-transform", isHistoryOpen && "rotate-180")}
+								/>
+							</Button>
+							{isHistoryOpen ? (
+								<AgentSessionHistoryMenu
+									activeSessionId={activeSessionId}
+									isCurrentProject={isCurrentAgentProject}
+									onSessionSelected={(sessionId) =>
+										syncAgentSessionUrl(sessionId, { cleanAgentRoute: true, replace: false })
+									}
+									projectId={projectId}
+									onClose={() => setIsHistoryOpen(false)}
+								/>
+							) : null}
+						</div>
 						<Button
-							variant={isHistoryOpen ? "secondary" : "ghost"}
+							variant="ghost"
 							size="sm"
 							className="agent-header-button"
-							onClick={() => setIsHistoryOpen((open) => !open)}
-							aria-expanded={isHistoryOpen}
-							aria-haspopup="menu"
-							title="历史会话"
+							onClick={handleCreateSession}
+							disabled={isRunning || isCreatingSession}
+							title={isRunning ? "当前运行结束后再新建会话" : "新建会话"}
 						>
-							<History />
-							<span className="hidden sm:inline">历史会话</span>
-							<ChevronDown className={cn("transition-transform", isHistoryOpen && "rotate-180")} />
+							{isCreatingSession ? <Loader2 className="animate-spin" /> : <Plus />}
+							<span className="sr-only">新建会话</span>
 						</Button>
-						{isHistoryOpen ? (
-							<AgentSessionHistoryMenu
-								activeSessionId={activeSessionId}
-								isCurrentProject={isCurrentAgentProject}
-								onSessionSelected={(sessionId) =>
-									syncAgentSessionUrl(sessionId, { cleanAgentRoute: true, replace: false })
-								}
-								projectId={projectId}
-								onClose={() => setIsHistoryOpen(false)}
-							/>
+						{!embedded ? (
+							<>
+								<span className="mx-1 hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
+								<Button
+									variant="ghost"
+									size="sm"
+									className="agent-header-button"
+									onClick={() =>
+										setPanelSize(panelSize === "expanded" ? "comfortable" : "expanded")
+									}
+									title={panelSize === "expanded" ? "恢复标准高度" : "放大对话工作区"}
+									aria-label={panelSize === "expanded" ? "恢复助理标准高度" : "放大助理工作区"}
+								>
+									{panelSize === "expanded" ? <Minimize2 /> : <Maximize2 />}
+									<span className="sr-only">{panelSize === "expanded" ? "恢复" : "放大"}</span>
+								</Button>
+								<Button
+									variant="ghost"
+									size="sm"
+									className="agent-header-button"
+									onClick={() => setAgentLayoutTab("document")}
+									title="收起到底部"
+									aria-label="收起制作助理到底部"
+								>
+									<ChevronsDown />
+									<span className="sr-only">收起</span>
+								</Button>
+							</>
 						) : null}
 					</div>
-					<Button
-						variant="ghost"
-						size="sm"
-						className="agent-header-button"
-						onClick={handleCreateSession}
-						disabled={isRunning || isCreatingSession}
-						title={isRunning ? "当前运行结束后再新建会话" : "新建会话"}
-					>
-						{isCreatingSession ? <Loader2 className="animate-spin" /> : <Plus />}
-						<span className="hidden sm:inline">新建会话</span>
-					</Button>
-				</div>
-			</header>
+				</header>
+			) : null}
 			<div className="relative min-h-0 flex-1 overflow-hidden">
 				<AgentChat projectId={projectId} />
 			</div>

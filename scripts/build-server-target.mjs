@@ -5,12 +5,13 @@ import { join } from "node:path";
 const platform = process.argv[2]?.trim() ?? "";
 const targets = {
 	"darwin-arm64": { GOOS: "darwin", GOARCH: "arm64", exe: "" },
+	"darwin-x64": { GOOS: "darwin", GOARCH: "amd64", exe: "" },
 	"windows-x64": { GOOS: "windows", GOARCH: "amd64", exe: ".exe" },
 };
 
 const target = targets[platform];
 if (!target) {
-	console.error("PLATFORM must be one of: darwin-arm64, windows-x64");
+	console.error("PLATFORM must be one of: darwin-arm64, darwin-x64, windows-x64");
 	process.exit(1);
 }
 
@@ -29,7 +30,7 @@ const serverBuildArgs = [
 	"-tags",
 	"workspace_dist",
 ];
-const serverLDFlags = `-X main.defaultPromptPackPolicy=${promptPackPolicy}`;
+const serverLDFlags = `-s -w -X main.defaultPromptPackPolicy=${promptPackPolicy}`;
 serverBuildArgs.push("-ldflags", serverLDFlags);
 serverBuildArgs.push(
 	"-o",
@@ -37,19 +38,6 @@ serverBuildArgs.push(
 	"./services/server/cmd/mediago-server",
 );
 run("go", serverBuildArgs);
-run("go", [
-	"build",
-	"-o",
-	join(outDir, `mediago-document-mcp${target.exe}`),
-	"./services/server/cmd/mediago-document-mcp",
-]);
-
-run("go", [
-	"build",
-	"-o",
-	join(outDir, `mediago-generation-mcp${target.exe}`),
-	"./services/server/cmd/mediago-generation-mcp",
-]);
 
 function run(command, args) {
 	const result = spawnSync(command, args, {

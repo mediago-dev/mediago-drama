@@ -1,18 +1,11 @@
 import {
-	AudioLines,
-	Blocks,
 	ChevronLeft,
-	CircleQuestionMark,
 	Ellipsis,
-	FileText,
 	Film,
-	Download,
 	Image as ImageIcon,
 	Keyboard,
 	KeyRound,
 	Loader2,
-	Network,
-	ReceiptText,
 	Settings,
 	SlidersHorizontal,
 	SquarePen,
@@ -45,7 +38,6 @@ import {
 } from "@/shared/components/ui/tooltip";
 import { useToast } from "@/hooks/useToast";
 import { projectSettingsGeneralTab, type SettingsTabValue } from "@/lib/stores/settings";
-import { openExternalUrl } from "@/shared/desktop/actions";
 import { cn } from "@/shared/lib/utils";
 import { debugTabs, type DebugTabValue } from "@/pages/Debug";
 import { GenerationNotificationButton } from "./GenerationNotificationButton";
@@ -53,8 +45,6 @@ import { openGenerationConversationCreateDialog } from "./GenerationConversation
 import { GlobalToolboxButton } from "./GlobalToolboxDrawer";
 import { AssetLibraryButton } from "./AssetLibraryButton";
 import type { ActiveStudioTab, StudioTab } from "./ProjectNavigatorTypes";
-
-const githubRepositoryURL = "https://github.com/mediago-dev/mediago-drama";
 
 interface StudioToolItem {
 	category: CapabilityRecord["category"];
@@ -84,22 +74,6 @@ const fallbackStudioToolItems: StudioToolItem[] = [
 		sourceIndex: 1,
 		value: "image.generate",
 	},
-	{
-		category: "generation",
-		generationTab: "text",
-		icon: <FileText />,
-		label: "文本生成",
-		sourceIndex: 2,
-		value: "text.generate",
-	},
-	{
-		category: "generation",
-		generationTab: "audio",
-		icon: <AudioLines />,
-		label: "音频生成",
-		sourceIndex: 3,
-		value: "audio.generate",
-	},
 ];
 
 export const SettingsButton: React.FC<{
@@ -127,30 +101,6 @@ export const SettingsButton: React.FC<{
 	</TooltipProvider>
 );
 
-export const GitHubHelpButton: React.FC = () => {
-	const openGitHub = async () => {
-		await openExternalUrl(githubRepositoryURL);
-	};
-
-	return (
-		<TooltipProvider delayDuration={180}>
-			<Tooltip>
-				<TooltipTrigger asChild>
-					<button
-						type="button"
-						aria-label="打开 GitHub 页面"
-						className="flex size-8 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-						onClick={() => void openGitHub()}
-					>
-						<CircleQuestionMark className="size-4" />
-					</button>
-				</TooltipTrigger>
-				<TooltipContent side="top">GitHub</TooltipContent>
-			</Tooltip>
-		</TooltipProvider>
-	);
-};
-
 export const StudioConversationsScreen: React.FC<{
 	activeConversationId: string;
 	activeTab: ActiveStudioTab;
@@ -176,11 +126,15 @@ export const StudioSessionsScreen: React.FC<{
 }) => {
 	const toast = useToast();
 	const [isCreatingConversation, setIsCreatingConversation] = useState(false);
+	const visibleConversationGroups =
+		activeTab === "image" || activeTab === "video"
+			? studioConversationGroups.filter((group) => group.kind === activeTab)
+			: studioConversationGroups;
 
 	const openCreateDialog = async () => {
 		const result = await openGenerationConversationCreateDialog({
 			initialKind: activeTab ?? defaultStudioConversationKind,
-			groups: studioConversationGroups,
+			groups: visibleConversationGroups,
 		});
 		if (!result) return;
 		await createConversation(result.kind, result.title);
@@ -228,13 +182,19 @@ export const StudioSessionsScreen: React.FC<{
 						) : (
 							<SquarePen className="size-3.5" />
 						)}
-						<span>新建</span>
+						<span>
+							{activeTab === "image"
+								? "新建图片生成"
+								: activeTab === "video"
+									? "新建视频生成"
+									: "新建"}
+						</span>
 					</Button>
 				</div>
 
 				<div className="min-h-0 flex-1 overflow-y-auto pr-1">
 					<div className="space-y-2">
-						{studioConversationGroups.map((group) => (
+						{visibleConversationGroups.map((group) => (
 							<StudioConversationGroup
 								key={group.kind}
 								activeConversationId={activeConversationId}
@@ -250,7 +210,6 @@ export const StudioSessionsScreen: React.FC<{
 				<div className="mt-auto pt-2">
 					<div className="flex items-center gap-1">
 						<SettingsButton isActive={false} onClick={onOpenSettings} />
-						<GitHubHelpButton />
 						<AssetLibraryButton />
 						<GlobalToolboxButton />
 						{onOpenGenerationNotification ? (
@@ -325,7 +284,6 @@ export const StudioTypesScreen: React.FC<{
 			<div className="mt-auto pt-2">
 				<div className="flex items-center gap-1">
 					<SettingsButton isActive={false} onClick={onOpenSettings} />
-					<GitHubHelpButton />
 					<AssetLibraryButton />
 					<GlobalToolboxButton />
 					{onOpenGenerationNotification ? (
@@ -355,8 +313,6 @@ const studioConversationGroups: Array<{
 }> = [
 	{ icon: <Film />, kind: "video", label: "视频生成" },
 	{ icon: <ImageIcon />, kind: "image", label: "图片生成" },
-	{ icon: <FileText />, kind: "text", label: "文本生成" },
-	{ icon: <AudioLines />, kind: "audio", label: "音频生成" },
 ];
 
 const studioToolItemsFromCapabilities = (capabilities: CapabilityRecord[]): StudioToolItem[] =>
@@ -620,14 +576,11 @@ const debugNavItem = (value: DebugTabValue): SettingsNavItem => {
 	return { value: tab.value, label: tab.label, icon: tab.icon };
 };
 
-const settingsNavGroups = (activeAgentBackendId = "codex"): SettingsNavGroup[] => {
+const settingsNavGroups = (): SettingsNavGroup[] => {
 	const generationItems: SettingsNavItem[] = [
-		{ value: "api-keys", label: "API 密钥", icon: KeyRound },
+		{ value: "codex-access", label: "Codex 推理", icon: SquarePen },
+		{ value: "api-keys", label: "图片生成 API", icon: KeyRound },
 	];
-	if (activeAgentBackendId === "codex") {
-		generationItems.push({ value: "codex-access", label: "Codex 接入", icon: Network });
-	}
-	generationItems.push({ value: "codex-skills", label: "Codex 技能", icon: Blocks });
 	generationItems.push(debugNavItem("instructions"), debugNavItem("prompt-packs"));
 	return [
 		{
@@ -635,8 +588,6 @@ const settingsNavGroups = (activeAgentBackendId = "codex"): SettingsNavGroup[] =
 			items: [
 				{ value: "appearance", label: "基础设置", icon: SlidersHorizontal },
 				{ value: "shortcuts", label: "快捷键", icon: Keyboard },
-				{ value: "billing", label: "用量与账单", icon: ReceiptText },
-				{ value: "updates", label: "应用更新", icon: Download },
 			],
 		},
 		{
@@ -653,14 +604,7 @@ export const SettingsSidebarPanel: React.FC<{
 	onBack: () => void;
 	onOpenGenerationNotification?: (notification: GenerationSuccessNotification) => void;
 	onSelectTab: (tab: SettingsTabValue) => void;
-}> = ({
-	activeAgentBackendId,
-	activeTab,
-	isProjectSettings,
-	onBack,
-	onOpenGenerationNotification,
-	onSelectTab,
-}) => (
+}> = ({ activeTab, isProjectSettings, onBack, onOpenGenerationNotification, onSelectTab }) => (
 	<div className="flex h-full flex-col">
 		<button
 			type="button"
@@ -684,7 +628,7 @@ export const SettingsSidebarPanel: React.FC<{
 		) : null}
 
 		<div className={cn("space-y-4", isProjectSettings ? "mt-4" : "mt-2")}>
-			{settingsNavGroups(activeAgentBackendId).map((group) => (
+			{settingsNavGroups().map((group) => (
 				<section key={group.label} className="space-y-1">
 					<p className="px-2 text-2xs font-semibold text-muted-foreground">{group.label}</p>
 					{group.items.map((item) => {

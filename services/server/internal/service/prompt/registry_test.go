@@ -62,7 +62,7 @@ func TestRenderSectionReturnsInstructionText(t *testing.T) {
 	if err != nil {
 		t.Fatalf("renderSection() error = %v", err)
 	}
-	if !strings.Contains(rendered, "MediaGo Drama") {
+	if !strings.Contains(rendered, "AIGC Production OS") {
 		t.Fatalf("rendered = %q, want instruction body", rendered)
 	}
 	InvalidateTemplateCache("AGENTS")

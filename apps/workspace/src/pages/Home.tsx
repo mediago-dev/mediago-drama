@@ -93,7 +93,9 @@ export const Home: React.FC = () => {
 			setAgentLayoutTab("document");
 			return;
 		}
-		setAgentLayoutTab("agent");
+		// 进入项目首先给完整制作台；制作助理只在用户明确打开
+		// 或路由要求 preserveAgentTab 时展开，避免默认挤占分镜与资产空间。
+		setAgentLayoutTab("document");
 	}, [assetId, documentId, preserveAgentTab, preserveDocumentTab, projectId, setAgentLayoutTab]);
 
 	useEffect(() => {

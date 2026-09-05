@@ -73,17 +73,12 @@ func (provider *Provider) Generate(ctx context.Context, request generation.Reque
 		return generation.Response{}, generation.ErrMissingPrompt
 	}
 
-	adapter, err := provider.resolveRequest(&request)
+	_, err := provider.resolveRequest(&request)
 	if err != nil {
 		return generation.Response{}, err
 	}
 
 	switch request.Kind {
-	case generation.KindImage:
-		if adapter == generation.AdapterOpenRouterImages {
-			return provider.generateImages(ctx, request)
-		}
-		return provider.generateImage(ctx, request)
 	case generation.KindVideo:
 		return provider.createVideo(ctx, request)
 	case generation.KindText:
@@ -95,9 +90,6 @@ func (provider *Provider) Generate(ctx context.Context, request generation.Reque
 
 func (provider *Provider) resolveRequest(request *generation.Request) (string, error) {
 	if request.RouteID == "" && request.ModelID == "" && request.Model != "" {
-		if request.Kind == "" {
-			request.Kind = generation.KindImage
-		}
 		return "", nil
 	}
 

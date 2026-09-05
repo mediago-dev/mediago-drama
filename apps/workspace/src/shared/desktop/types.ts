@@ -5,12 +5,6 @@ export type {
 	DesktopPromptPackSaveResult,
 	DesktopDownloadResult,
 	NativeThemeSource,
-	DesktopUpdatePhase,
-	DesktopUpdateInfo,
-	DesktopUpdateProgress,
-	DesktopUpdateStatus,
-	DesktopUpdateCapability,
-	DesktopUpdateAck,
 	PromptPackEditorCloseRequest,
 	PromptPackEditorCloseResult,
 	PromptPackEditorOpenOptions,
@@ -22,9 +16,6 @@ import type {
 	DesktopNotificationOptions,
 	DesktopPromptPackSaveOptions,
 	DesktopPromptPackSaveResult,
-	DesktopUpdateAck,
-	DesktopUpdateCapability,
-	DesktopUpdateStatus,
 	NativeThemeSource,
 	PromptPackEditorCloseRequest,
 	PromptPackEditorCloseResult,
@@ -52,12 +43,6 @@ export interface MediagoDesktopAPI {
 		callback: (request: PromptPackEditorCloseRequest) => void,
 	): () => void;
 	completePromptPackEditorClose(result: PromptPackEditorCloseResult): Promise<void>;
-	getAppVersion(): Promise<string>;
-	getUpdateCapability(): Promise<DesktopUpdateCapability>;
-	checkForUpdate(): Promise<DesktopUpdateAck>;
-	downloadUpdate(): Promise<DesktopUpdateAck>;
-	installUpdate(): Promise<DesktopUpdateAck>;
-	onUpdateStatus(listener: (status: DesktopUpdateStatus) => void): () => void;
 	startWindowDrag(): Promise<void>;
 	setNativeThemeSource(source: NativeThemeSource): Promise<void>;
 }

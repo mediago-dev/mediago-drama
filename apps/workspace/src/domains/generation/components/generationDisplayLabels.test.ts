@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
 	compactGenerationLabel,
 	displayGenerationLabelWithoutAlias,
+	displayGenerationSupplierLabel,
+	displayGenerationVersionLabel,
 } from "./generationDisplayLabels";
 
 describe("generation display labels", () => {
@@ -14,5 +16,21 @@ describe("generation display labels", () => {
 		expect(displayGenerationLabelWithoutAlias("Nano Banana Pro / Gemini 3 Pro Image")).toBe(
 			"Gemini 3 Pro Image",
 		);
+	});
+
+	it("keeps the user-facing product name for model versions", () => {
+		expect(displayGenerationVersionLabel("Nano Banana Pro / Gemini 3 Pro Image")).toBe(
+			"Nano Banana Pro",
+		);
+		expect(displayGenerationVersionLabel("Nano Banana Pro")).toBe("Nano Banana Pro");
+	});
+
+	it("separates the model supplier from the execution channel", () => {
+		expect(
+			displayGenerationSupplierLabel({
+				canonicalModel: "gemini-3-pro-image",
+				label: "Nano Banana Pro",
+			}),
+		).toBe("Gemini");
 	});
 });

@@ -31,7 +31,11 @@ import {
 	imageGenerationSpecNormalizationUpdates,
 	resolveImageGenerationSpec,
 } from "@/domains/generation/components/imageGenerationSpec";
-import { displayGenerationLabelWithoutAlias } from "@/domains/generation/components/generationDisplayLabels";
+import {
+	displayGenerationLabelWithoutAlias,
+	displayGenerationSupplierLabel,
+	displayGenerationVersionLabel,
+} from "@/domains/generation/components/generationDisplayLabels";
 import { ImageGenerationSpecControl } from "@/domains/generation/components/ImageGenerationSpecControl";
 import {
 	GenerationBrandMark,
@@ -181,6 +185,7 @@ const isPlaybackBlockedError = (err: unknown) =>
 			: false;
 
 export interface MediaGenerationWorkspaceProps {
+	forceSingleOutput?: boolean;
 	assetTitle?: string | null;
 	className?: string;
 	conversationId?: string | null;
@@ -205,7 +210,7 @@ export interface MediaGenerationWorkspaceProps {
 		assets: GenerationAsset[],
 		sourceEntryId: string,
 	) => void;
-	onGenerationError?: (pendingId: string) => void;
+	onGenerationError?: (pendingId: string, message?: string) => void;
 	onGenerationResponse?: (pendingId: string, response: GenerationMessageResponse) => void;
 	onGenerationStart?: (pendingId: string, prompt: string) => void;
 	onHistoryCountChange?: (count: number) => void;
@@ -229,9 +234,17 @@ export interface MediaGenerationWorkspaceProps {
 	taskType?: GenerationTaskType;
 	selectedAssetKeys?: string[];
 	selectedAssetResourceId?: string | null;
+	/**
+	 * Explicit project resource type for section-scoped generation.  The task
+	 * category is only a fallback because older/custom documents may resolve to
+	 * `studio`; without an explicit type their generated image cannot be linked
+	 * back to the shot/asset record.
+	 */
 	selectedAssetResourceType?: SelectedGenerationResourceType | null;
 	selectedAssetSourceDocumentId?: string | null;
 	selectedAssetTitle?: string | null;
+	/** Optional production shot bindings carried with generated assets. */
+	shotIds?: string[];
 	submitLabel?: string;
 	uploadIdPrefix?: string;
 	viewMode?: MediaGenerationWorkspaceViewMode;
@@ -240,6 +253,7 @@ export interface MediaGenerationWorkspaceProps {
 
 export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> = ({
 	className,
+	forceSingleOutput = false,
 	conversationId,
 	conversationScopeId,
 	conversationTitle,
@@ -283,6 +297,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 	selectedAssetResourceType,
 	selectedAssetSourceDocumentId,
 	selectedAssetTitle,
+	shotIds = [],
 	submitLabel,
 	uploadIdPrefix = "generation-workspace",
 	viewMode,
@@ -418,6 +433,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		projectHistory,
 		projectStyleOnly: true,
 		sectionId,
+		shotIds,
 		taskType,
 		uploadIdPrefix,
 		useRawPrompt: true,
@@ -664,16 +680,30 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		[],
 	);
 
-	const modelSummary = ws.hasConfiguredRoutesForKind
-		? `${displayGenerationLabelWithoutAlias(ws.selectedFamily.label)} / ${displayGenerationLabelWithoutAlias(ws.selectedVersion.label)} / ${routeProviderLabel(ws.selectedRoute)}`
-		: `暂无可用${generatedKindLabel}供应商`;
+	const modelSummary = !ws.hasLiveCatalog
+		? "正在读取模型配置…"
+		: ws.hasConfiguredRoutesForKind
+			? [
+					displayGenerationLabelWithoutAlias(ws.selectedFamily.label),
+					displayGenerationVersionLabel(ws.selectedVersion.label),
+					displayGenerationSupplierLabel(ws.selectedVersion),
+					routeProviderLabel(ws.selectedRoute),
+				]
+					.filter(Boolean)
+					.join(" / ")
+			: `暂无可用${generatedKindLabel}供应商`;
 	const selectedFamilyLabel = displayGenerationLabelWithoutAlias(ws.selectedFamily.label);
 	const selectedFamilyBrand = generationModelBrand({
 		family: ws.selectedFamily,
 		route: ws.selectedRoute,
 		version: ws.selectedVersion,
 	});
-	const modelControls = ws.hasConfiguredRoutesForKind ? (
+	const modelControls = ws.hasConfiguredRoutesForKind && kind === "image" ? (
+		<div className={generationComposerSelectClassName("w-auto shrink-0")} aria-label="Nano Banana 2">
+			<GenerationBrandMark brand={selectedFamilyBrand} className="size-4 text-[0.5rem]" />
+			<span>Nano Banana 2</span>
+		</div>
+	) : ws.hasConfiguredRoutesForKind ? (
 		<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
 			<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
 				<SelectTrigger
@@ -800,6 +830,11 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		() => countGroupParams.find((param) => param.name === "n" && param.type === "number")?.name,
 		[countGroupParams],
 	);
+	useEffect(() => {
+		if (!forceSingleOutput || !generationCountParamName) return;
+		if (Number(ws.selectedParams[generationCountParamName]) === 1) return;
+		ws.updateParam(generationCountParamName, 1);
+	}, [forceSingleOutput, generationCountParamName, ws.selectedParams, ws.updateParam]);
 	const voicePreviewRouteIds = useMemo(() => {
 		const routeIds = new Set<string>();
 		if (ws.selectedRoute.kind !== "audio") return routeIds;
@@ -1221,6 +1256,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 					resourceId,
 					resourceTitle: selectedAssetTitle?.trim() || asset.title?.trim() || undefined,
 					resourceType,
+					shotIds: shotIds.length > 0 ? shotIds : undefined,
 					selected,
 					sourceDocumentId: selectedAssetSourceDocumentId?.trim() || undefined,
 					sourceType,
@@ -1247,6 +1283,7 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 			selectedAssetResourceId,
 			selectedAssetSourceDocumentId,
 			selectedAssetTitle,
+			shotIds,
 			resolvedSelectedAssetResourceType,
 			onAssetSelectionPersisted,
 			toast,

@@ -324,6 +324,14 @@
       "cachedTokenPrice": 0.25
     },
     {
+      "routeId": "official.gpt-5.6-sol-text",
+      "currency": "USD",
+      "unit": "per_million_tokens",
+      "inputTokenPrice": 2.5,
+      "outputTokenPrice": 15,
+      "cachedTokenPrice": 0.25
+    },
+    {
       "routeId": "official.gpt-5.4-text",
       "currency": "USD",
       "unit": "per_million_tokens",

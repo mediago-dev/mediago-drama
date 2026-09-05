@@ -98,11 +98,49 @@
 	}
 
 	.native-sidebar-panel {
-		background: color-mix(in srgb, var(--ide-sidebar) 72%, transparent);
+		background: color-mix(in srgb, var(--ide-sidebar) 94%, transparent);
 		backdrop-filter: blur(var(--blur-scale-lg)) saturate(1.35);
 		-webkit-backdrop-filter: blur(var(--blur-scale-lg)) saturate(1.35);
 		box-shadow: inset var(--border-width-scale-sm) 0
 			color-mix(in srgb, var(--popover) 42%, transparent);
+	}
+
+	.brand-activity-rail {
+		background:
+			radial-gradient(circle at 10% 18%, rgb(160 119 255 / 0.9), transparent 38%),
+			linear-gradient(180deg, rgb(119 87 236) 0%, rgb(82 111 242) 58%, rgb(76 142 244) 100%);
+		box-shadow: inset -1px 0 rgb(255 255 255 / 0.18);
+	}
+
+	.brand-activity-rail .rail-utility button {
+		color: rgb(255 255 255 / 0.72) !important;
+	}
+
+	.brand-activity-rail .rail-utility button:hover {
+		background: rgb(255 255 255 / 0.14) !important;
+		color: white !important;
+	}
+
+	.project-cover-surface {
+		background:
+			radial-gradient(circle at 18% 18%, rgb(221 244 255 / 0.95), transparent 42%),
+			linear-gradient(135deg, rgb(247 245 255) 0%, rgb(235 239 255) 100%);
+	}
+
+	.creator-launch-card {
+		background-color: var(--card);
+	}
+
+	.creator-launch-card-image {
+		background:
+			radial-gradient(circle at 82% 14%, rgb(206 241 255 / 0.92), transparent 42%),
+			linear-gradient(135deg, rgb(242 250 255) 0%, rgb(235 242 255) 100%);
+	}
+
+	.creator-launch-card-video {
+		background:
+			radial-gradient(circle at 84% 18%, rgb(209 197 255 / 0.92), transparent 44%),
+			linear-gradient(135deg, rgb(247 244 255) 0%, rgb(232 229 255) 100%);
 	}
 
 	.PhotoView-Portal {
@@ -235,6 +273,16 @@
 		background: var(--agent-page);
 		color: var(--agent-text);
 		box-shadow: none;
+	}
+
+	.agent-panel-resize-handle {
+		background: var(--agent-toolbar);
+		outline: none;
+	}
+
+	.agent-panel-resize-handle:hover > span,
+	.agent-panel-resize-handle:focus-visible > span {
+		background: var(--agent-blue);
 	}
 
 	.agent-panel-shell::before,
@@ -606,22 +654,23 @@
 		position: relative;
 		z-index: 2;
 		flex: none;
+		padding-block: 0.25rem;
 		background: transparent;
 	}
 
 	.agent-live-plan-stack {
-		filter: drop-shadow(var(--agent-soft-shadow));
+		filter: none;
 	}
 
 	.agent-live-plan-card {
-		max-height: min(20rem, 42vh);
+		max-height: min(10rem, 24vh);
 		overflow-y: auto;
 		border: var(--border-width-scale-sm) solid var(--agent-line-strong);
-		border-radius: calc(var(--radius-scale-md) + var(--space-2xs));
+		border-top: 0;
+		border-radius: 0 0 var(--radius-scale-sm) var(--radius-scale-sm);
 		background: color-mix(in srgb, var(--agent-surface) 96%, transparent);
-		padding: var(--space-sm) var(--space-md);
+		padding: var(--space-xs) var(--space-md);
 		color: var(--agent-text);
-		backdrop-filter: blur(0.75rem);
 	}
 
 	.agent-live-plan-card .agent-plan-list {
@@ -641,20 +690,18 @@
 
 	.agent-live-plan-toggle {
 		display: inline-flex;
+		width: 100%;
 		min-height: var(--size-32);
 		align-items: center;
-		justify-content: center;
+		justify-content: flex-start;
 		gap: var(--space-xs);
-		margin-top: -1px;
 		border: var(--border-width-scale-sm) solid var(--agent-line-strong);
-		border-top: 0;
-		border-radius: 0 0 999px 999px;
+		border-radius: var(--radius-scale-sm);
 		background: color-mix(in srgb, var(--agent-surface) 96%, transparent);
 		padding: 0 var(--space-md);
 		color: var(--agent-subtle);
 		font-size: var(--font-size-xs);
 		font-weight: var(--font-weight-scale-semibold);
-		backdrop-filter: blur(0.75rem);
 		transition:
 			background-color var(--duration-scale-fast) var(--easing-scale-standard),
 			color var(--duration-scale-fast) var(--easing-scale-standard);
@@ -670,10 +717,8 @@
 		outline-offset: var(--border-width-scale-sm);
 	}
 
-	.agent-live-plan-toggle[aria-expanded="false"] {
-		margin-top: 0;
-		border-top: var(--border-width-scale-sm) solid var(--agent-line-strong);
-		border-radius: 999px;
+	.agent-live-plan-toggle[aria-expanded="true"] {
+		border-radius: var(--radius-scale-sm) var(--radius-scale-sm) 0 0;
 	}
 
 	.agent-live-plan-dot {

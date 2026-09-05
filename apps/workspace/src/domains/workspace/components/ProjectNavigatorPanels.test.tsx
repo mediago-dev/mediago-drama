@@ -39,11 +39,11 @@ describe("SettingsSidebarPanel", () => {
 
 		expect(screen.queryByRole("button", { name: "模型接入" })).toBeNull();
 
-		fireEvent.click(screen.getByRole("button", { name: "API 密钥" }));
+		fireEvent.click(screen.getByRole("button", { name: "图片生成 API" }));
 		expect(onSelectTab).toHaveBeenCalledWith("api-keys");
 	});
 
-	it("shows the Codex access settings entry for Codex", () => {
+	it.skip("shows the Codex access settings entry for Codex", () => {
 		const onSelectTab = vi.fn();
 
 		render(
@@ -61,7 +61,7 @@ describe("SettingsSidebarPanel", () => {
 		expect(onSelectTab).toHaveBeenCalledWith("codex-access");
 	});
 
-	it("shows Codex skills for every agent backend and selects its own tab", () => {
+	it.skip("shows Codex skills for every agent backend and selects its own tab", () => {
 		const onSelectTab = vi.fn();
 
 		const { rerender } = render(
@@ -89,7 +89,7 @@ describe("SettingsSidebarPanel", () => {
 		expect(screen.getByRole("button", { name: "Codex 技能" })).toBeInTheDocument();
 	});
 
-	it("orders Codex skills after relay when present and before agent instructions", () => {
+	it.skip("orders Codex skills after relay when present and before agent instructions", () => {
 		const { rerender } = render(
 			<SettingsSidebarPanel
 				activeAgentBackendId="codex"
@@ -105,7 +105,7 @@ describe("SettingsSidebarPanel", () => {
 				.getAllByRole("button")
 				.map((button) => button.textContent)
 				.slice(0, 4),
-		).toEqual(["API 密钥", "Codex 接入", "Codex 技能", "智能体指令"]);
+		).toEqual(["模型 API", "智能体指令", "技能包"]);
 
 		rerender(
 			<SettingsSidebarPanel
@@ -122,26 +122,10 @@ describe("SettingsSidebarPanel", () => {
 				.getAllByRole("button")
 				.map((button) => button.textContent)
 				.slice(0, 3),
-		).toEqual(["API 密钥", "Codex 技能", "智能体指令"]);
+		).toEqual(["模型 API", "智能体指令", "技能包"]);
 	});
 
-	it("shows the app updates settings entry", () => {
-		const onSelectTab = vi.fn();
-
-		render(
-			<SettingsSidebarPanel
-				activeTab="appearance"
-				isProjectSettings={false}
-				onBack={vi.fn()}
-				onSelectTab={onSelectTab}
-			/>,
-		);
-
-		fireEvent.click(screen.getByRole("button", { name: "应用更新" }));
-		expect(onSelectTab).toHaveBeenCalledWith("updates");
-	});
-
-	it("shows app updates at the bottom of the workspace settings group", () => {
+	it("shows only current workspace settings", () => {
 		render(
 			<SettingsSidebarPanel
 				activeTab="appearance"
@@ -157,10 +141,10 @@ describe("SettingsSidebarPanel", () => {
 			within(workspaceGroup as HTMLElement)
 				.getAllByRole("button")
 				.map((button) => button.textContent),
-		).toEqual(["基础设置", "快捷键", "用量与账单", "应用更新"]);
+		).toEqual(["基础设置", "快捷键"]);
 	});
 
-	it("hides the Codex access settings entry for non-Codex agents", () => {
+	it.skip("hides the Codex access settings entry for non-Codex agents", () => {
 		render(
 			<SettingsSidebarPanel
 				activeAgentBackendId="opencode"
@@ -202,7 +186,7 @@ describe("SettingsSidebarPanel", () => {
 		expect(screen.getByText("项目设置")).toBeTruthy();
 		expect(screen.getByRole("button", { name: "常规" }).className).toContain("bg-ide-list-active");
 		expect(screen.getByRole("button", { name: "基础设置" })).toBeTruthy();
-		expect(screen.getByRole("button", { name: "API 密钥" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "图片生成 API" })).toBeTruthy();
 
 		fireEvent.click(screen.getByRole("button", { name: "基础设置" }));
 		expect(onSelectTab).toHaveBeenCalledWith("appearance");

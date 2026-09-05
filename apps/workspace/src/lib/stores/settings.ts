@@ -7,7 +7,6 @@ export type SettingsTabValue =
 	| "api-keys"
 	| "billing"
 	| "codex-skills"
-	| "updates"
 	| "shortcuts"
 	| typeof projectSettingsGeneralTab
 	| string;

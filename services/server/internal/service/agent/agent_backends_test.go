@@ -14,13 +14,26 @@ func TestAgentBackendServiceDefaultsToCodex(t *testing.T) {
 	if payload.ActiveID != "codex" {
 		t.Fatalf("ActiveID = %q, want codex", payload.ActiveID)
 	}
-	if len(payload.Backends) != 2 {
-		t.Fatalf("len(Backends) = %d, want 2", len(payload.Backends))
+	if len(payload.Backends) != 3 {
+		t.Fatalf("len(Backends) = %d, want 3", len(payload.Backends))
 	}
 	if command := store.ActiveCommand(); command != "codex-acp" {
 		t.Fatalf("ActiveCommand() = %q, want codex-acp", command)
 	}
 	assertArgv(t, store.ActiveArgv(), []string{"codex-acp"})
+}
+
+func TestAgentBackendServiceSupportsDisabledLocalAgent(t *testing.T) {
+	store := NewAgentBackendServiceWithBinDir("", "/resources/agents", "none")
+
+	payload := store.ListBackends()
+	if payload.ActiveID != "none" {
+		t.Fatalf("ActiveID = %q, want none", payload.ActiveID)
+	}
+	if command := store.ActiveCommand(); command != "" {
+		t.Fatalf("ActiveCommand() = %q, want empty command", command)
+	}
+	assertArgv(t, store.ActiveArgv(), nil)
 }
 
 func TestAgentBackendServiceMatchesInitialBuiltinCommand(t *testing.T) {
@@ -43,8 +56,8 @@ func TestAgentBackendServiceKeepsCustomInitialCommand(t *testing.T) {
 	if payload.ActiveID != "custom" {
 		t.Fatalf("ActiveID = %q, want custom", payload.ActiveID)
 	}
-	if len(payload.Backends) != 3 {
-		t.Fatalf("len(Backends) = %d, want 3", len(payload.Backends))
+	if len(payload.Backends) != 4 {
+		t.Fatalf("len(Backends) = %d, want 4", len(payload.Backends))
 	}
 	if command := store.ActiveCommand(); command != "custom-acp --profile local" {
 		t.Fatalf("ActiveCommand() = %q, want custom command", command)

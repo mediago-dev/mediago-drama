@@ -46,7 +46,7 @@ describe("AgentLivePlan", () => {
 		expect(plan?.currentStep).toBe(2);
 	});
 
-	it("renders an expanded card and toggles it from the progress pill", () => {
+	it("starts compact and expands details from the progress row", () => {
 		render(
 			<AgentLivePlan
 				isRunning
@@ -60,19 +60,19 @@ describe("AgentLivePlan", () => {
 			/>,
 		);
 
-		const toggle = screen.getByRole("button", { name: "收起执行计划，第 2 / 3 步" });
-		const region = screen.getByRole("region", { name: "执行计划" });
-		expect(toggle).toHaveAttribute("aria-expanded", "true");
-		expect(region).toHaveTextContent("读取素材");
-		expect(region).toHaveTextContent("生成分镜");
+		const toggle = screen.getByRole("button", { name: "展开执行计划，第 2 / 3 步" });
+		expect(toggle).toHaveAttribute("aria-expanded", "false");
+		expect(screen.queryByRole("region", { name: "执行计划" })).not.toBeInTheDocument();
 
 		fireEvent.click(toggle);
 
-		expect(screen.getByRole("button", { name: "展开执行计划，第 2 / 3 步" })).toHaveAttribute(
+		const region = screen.getByRole("region", { name: "执行计划" });
+		expect(screen.getByRole("button", { name: "收起执行计划，第 2 / 3 步" })).toHaveAttribute(
 			"aria-expanded",
-			"false",
+			"true",
 		);
-		expect(screen.queryByRole("region", { name: "执行计划" })).not.toBeInTheDocument();
+		expect(region).toHaveTextContent("读取素材");
+		expect(region).toHaveTextContent("生成分镜");
 	});
 
 	it("does not render without an active structured plan", () => {
@@ -107,7 +107,7 @@ describe("AgentLivePlan", () => {
 			/>,
 		);
 
-		expect(screen.getByRole("button", { name: "收起执行计划，第 2 / 3 步" })).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "展开执行计划，第 2 / 3 步" }));
 		expect(container.querySelector(".agent-plan-status-icon.text-error-foreground")).not.toBeNull();
 	});
 });

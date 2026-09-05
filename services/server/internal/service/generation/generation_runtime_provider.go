@@ -21,11 +21,14 @@ func (workflow *GenerationService) newGenerationProvider(route coregeneration.Mo
 		return workflow.generationProviderFactory(route)
 	}
 
+	customImageSettings, _ := workflow.settings.GetCustomImageAPISettings(context.Background())
 	return runtime.NewProvider(runtime.Config{
 		Credentials:                   workflow.generationCredentialResolver(),
 		MultimodalTextProviderFactory: workflow.multimodalTextProviderFactory,
 		OpenRouterAppName:             "mediago-drama",
 		MediagoBaseURL:                workflow.mediagoBaseURL,
+		WhereslowImageBaseURL:         customImageSettings.BaseURL,
+		WhereslowImageProtocol:        customImageSettings.Protocol,
 		JimengBinPath:                 workflow.jimengBinPath,
 		JimengBinDir:                  workflow.jimengBinDir,
 		LibTVBinPath:                  workflow.libTVBinPath,
@@ -105,6 +108,9 @@ func (workflow *GenerationService) generationRouteConfiguredWithMediagoModels(
 		return false
 	}
 	if route.Provider == coregeneration.ProviderMediago && strings.TrimSpace(workflow.mediagoBaseURL) == "" {
+		return false
+	}
+	if route.Provider == coregeneration.ProviderWhereslowImage && !workflow.settings.CustomImageAPIConfigured(context.Background()) {
 		return false
 	}
 	configured := workflow.generationRouteCredentialsConfigured(route)

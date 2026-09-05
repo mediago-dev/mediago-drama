@@ -962,6 +962,77 @@ describe("MediaGenerationWorkspace", () => {
 		expect(onToggleAsset).not.toHaveBeenCalledWith(secondAsset, true);
 	});
 
+	it("automatically persists the first generated storyboard image to the target shot", async () => {
+		const firstAsset: GenerationAsset = {
+			kind: "image",
+			mimeType: "image/png",
+			slotIndex: 0,
+			taskId: "task-s01",
+			url: "/api/v1/media-assets/s01-generated/content",
+		};
+		const completedEntry: GenerationEntry = {
+			id: "task-s01",
+			kind: "image",
+			status: "completed",
+			content: "",
+			prompt: "S01 单镜执行示意图",
+			assets: [firstAsset],
+		};
+		let workspaceOptions: Parameters<typeof useGenerationWorkspace>[0] | undefined;
+		let orderedGenerationEntries: GenerationEntry[] = [];
+		vi.mocked(useGenerationWorkspace).mockImplementation((options) => {
+			workspaceOptions = options;
+			return {
+				...workspaceDefaults,
+				activeEntryId: completedEntry.id,
+				orderedGenerationEntries,
+			} as unknown as ReturnType<typeof useGenerationWorkspace>;
+		});
+
+		const renderWorkspace = () => (
+			<MediaGenerationWorkspace
+				historyScopeId="history-s01"
+				initialPrompt="S01 单镜执行示意图"
+				kind="image"
+				projectId="project-a"
+				selectedAssetResourceId="S01"
+				selectedAssetResourceType="storyboard"
+				selectedAssetSourceDocumentId="storyboard-doc"
+				selectedAssetTitle="S01｜单镜执行示意图"
+				viewMode="history"
+			/>
+		);
+		const { rerender } = render(renderWorkspace());
+
+		workspaceOptions?.onSubmitStart?.({
+			kind: "image",
+			localMessageId: "local-s01",
+			prompt: "S01 单镜执行示意图",
+		});
+		workspaceOptions?.onSubmitResponse?.({
+			kind: "image",
+			localMessageId: "local-s01",
+			response: generationResponseFromEntry(completedEntry),
+		});
+		orderedGenerationEntries = [completedEntry];
+		rerender(renderWorkspace());
+
+		await waitFor(() => {
+			expect(generationApiMocks.updateSelectedGenerationAsset).toHaveBeenCalledWith(
+				"project-a",
+				expect.objectContaining({
+					resourceId: "S01",
+					resourceType: "storyboard",
+					sourceDocumentId: "storyboard-doc",
+					sourceTaskId: "task-s01",
+					sourceType: "generated",
+					selected: true,
+					taskId: "task-s01",
+				}),
+			);
+		});
+	});
+
 	it("does not default-select a generated image when the target already has a selection", async () => {
 		const onToggleAsset = vi.fn();
 		const completedEntry: GenerationEntry = {

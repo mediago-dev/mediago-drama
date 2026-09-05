@@ -368,12 +368,12 @@ describe("GlobalToolboxButton", () => {
 	it("closes the drawer when the embedded workspace opens provider settings", async () => {
 		vi.mocked(getGenerationConversations).mockImplementation(async (kind) => ({
 			conversations:
-				kind === "audio"
+				kind === "video"
 					? [
 							generationConversation(
-								"audio-one",
-								"audio",
-								"音频会话",
+								"video-one",
+								"video",
+								"视频会话",
 								"studio",
 								"2026-06-06T14:00:00Z",
 							),

@@ -5,6 +5,7 @@ import type {
 	GenerationAsset,
 	GenerationMessageResponse,
 	SelectedGenerationAsset,
+	SelectedGenerationResourceType,
 } from "@/domains/generation/api/generation";
 import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
 import { DocumentSectionGenerator } from "@/domains/documents/components/DocumentSectionGenerator";
@@ -14,6 +15,7 @@ import { GlobalToolboxButton } from "@/domains/workspace/components/GlobalToolbo
 import { Button } from "@/shared/components/ui/button";
 
 interface ImageGenerationDialogProps {
+	forceSingleOutput?: boolean;
 	onAssetSelectionPersisted?: () => void;
 	onGenerationComplete: (
 		section: MarkdownSectionContext,
@@ -21,7 +23,7 @@ interface ImageGenerationDialogProps {
 		assets: GenerationAsset[],
 		sourceTaskId: string,
 	) => void;
-	onGenerationError: (section: MarkdownSectionContext, pendingId: string) => void;
+	onGenerationError: (section: MarkdownSectionContext, pendingId: string, message?: string) => void;
 	onGenerationResponse?: (
 		section: MarkdownSectionContext,
 		pendingId: string,
@@ -39,7 +41,9 @@ interface ImageGenerationDialogProps {
 	projectId?: string;
 	resolveLatestSection?: boolean;
 	selectedAssetKeys?: string[] | ((section: MarkdownSectionContext) => string[]);
+	selectedAssetResourceType?: SelectedGenerationResourceType | null;
 	selectedGenerationAssets?: SelectedGenerationAsset[];
+	shotIds?: string[];
 	section: MarkdownSectionContext | null;
 }
 
@@ -57,7 +61,7 @@ interface ImageGenerationDialogPanelController {
 		assets: GenerationAsset[],
 		sourceTaskId: string,
 	) => void;
-	onGenerationError: (pendingId: string) => void;
+	onGenerationError: (pendingId: string, message?: string) => void;
 	onGenerationResponse: (pendingId: string, response: GenerationMessageResponse) => void;
 	onGenerationStart: (pendingId: string, prompt: string) => void;
 	onMaterialLibraryImportOpenChange: (open: boolean) => void;
@@ -73,7 +77,11 @@ interface ImageGenerationDialogPanelController {
 	// DocumentSectionGenerator falls back to the project's authoritative
 	// selected-assets store and pre-checks the 定稿 asset.
 	selectedAssetKeys: string[] | undefined;
+	/** Explicit project resource type used when persisting generated assets. */
+	selectedAssetResourceType?: SelectedGenerationResourceType | null;
 	selectedGenerationAssets?: SelectedGenerationAsset[];
+	shotIds?: string[];
+	forceSingleOutput?: boolean;
 	title: string;
 	titleId: string;
 }
@@ -84,6 +92,7 @@ export const ImageGenerationDialog: React.FC<ImageGenerationDialogProps> = (prop
 };
 
 const useImageGenerationDialogController = ({
+	forceSingleOutput,
 	onAssetSelectionPersisted,
 	onGenerationComplete,
 	onGenerationError,
@@ -95,7 +104,9 @@ const useImageGenerationDialogController = ({
 	projectId,
 	resolveLatestSection,
 	selectedAssetKeys,
+	selectedAssetResourceType,
 	selectedGenerationAssets,
+	shotIds,
 	section,
 }: ImageGenerationDialogProps): ImageGenerationDialogController => {
 	const [lastSection, setLastSection] = useState<MarkdownSectionContext | null>(section);
@@ -162,11 +173,13 @@ const useImageGenerationDialogController = ({
 
 			return {
 				dialogId,
+				forceSingleOutput,
 				generatorKey: `${sectionKey}:${currentSection.markdown}`,
 				materialLibraryOpen: Boolean(materialLibraryOpenByDialog[dialogId]),
 				onGenerationComplete: (pendingId, assets, sourceTaskId) =>
 					onGenerationComplete(currentSection, pendingId, assets, sourceTaskId),
-				onGenerationError: (pendingId) => onGenerationError(currentSection, pendingId),
+				onGenerationError: (pendingId, message) =>
+					onGenerationError(currentSection, pendingId, message),
 				onGenerationResponse: (pendingId, response) =>
 					onGenerationResponse?.(currentSection, pendingId, response),
 				onGenerationStart: (pendingId, prompt) =>
@@ -192,7 +205,9 @@ const useImageGenerationDialogController = ({
 				resolveLatestSection,
 				section: currentSection,
 				selectedAssetKeys: resolveSelectedAssetKeys(selectedAssetKeys, currentSection),
+				selectedAssetResourceType,
 				selectedGenerationAssets,
+				shotIds,
 				title: `生成视觉素材 · ${currentSection.headingText}`,
 				titleId: `section-generation-title-${dialogIndex}`,
 			};
@@ -235,13 +250,16 @@ const ImageGenerationDialogPanel: React.FC<{
 		onOpenChange={controller.onOpenChange}
 	>
 		<DocumentSectionGenerator
+			forceSingleOutput={controller.forceSingleOutput}
 			key={controller.generatorKey}
 			materialLibraryImportOpen={controller.materialLibraryOpen}
 			projectId={controller.projectId}
 			resolveLatestSection={controller.resolveLatestSection}
 			section={controller.section}
 			selectedAssetKeys={controller.selectedAssetKeys}
+			selectedAssetResourceType={controller.selectedAssetResourceType}
 			selectedGenerationAssets={controller.selectedGenerationAssets}
+			shotIds={controller.shotIds}
 			viewMode="history"
 			onAssetSelectionPersisted={controller.onAssetSelectionPersisted}
 			onGenerationComplete={controller.onGenerationComplete}

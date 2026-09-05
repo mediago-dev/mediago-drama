@@ -24,6 +24,12 @@ export interface MediaGenerationDialogRequest {
 	statusResourceKey?: string;
 	// 选中音频等参考素材时用于把 asset 持久化回项目资源概览。
 	selectedAssetResourceType?: SelectedGenerationResourceType;
+	// 可选的多个镜头用途；生成结果会在资产库中保留这些绑定。
+	shotIds?: string[];
+	/** 本次只使用这些已选资产做参考，避免项目其它镜头的素材混入。 */
+	selectedAssetKeys?: string[];
+	/** Composite canvases such as a storyboard master always submit as one image. */
+	forceSingleOutput?: boolean;
 }
 
 interface MediaGenerationState {

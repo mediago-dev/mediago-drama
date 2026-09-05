@@ -98,9 +98,8 @@ func Load(path string) (ServerConfig, error) {
 
 func defaults() ServerConfig {
 	return ServerConfig{
-		Host:           "127.0.0.1",
-		Port:           8080,
-		GenerationCLIs: []string{"dreamina"},
+		Host: "127.0.0.1",
+		Port: 8080,
 		Prompt: PromptConfig{
 			MaxSectionChars:     12000,
 			InstructionDelivery: "native",

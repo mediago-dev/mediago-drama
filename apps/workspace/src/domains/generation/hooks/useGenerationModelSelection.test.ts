@@ -247,11 +247,13 @@ describe("useGenerationModelSelection", () => {
 		expect(result.current.visibleFamilyRoutes.map((route) => route.id)).toEqual([
 			"route-image",
 			"route-image-dmx",
+			"route-image-openrouter",
 			"route-image-alt",
 		]);
 		expect(result.current.visibleRoutes.map((route) => route.id)).toEqual([
 			"route-image",
 			"route-image-dmx",
+			"route-image-openrouter",
 		]);
 
 		act(() => {

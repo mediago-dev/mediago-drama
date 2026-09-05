@@ -14,6 +14,8 @@
     "workspace:dev": "task workspace:dev",
     "dev:desktop": "task dev:desktop",
     "build:desktop": "task build:desktop",
+    "build:desktop:intel": "task build:electron:target PLATFORM=darwin-x64",
+    "delivery:check": "node scripts/delivery-check.mjs",
     "check:go": "task -d packages/core check && task -d packages/mcp check && task -d services/server check",
     "prepare": "husky",
     "changeset": "changeset"

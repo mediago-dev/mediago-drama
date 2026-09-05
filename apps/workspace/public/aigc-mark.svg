@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">心悦制作台</title>
+  <desc id="desc">由画框和时间线组成的制作标记</desc>
+  <rect width="64" height="64" rx="16" fill="#101318"/>
+  <path d="M15 47 24.5 17h15L49 47" fill="none" stroke="#F4F7FA" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/>
+  <path d="m21 37h22" stroke="#4ED0C0" stroke-linecap="round" stroke-width="5"/>
+  <path d="M30 26h4" stroke="#4ED0C0" stroke-linecap="round" stroke-width="5"/>
+  <circle cx="49" cy="17" r="3" fill="#F4F7FA"/>
+</svg>

@@ -17,6 +17,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/official"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/openrouter"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/pippit"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/whereslowimage"
 )
 
 // CredentialResolver loads credentials by catalog credential key.
@@ -43,11 +44,13 @@ type Config struct {
 
 	MultimodalTextProviderFactory MultimodalTextProviderFactory
 
-	MediagoBaseURL    string
-	DMXBaseURL        string
-	OpenRouterBaseURL string
-	OpenRouterAppURL  string
-	OpenRouterAppName string
+	MediagoBaseURL         string
+	WhereslowImageBaseURL  string
+	WhereslowImageProtocol whereslowimage.Protocol
+	DMXBaseURL             string
+	OpenRouterBaseURL      string
+	OpenRouterAppURL       string
+	OpenRouterAppName      string
 
 	OpenAIBaseURL     string
 	GoogleBaseURL     string
@@ -188,7 +191,9 @@ func (provider *Provider) providerForRoute(ctx context.Context, route generation
 	case generation.ProviderTypeAggregator:
 		switch route.Provider {
 		case generation.ProviderMediago:
-			return provider.mediagoProvider(ctx)
+			return provider.mediagoProvider(ctx, route)
+		case generation.ProviderWhereslowImage:
+			return provider.whereslowImageProvider(ctx)
 		case generation.ProviderDMX:
 			return provider.dmxProvider(ctx)
 		case generation.ProviderOpenRouter:
@@ -212,6 +217,22 @@ func (provider *Provider) providerForRoute(ctx context.Context, route generation
 	default:
 		return nil, fmt.Errorf("generation provider %q has unsupported type %q", route.Provider, generation.ProviderTypeOf(route.Provider))
 	}
+}
+
+func (provider *Provider) whereslowImageProvider(ctx context.Context) (generation.Provider, error) {
+	apiKey, err := provider.credential(ctx, generation.ProviderWhereslowImage)
+	if err != nil {
+		return nil, err
+	}
+	cacheKey := provider.cacheKey(generation.ProviderWhereslowImage, apiKey, provider.config.WhereslowImageBaseURL, string(provider.config.WhereslowImageProtocol))
+	return provider.cachedProvider(cacheKey, func() (generation.Provider, error) {
+		return whereslowimage.NewProvider(whereslowimage.Config{
+			BaseURL:    provider.config.WhereslowImageBaseURL,
+			APIKey:     apiKey,
+			Protocol:   provider.config.WhereslowImageProtocol,
+			HTTPClient: provider.config.HTTPClient,
+		})
+	})
 }
 
 func (provider *Provider) jimengProvider() (generation.Provider, error) {
@@ -269,8 +290,9 @@ func (provider *Provider) pippitProvider(ctx context.Context) (generation.Provid
 	})
 }
 
-func (provider *Provider) mediagoProvider(ctx context.Context) (generation.Provider, error) {
-	apiKey, err := provider.credential(ctx, generation.ProviderMediago)
+func (provider *Provider) mediagoProvider(ctx context.Context, route generation.ModelRoute) (generation.Provider, error) {
+	credentialKey := generation.ProviderMediago
+	apiKey, err := provider.credential(ctx, credentialKey)
 	if err != nil {
 		return nil, err
 	}
@@ -280,6 +302,7 @@ func (provider *Provider) mediagoProvider(ctx context.Context) (generation.Provi
 	}
 	cacheKey := provider.cacheKey(
 		generation.ProviderMediago,
+		credentialKey,
 		apiKey,
 		baseURL,
 		provider.config.OpenRouterAppURL,

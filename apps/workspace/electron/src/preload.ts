@@ -4,9 +4,6 @@ import {
 	type DesktopNotificationOptions,
 	type DesktopPromptPackSaveOptions,
 	type DesktopPromptPackSaveResult,
-	type DesktopUpdateAck,
-	type DesktopUpdateCapability,
-	type DesktopUpdateStatus,
 	type NativeThemeSource,
 	type PromptPackEditorCloseRequest,
 	type PromptPackEditorCloseResult,
@@ -52,25 +49,6 @@ const api = {
 	},
 	completePromptPackEditorClose: (result: PromptPackEditorCloseResult) =>
 		ipcRenderer.invoke(desktopIpcChannel.completePromptPackEditorClose, result),
-	getAppVersion: () => ipcRenderer.invoke(desktopIpcChannel.getAppVersion) as Promise<string>,
-	getUpdateCapability: () =>
-		ipcRenderer.invoke(desktopIpcChannel.getUpdateCapability) as Promise<DesktopUpdateCapability>,
-	checkForUpdate: () =>
-		ipcRenderer.invoke(desktopIpcChannel.checkUpdate) as Promise<DesktopUpdateAck>,
-	downloadUpdate: () =>
-		ipcRenderer.invoke(desktopIpcChannel.downloadUpdate) as Promise<DesktopUpdateAck>,
-	installUpdate: () =>
-		ipcRenderer.invoke(desktopIpcChannel.installUpdate) as Promise<DesktopUpdateAck>,
-	onUpdateStatus: (listener: (status: DesktopUpdateStatus) => void) => {
-		const handler = (_event: unknown, payload: DesktopUpdateStatus | undefined) => {
-			if (!payload) return;
-			listener(payload);
-		};
-		ipcRenderer.on(desktopIpcChannel.updateStatus, handler);
-		return () => {
-			ipcRenderer.removeListener(desktopIpcChannel.updateStatus, handler);
-		};
-	},
 	startWindowDrag: () => ipcRenderer.invoke(desktopIpcChannel.startWindowDrag),
 	setNativeThemeSource: (source: NativeThemeSource) =>
 		ipcRenderer.invoke(desktopIpcChannel.setNativeThemeSource, source),

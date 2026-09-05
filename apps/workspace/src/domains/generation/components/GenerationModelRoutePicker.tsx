@@ -19,7 +19,10 @@ import {
 	shouldKeepCascadedPickerSourceActive,
 	useCascadedPickerHoverIntent,
 } from "./cascadedPickerSafeTriangle";
-import { displayGenerationLabelWithoutAlias } from "./generationDisplayLabels";
+import {
+	displayGenerationSupplierLabel,
+	displayGenerationVersionLabel,
+} from "./generationDisplayLabels";
 
 export const GenerationModelRoutePicker: React.FC<{
 	className?: string;
@@ -47,7 +50,7 @@ export const GenerationModelRoutePicker: React.FC<{
 	const routesByVersion = useMemo(() => {
 		const grouped = new Map<string, GenerationRoute[]>();
 		for (const route of routes) {
-			if (route.status !== "available" || route.configured === false) {
+			if (route.status !== "available") {
 				continue;
 			}
 			const existing = grouped.get(route.versionId);
@@ -85,10 +88,12 @@ export const GenerationModelRoutePicker: React.FC<{
 		onActivateSource: setActiveVersionId,
 	});
 	const selectedProvider = providerLabel(selectedRoute.provider);
-	const selectedVersionLabel = displayGenerationLabelWithoutAlias(selectedVersion.label);
+	const selectedVersionLabel = displayGenerationVersionLabel(selectedVersion.label);
+	const selectedSupplier = displayGenerationSupplierLabel(selectedVersion);
 	const selectedLabel = selectedVersion.label
-		? `${selectedVersionLabel} · ${selectedProvider}`
+		? [selectedVersionLabel, selectedSupplier, selectedProvider].filter(Boolean).join(" · ")
 		: selectedRoute.model;
+	const selectedRouteNeedsKey = selectedRoute.configured !== true;
 	const selectedModelBrand = generationModelBrand({
 		route: selectedRoute,
 		version: selectedVersion,
@@ -171,6 +176,11 @@ export const GenerationModelRoutePicker: React.FC<{
 						providerBrand={selectedProviderBrand}
 					/>
 					<span className="min-w-0 truncate">{selectedLabel}</span>
+					{selectedRouteNeedsKey ? (
+						<span className="shrink-0 text-[0.65rem] font-medium text-warning-foreground">
+							需配置
+						</span>
+					) : null}
 					<ChevronDown className="ml-auto size-4 shrink-0 text-muted-foreground" />
 				</Button>
 			</PopoverTrigger>
@@ -201,7 +211,8 @@ export const GenerationModelRoutePicker: React.FC<{
 								const selected = version.id === activeVersion?.id;
 								const versionBrand = generationVersionBrand(version, versionRoutes[0]);
 								const suppressHover = version.id === suppressedVersionHoverId;
-								const versionLabel = displayGenerationLabelWithoutAlias(version.label);
+								const versionLabel = displayGenerationVersionLabel(version.label);
+								const supplierLabel = displayGenerationSupplierLabel(version);
 
 								return (
 									<button
@@ -225,7 +236,14 @@ export const GenerationModelRoutePicker: React.FC<{
 											brand={versionBrand}
 											className="size-3.5 border-0 bg-transparent p-0 text-[0.45rem] shadow-none"
 										/>
-										<span className="min-w-0 flex-1 truncate">{versionLabel}</span>
+										<span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">
+											<span className="truncate">{versionLabel}</span>
+											{supplierLabel ? (
+												<span className="shrink-0 text-[0.62rem] font-normal text-muted-foreground">
+													{supplierLabel}
+												</span>
+											) : null}
+										</span>
 										<ChevronRight
 											className={cn(
 												"size-4 shrink-0",
@@ -251,7 +269,7 @@ export const GenerationModelRoutePicker: React.FC<{
 					onPointerEnter={clearHoverIntent}
 					onPointerLeave={handleSubmenuPointerLeave}
 				>
-					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">提供方</p>
+					<p className="mb-1.5 px-1 text-2xs font-semibold text-muted-foreground">执行渠道</p>
 					<div className="relative min-h-0 flex-1 overflow-hidden">
 						<div
 							ref={routeListRef}
@@ -262,6 +280,7 @@ export const GenerationModelRoutePicker: React.FC<{
 						>
 							{activeRoutes.map((route) => {
 								const selected = route.id === selectedRoute.id;
+								const needsKey = route.configured !== true;
 
 								return (
 									<button
@@ -287,6 +306,11 @@ export const GenerationModelRoutePicker: React.FC<{
 											className="size-3.5 border-0 bg-transparent p-0 text-[0.45rem] shadow-none"
 										/>
 										<span className="min-w-0 flex-1 truncate">{providerLabel(route.provider)}</span>
+										{needsKey ? (
+											<span className="shrink-0 text-[0.65rem] font-medium text-warning-foreground">
+												需配置 Key
+											</span>
+										) : null}
 										{selected ? <Check className="size-4 shrink-0 text-primary" /> : null}
 									</button>
 								);

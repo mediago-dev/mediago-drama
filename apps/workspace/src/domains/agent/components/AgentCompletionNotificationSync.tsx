@@ -1,6 +1,6 @@
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
 	type AgentCompletionOutcome,
 	showAgentCompletionSystemNotification,
@@ -11,7 +11,7 @@ import {
 } from "@/domains/agent/stores/conversation";
 import { selectAgentIsRunning, useAgentStore } from "@/domains/agent/stores";
 import type { AgentConversationState } from "@/domains/agent/stores/types";
-import { agentProjectPath, agentProjectRouteState } from "@/domains/workspace/lib/workbench-route";
+import { agentProjectRouteState } from "@/domains/workspace/lib/workbench-route";
 import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
 import { useToast } from "@/hooks/useToast";
 
@@ -25,6 +25,7 @@ export const AgentCompletionNotificationSync: React.FC<AgentCompletionNotificati
 	projectId,
 }) => {
 	const navigate = useNavigate();
+	const location = useLocation();
 	const toast = useToast();
 	const isRunning = useAgentStore(selectAgentIsRunning);
 	const [windowActive, setWindowActive] = useState(isWindowActive);
@@ -62,7 +63,7 @@ export const AgentCompletionNotificationSync: React.FC<AgentCompletionNotificati
 			window.focus();
 			useAgentLayoutStore.getState().setTab("agent");
 			if (projectId) {
-				navigate(agentProjectPath(projectId), {
+				navigate(preserveProjectRoute(location, projectId), {
 					state: agentProjectRouteState("agent"),
 				});
 			}
@@ -74,7 +75,7 @@ export const AgentCompletionNotificationSync: React.FC<AgentCompletionNotificati
 				toast.info("Agent 调用完成", { description: "智能体已完成本次运行。" });
 			}
 		});
-	}, [isAgentSurfaceActive, isRunning, navigate, projectId, toast, windowActive]);
+	}, [isAgentSurfaceActive, isRunning, location, navigate, projectId, toast, windowActive]);
 
 	return null;
 };
@@ -102,3 +103,9 @@ const resolveAgentRunOutcome = (
 
 const isWindowActive = () =>
 	typeof document !== "undefined" && document.visibilityState === "visible" && document.hasFocus();
+
+const preserveProjectRoute = (location: ReturnType<typeof useLocation>, projectId: string) => {
+	const params = new URLSearchParams(location.search);
+	params.set("projectId", projectId);
+	return `${location.pathname === "/projects" ? location.pathname : "/projects"}?${params.toString()}`;
+};

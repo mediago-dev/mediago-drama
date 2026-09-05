@@ -1,10 +1,11 @@
 import {
 	Archive,
+	Clapperboard,
 	ChevronLeft,
 	FilePlus2,
 	Folder,
-	FolderPlus,
 	FolderTree,
+	Images,
 	LayoutDashboard,
 	LayoutList,
 	Loader2,
@@ -13,6 +14,8 @@ import {
 	Search,
 	SquarePen,
 	Trash2,
+	WandSparkles,
+	Workflow,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useRef } from "react";
@@ -32,16 +35,10 @@ import {
 } from "@/domains/workspace/components/ProjectDirectory";
 import { ProjectDirectoryTree } from "@/domains/workspace/components/ProjectDirectoryTree";
 import {
-	GitHubHelpButton,
-	SettingsButton,
-} from "@/domains/workspace/components/ProjectNavigatorPanels";
-import { GenerationNotificationButton } from "@/domains/workspace/components/GenerationNotificationButton";
-import { GlobalToolboxButton } from "@/domains/workspace/components/GlobalToolboxDrawer";
-import { AssetLibraryButton } from "@/domains/workspace/components/AssetLibraryButton";
-import {
 	getRouteAssetId,
 	getRouteDocumentId,
 	isProjectSettingsRoute,
+	type ProjectWorkspaceView,
 } from "@/domains/workspace/lib/workbench-route";
 import { useDocumentViewStore } from "@/lib/stores/document-view";
 import { cn } from "@/shared/lib/utils";
@@ -80,10 +77,14 @@ export const ProjectsSidebarPanel: React.FC<{
 	projects,
 }) => (
 	<div className="flex h-full flex-col">
+		<div className="mb-4 px-2">
+			<h2 className="text-base font-semibold text-foreground">项目</h2>
+			<p className="mt-1 text-xs text-muted-foreground">本地制作工作区</p>
+		</div>
 		<Button
 			type="button"
 			variant="ghost"
-			className="h-8 w-full justify-start gap-2 rounded-sm px-2 text-sm font-normal text-ide-sidebar-foreground hover:bg-ide-list-hover hover:text-foreground"
+			className="h-10 w-full justify-start gap-2 rounded-xl bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
 			onClick={onCreateProject}
 			disabled={isCreating}
 		>
@@ -94,11 +95,11 @@ export const ProjectsSidebarPanel: React.FC<{
 			</span>
 		</Button>
 
-		<div className="mt-2">
+		<div className="mt-3">
 			<button
 				type="button"
 				onClick={() => onOpenSearch("global")}
-				className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm text-ide-sidebar-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground"
+				className="flex h-9 w-full items-center gap-2 rounded-xl border border-border bg-card px-3 text-left text-sm text-ide-sidebar-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground"
 			>
 				<Search className="size-4 shrink-0 text-muted-foreground" />
 				<span className="min-w-0 flex-1 truncate">全局搜索</span>
@@ -109,7 +110,7 @@ export const ProjectsSidebarPanel: React.FC<{
 		</div>
 
 		<div className="mt-5 flex min-h-0 flex-1 flex-col">
-			<div className="mb-2 px-2 text-xs font-medium text-muted-foreground">项目</div>
+			<div className="mb-2 px-2 text-xs font-medium text-muted-foreground">最近项目</div>
 			<div className="min-h-0 flex-1 overflow-y-auto">
 				{projects.length > 0 ? (
 					projects.map((project) => (
@@ -183,7 +184,7 @@ const ProjectsSidebarProjectItem: React.FC<{
 				<button
 					type="button"
 					onClick={() => onOpenProject(project)}
-					className="mb-0.5 flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm text-ide-sidebar-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground"
+					className="mb-1 flex h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-sm text-ide-sidebar-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground"
 				>
 					<Folder className="size-4 shrink-0 text-muted-foreground" />
 					<span className="min-w-0 flex-1 truncate">{project.name}</span>
@@ -220,6 +221,7 @@ const ProjectsSidebarProjectItem: React.FC<{
 };
 
 export const ProjectSidebarPanel: React.FC<{
+	activeProjectWorkspace: ProjectWorkspaceView;
 	displayProject: WorkspaceProject | null;
 	documentsProjectId: string | null;
 	error?: unknown;
@@ -236,10 +238,12 @@ export const ProjectSidebarPanel: React.FC<{
 	onOpenGenerationNotification?: (notification: GenerationSuccessNotification) => void;
 	onOpenNewDocument: (category?: DocumentCategory) => void;
 	onOpenOverview: (project: WorkspaceProject) => void;
+	onOpenProjectWorkspace: (project: WorkspaceProject, workspace: ProjectWorkspaceView) => void;
 	onOpenSearch: (scope: "global" | "project") => void;
 	onOpenSettings: () => void;
 	showActiveSelection?: boolean;
 }> = ({
+	activeProjectWorkspace,
 	displayProject,
 	documentsProjectId,
 	error,
@@ -256,6 +260,7 @@ export const ProjectSidebarPanel: React.FC<{
 	onOpenGenerationNotification,
 	onOpenNewDocument,
 	onOpenOverview,
+	onOpenProjectWorkspace,
 	onOpenSearch,
 	onOpenSettings,
 	showActiveSelection = true,
@@ -269,6 +274,23 @@ export const ProjectSidebarPanel: React.FC<{
 		displayProject && documentsProjectId === displayProject.id,
 	);
 	const directoryItemSelectionEnabled = showActiveSelection && !isOverviewActive;
+	const workspaceEntries: Array<{
+		icon: React.ElementType;
+		label: string;
+		view: ProjectWorkspaceView;
+	}> = [
+		{ icon: LayoutDashboard, label: "项目总览", view: "dashboard" },
+		{ icon: Workflow, label: "开始制作", view: "workflow" },
+	];
+	const productionToolEntries: Array<{
+		icon: React.ElementType;
+		label: string;
+		view: ProjectWorkspaceView;
+	}> = [
+		{ icon: WandSparkles, label: "参考图迁移", view: "reference" },
+		{ icon: Images, label: "资产库", view: "assets" },
+		{ icon: Clapperboard, label: "镜头与动态", view: "shots" },
+	];
 	const setStartCreateRootFolder = useCallback((startCreateRootFolder: (() => void) | null) => {
 		startCreateRootFolderRef.current = startCreateRootFolder;
 	}, []);
@@ -279,7 +301,13 @@ export const ProjectSidebarPanel: React.FC<{
 				<div className="min-h-0 flex-1 overflow-y-auto">
 					{displayProject ? (
 						<div className="space-y-1">
-							<div className="flex items-center justify-between gap-2 px-2 pb-1">
+							<div className="mb-3 px-2">
+								<p className="text-xs text-muted-foreground">当前项目</p>
+								<h2 className="mt-1 truncate text-base font-semibold text-foreground">
+									{displayProject.name}
+								</h2>
+							</div>
+							<div className="flex items-center gap-1.5 px-2 pb-2">
 								<button
 									type="button"
 									className={sidebarToolbarIconButtonClassName}
@@ -289,7 +317,7 @@ export const ProjectSidebarPanel: React.FC<{
 								>
 									<ChevronLeft className="size-3.5" />
 								</button>
-								<div className="flex min-w-0 items-center justify-end gap-1">
+								<div className="flex min-w-0 items-center gap-1">
 									<button
 										type="button"
 										className={sidebarToolbarIconButtonClassName}
@@ -310,68 +338,91 @@ export const ProjectSidebarPanel: React.FC<{
 									>
 										<FilePlus2 className="size-3.5" />
 									</button>
-									{documentViewMode === "directory" ? (
-										<button
-											type="button"
-											className={sidebarToolbarIconButtonClassName}
-											onClick={() => startCreateRootFolderRef.current?.()}
-											disabled={!canMutateProjectDirectory}
-											title="新建文件夹"
-											aria-label="新建文件夹"
-										>
-											<FolderPlus className="size-3.5" />
-										</button>
-									) : null}
 									<DocumentViewModeSwitcher
 										mode={documentViewMode}
 										onSelectMode={setDocumentViewMode}
 									/>
 								</div>
 							</div>
-							<button
-								type="button"
-								onClick={() => onOpenOverview(displayProject)}
-								className={cn(
-									"flex h-7 w-full items-center gap-1.5 rounded-sm px-2 text-left text-xs transition-colors",
-									showActiveSelection && isOverviewActive
-										? "bg-ide-list-active text-ide-list-active-foreground"
-										: "text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
-								)}
-							>
-								<LayoutDashboard className="size-3.5 shrink-0" />
-								<span className="min-w-0 flex-1 truncate">项目概览</span>
-							</button>
-							{documentViewMode === "directory" ? (
-								<ProjectDirectoryTree
-									key={displayProject.id}
-									project={displayProject}
-									locationPathname={locationPathname}
-									routeAssetId={routeAssetId}
-									routeDocumentId={routeDocumentId}
-									onOpenAsset={onOpenAsset}
-									onOpenDocument={onOpenDocument}
-									onDeleteAsset={onDeleteAsset}
-									onDeleteDocument={onDeleteDocument}
-									onRootCreateRequestReady={setStartCreateRootFolder}
-									showActiveSelection={directoryItemSelectionEnabled}
-									showRootCreateButton={false}
-								/>
-							) : (
-								<ProjectDirectory
-									key={displayProject.id}
-									project={displayProject}
-									locationPathname={locationPathname}
-									routeAssetId={routeAssetId}
-									routeDocumentId={routeDocumentId}
-									onCreateDocumentInCategory={onCreateDocumentInCategory}
-									onOpenAsset={onOpenAsset}
-									onOpenDocument={onOpenDocument}
-									onDeleteAsset={onDeleteAsset}
-									onDeleteDocument={onDeleteDocument}
-									onOpenNewDocument={onOpenNewDocument}
-									showActiveSelection={directoryItemSelectionEnabled}
-								/>
-							)}
+							<SidebarNavigationGroup label="工作区">
+								{workspaceEntries.map((entry) => (
+									<ProjectWorkspaceNavigationButton
+										key={entry.view}
+										active={
+											showActiveSelection &&
+											isOverviewActive &&
+											activeProjectWorkspace === entry.view
+										}
+										icon={entry.icon}
+										label={entry.label}
+										onClick={() =>
+											entry.view === "dashboard"
+												? onOpenOverview(displayProject)
+												: onOpenProjectWorkspace(displayProject, entry.view)
+										}
+									/>
+								))}
+							</SidebarNavigationGroup>
+							<div id="project-production-stage-slot" className="mt-3" />
+							<SidebarNavigationGroup label="制作工具">
+								{productionToolEntries.map((entry) => (
+									<ProjectWorkspaceNavigationButton
+										key={entry.view}
+										active={
+											showActiveSelection &&
+											isOverviewActive &&
+											activeProjectWorkspace === entry.view
+										}
+										icon={entry.icon}
+										label={entry.label}
+										onClick={() => onOpenProjectWorkspace(displayProject, entry.view)}
+									/>
+								))}
+							</SidebarNavigationGroup>
+							<details className="group mt-4" open={Boolean(routeDocumentId || routeAssetId)}>
+								<summary className="flex h-8 cursor-pointer list-none items-center gap-2 px-3 text-xs font-medium text-muted-foreground hover:text-foreground">
+									<FolderTree className="size-3.5" />
+									<span className="min-w-0 flex-1">阶段文件与资料</span>
+									<span className="text-2xs group-open:hidden">展开</span>
+									<span className="hidden text-2xs group-open:inline">收起</span>
+								</summary>
+								<p className="px-3 pb-2 text-[11px] leading-4 text-muted-foreground">
+									这是存档区：放阶段文档、参考资料和本地文件。日常制作请从上面的“工作区”和“制作工具”进入。
+								</p>
+								<div className="mt-1 border-l border-border/80 pl-2">
+									{documentViewMode === "directory" ? (
+										<ProjectDirectoryTree
+											key={displayProject.id}
+											project={displayProject}
+											locationPathname={locationPathname}
+											routeAssetId={routeAssetId}
+											routeDocumentId={routeDocumentId}
+											onOpenAsset={onOpenAsset}
+											onOpenDocument={onOpenDocument}
+											onDeleteAsset={onDeleteAsset}
+											onDeleteDocument={onDeleteDocument}
+											onRootCreateRequestReady={setStartCreateRootFolder}
+											showActiveSelection={directoryItemSelectionEnabled}
+											showRootCreateButton={false}
+										/>
+									) : (
+										<ProjectDirectory
+											key={displayProject.id}
+											project={displayProject}
+											locationPathname={locationPathname}
+											routeAssetId={routeAssetId}
+											routeDocumentId={routeDocumentId}
+											onCreateDocumentInCategory={onCreateDocumentInCategory}
+											onOpenAsset={onOpenAsset}
+											onOpenDocument={onOpenDocument}
+											onDeleteAsset={onDeleteAsset}
+											onDeleteDocument={onDeleteDocument}
+											onOpenNewDocument={onOpenNewDocument}
+											showActiveSelection={directoryItemSelectionEnabled}
+										/>
+									)}
+								</div>
+							</details>
 						</div>
 					) : isLoading ? (
 						<div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
@@ -405,23 +456,42 @@ export const ProjectSidebarPanel: React.FC<{
 	);
 };
 
+const SidebarNavigationGroup: React.FC<{
+	children: React.ReactNode;
+	label: string;
+}> = ({ children, label }) => (
+	<div className="mt-4">
+		<p className="mb-1 px-3 text-2xs font-medium uppercase text-muted-foreground">{label}</p>
+		<div className="grid gap-0.5">{children}</div>
+	</div>
+);
+
+const ProjectWorkspaceNavigationButton: React.FC<{
+	active: boolean;
+	icon: React.ElementType;
+	label: string;
+	onClick: () => void;
+}> = ({ active, icon: Icon, label, onClick }) => (
+	<button
+		type="button"
+		onClick={onClick}
+		className={cn(
+			"flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-sm transition-colors",
+			active
+				? "bg-ide-list-active font-medium text-ide-list-active-foreground"
+				: "text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
+		)}
+	>
+		<Icon className="size-4 shrink-0" />
+		<span className="min-w-0 flex-1 truncate">{label}</span>
+	</button>
+);
+
 const SidebarFooterActions: React.FC<{
 	onOpenGenerationNotification?: (notification: GenerationSuccessNotification) => void;
 	onOpenSettings: () => void;
 	settingsActive: boolean;
-}> = ({ onOpenGenerationNotification, onOpenSettings, settingsActive }) => (
-	<div className="mt-auto pt-2">
-		<div className="flex items-center justify-end gap-1">
-			<SettingsButton isActive={settingsActive} onClick={onOpenSettings} />
-			<GitHubHelpButton />
-			<AssetLibraryButton />
-			<GlobalToolboxButton />
-			{onOpenGenerationNotification ? (
-				<GenerationNotificationButton onOpenNotification={onOpenGenerationNotification} />
-			) : null}
-		</div>
-	</div>
-);
+}> = () => null;
 
 const sidebarToolbarIconButtonClassName =
 	"flex size-7 shrink-0 items-center justify-center rounded-sm border border-border bg-ide-toolbar text-muted-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground disabled:pointer-events-none disabled:opacity-50";
@@ -429,33 +499,22 @@ const sidebarToolbarIconButtonClassName =
 const DocumentViewModeSwitcher: React.FC<{
 	mode: "category" | "directory";
 	onSelectMode: (mode: "category" | "directory") => void;
-}> = ({ mode, onSelectMode }) => (
-	<div className="flex h-7 shrink-0 items-center rounded-sm border border-border bg-ide-toolbar p-0.5">
+}> = ({ mode, onSelectMode }) => {
+	const nextMode = mode === "category" ? "directory" : "category";
+	const label = nextMode === "directory" ? "切换到目录视图" : "切换到类别视图";
+	return (
 		<button
 			type="button"
-			className={cn(
-				"flex size-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground",
-				mode === "category" && "bg-ide-list-active text-ide-list-active-foreground",
-			)}
-			onClick={() => onSelectMode("category")}
-			title="类别视图"
-			aria-label="类别视图"
-			aria-pressed={mode === "category"}
+			className={sidebarToolbarIconButtonClassName}
+			onClick={() => onSelectMode(nextMode)}
+			title={label}
+			aria-label={label}
 		>
-			<LayoutList className="size-3.5" />
-		</button>
-		<button
-			type="button"
-			className={cn(
-				"flex size-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-ide-list-hover hover:text-foreground",
-				mode === "directory" && "bg-ide-list-active text-ide-list-active-foreground",
+			{mode === "category" ? (
+				<LayoutList className="size-3.5" />
+			) : (
+				<FolderTree className="size-3.5" />
 			)}
-			onClick={() => onSelectMode("directory")}
-			title="目录视图"
-			aria-label="目录视图"
-			aria-pressed={mode === "directory"}
-		>
-			<FolderTree className="size-3.5" />
 		</button>
-	</div>
-);
+	);
+};

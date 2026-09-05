@@ -136,11 +136,11 @@ describe("StudioComingSoonPage", () => {
 		cleanup();
 	});
 
-	it("renders coming soon without loading capability run chrome", () => {
+	it("renders the Chinese coming-soon state without loading capability chrome", () => {
 		renderStudioVideoUnderstand();
 
 		expect(screen.getByText("视频理解")).toBeTruthy();
-		expect(screen.getByText("Coming soon")).toBeTruthy();
+		expect(screen.getByText("即将上线")).toBeTruthy();
 		expect(screen.queryByTestId("capability-grid")).toBeNull();
 	});
 });

@@ -32,7 +32,8 @@ interface OverrideState {
 
 /**
  * ProcessDisclosure renders the single turn-level disclosure that owns Agent process output.
- * Successful terminal turns auto-collapse; failed/interrupted turns stay open for inspection.
+ * Internal execution stays compact by default. Waiting for user input and failures
+ * expand automatically; users can still open the process log when they need details.
  */
 export const ProcessDisclosure = ({
 	turnId,
@@ -216,7 +217,8 @@ const isAutomaticallyExpanded = (
 	lifecycle: AgentTurnLifecycle,
 	outcome: AgentTurnOutcome | null,
 ) => {
-	if (lifecycle !== "completed") return true;
+	if (lifecycle === "waiting") return true;
+	if (lifecycle !== "completed") return false;
 	return outcome === "failed" || outcome === "interrupted";
 };
 

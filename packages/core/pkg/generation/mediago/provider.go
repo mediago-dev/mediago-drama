@@ -75,10 +75,6 @@ func (provider *Provider) Generate(ctx context.Context, request generation.Reque
 		return generation.Response{}, err
 	}
 	switch adapter {
-	case generation.AdapterMediagoChatImage:
-		return provider.generateChatImage(ctx, request)
-	case generation.AdapterMediagoImages:
-		return provider.generateImage(ctx, request)
 	case generation.AdapterMediagoText:
 		return provider.generateText(ctx, request)
 	case generation.AdapterMediagoVideo:
@@ -95,9 +91,6 @@ func (provider *Provider) resolveRequest(request *generation.Request) (string, e
 			return generation.AdapterMediagoText, nil
 		case generation.KindVideo:
 			return generation.AdapterMediagoVideo, nil
-		case "", generation.KindImage:
-			request.Kind = generation.KindImage
-			return generation.AdapterMediagoChatImage, nil
 		default:
 			return "", fmt.Errorf("%q: %w", request.Kind, generation.ErrUnsupportedKind)
 		}

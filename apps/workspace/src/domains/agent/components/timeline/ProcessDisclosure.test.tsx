@@ -8,17 +8,18 @@ describe("ProcessDisclosure", () => {
 		cleanup();
 	});
 
-	it.each<AgentTurnLifecycle>(["pending", "in_progress", "waiting"])(
-		"keeps %s turns open in auto mode",
-		(lifecycle) => {
-			renderDisclosure({ lifecycle });
+	it.each<{ lifecycle: AgentTurnLifecycle; expanded: boolean }>([
+		{ lifecycle: "pending", expanded: false },
+		{ lifecycle: "in_progress", expanded: false },
+		{ lifecycle: "waiting", expanded: true },
+	])("uses compact auto mode for $lifecycle", ({ lifecycle, expanded }) => {
+		renderDisclosure({ lifecycle });
 
-			const trigger = screen.getByRole("button", { name: /(处理|确认)/ });
-			expect(trigger).toHaveAttribute("aria-expanded", "true");
-			expect(disclosureRegion(trigger)).toHaveTextContent("过程内容");
-			expect(disclosureRegion(trigger)).toHaveAttribute("aria-hidden", "false");
-		},
-	);
+		const trigger = screen.getByRole("button", { name: /(处理|确认)/ });
+		expect(trigger).toHaveAttribute("aria-expanded", String(expanded));
+		expect(disclosureRegion(trigger)).toHaveTextContent("过程内容");
+		expect(disclosureRegion(trigger)).toHaveAttribute("aria-hidden", String(!expanded));
+	});
 
 	it.each<{
 		outcome: AgentTurnOutcome;
@@ -90,9 +91,9 @@ describe("ProcessDisclosure", () => {
 		let trigger = screen.getByRole("button", { name: /正在处理/ });
 
 		fireEvent.click(trigger);
-		expect(trigger).toHaveAttribute("aria-expanded", "false");
-		fireEvent.click(trigger);
 		expect(trigger).toHaveAttribute("aria-expanded", "true");
+		fireEvent.click(trigger);
+		expect(trigger).toHaveAttribute("aria-expanded", "false");
 
 		rerender(<DisclosureFixture turnId="turn-1" lifecycle="completed" outcome="succeeded" />);
 		trigger = screen.getByRole("button", { name: /已处理/ });
@@ -141,6 +142,7 @@ describe("ProcessDisclosure", () => {
 
 	it("moves focus to the summary trigger when automatic completion collapses process content", () => {
 		const { rerender } = renderDisclosure({ lifecycle: "in_progress" });
+		fireEvent.click(screen.getByRole("button", { name: /正在处理/ }));
 		const innerAction = screen.getByRole("button", { name: "过程操作" });
 		innerAction.focus();
 		expect(innerAction).toHaveFocus();

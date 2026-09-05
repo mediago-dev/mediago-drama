@@ -3,6 +3,7 @@ import {
 	dmxGPTImageParams,
 	dmxSeedanceParams,
 	gptImageParamCombos,
+	gpt56SolTextParams,
 	jimengSeedanceParams,
 	jimengSeedanceVIPParams,
 	jimengSeedreamParams,
@@ -42,7 +43,7 @@ import {
 
 const mediagoDocsUrl = "https://mediago.torchstellar.com/account#apiKeys";
 
-export const fallbackCatalog: GenerationModelsResponse = {
+const legacyFallbackCatalog: GenerationModelsResponse = {
 	families: [
 		{ id: "seedream", label: "Seedream", kind: "image" },
 		{ id: "gpt-text", label: "GPT", kind: "text" },
@@ -62,6 +63,7 @@ export const fallbackCatalog: GenerationModelsResponse = {
 			true,
 		),
 		version("seedream-4.7", "seedream", "Seedream 4.7", "image", "4.7", false, true),
+		version("gpt-5.6-sol-text", "gpt-text", "GPT-5.6 Sol", "text", "gpt-5.6-sol", false, false),
 		version(
 			"gpt-4.1-mini-text",
 			"gpt-text",
@@ -173,6 +175,20 @@ export const fallbackCatalog: GenerationModelsResponse = {
 		),
 	],
 	routes: [
+		route(
+			"official.gpt-5.6-sol-text",
+			"gpt-text",
+			"gpt-5.6-sol-text",
+			"OpenAI 官方",
+			"text",
+			"openai",
+			"gpt-5.6-sol",
+			"official.openai.chat_text",
+			"https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+			gpt56SolTextParams(),
+			false,
+			false,
+		),
 		route(
 			"dmx.seedream-5-lite",
 			"seedream",
@@ -322,7 +338,7 @@ export const fallbackCatalog: GenerationModelsResponse = {
 			gptImageParamCombos(),
 			withReferenceUrlLimit(4),
 		),
-		plannedRoute(
+		route(
 			"official.gpt-image-2",
 			"gpt-image",
 			"gpt-image-2",
@@ -330,9 +346,14 @@ export const fallbackCatalog: GenerationModelsResponse = {
 			"image",
 			"openai",
 			"gpt-image-2",
-			"https://platform.openai.com/docs/guides/image-generation",
+			"official.openai.image",
+			"https://developers.openai.com/api/docs/models/gpt-image-2",
 			officialGPTImageParams(),
+			false,
+			false,
+			undefined,
 			gptImageParamCombos(),
+			withReferenceUrlLimit(10),
 		),
 		route(
 			"mediago.gpt-image-2",
@@ -384,6 +405,22 @@ export const fallbackCatalog: GenerationModelsResponse = {
 			"nano-banana",
 			nanoParamCombos(),
 			withReferenceUrlLimit(4),
+		),
+		route(
+			"official.gemini-3.1-flash-image-preview",
+			"nano-banana",
+			"gemini-3.1-flash-image-preview",
+			"Google 官方",
+			"image",
+			"google",
+			"gemini-3.1-flash-image",
+			"official.google.image",
+			"https://ai.google.dev/gemini-api/docs/image-generation",
+			nanoParams(),
+			false,
+			true,
+			undefined,
+			nanoParamCombos(),
 		),
 		route(
 			"official.gemini-2.5-flash-image",
@@ -774,5 +811,56 @@ export const fallbackCatalog: GenerationModelsResponse = {
 		{ id: "jimeng", label: "即梦", providerType: "local" },
 		{ id: "libtv", label: "LibTV", providerType: "local" },
 		{ id: "xiaoyunque", label: "小云雀", providerType: "local" },
+	],
+};
+
+const whereslowImageFamily = {
+	id: "whereslow-image",
+	label: "Nano Banana 2",
+	kind: "image" as const,
+};
+const whereslowImageVersion = version(
+	"nano-banana-2",
+	"whereslow-image",
+	"Nano Banana 2",
+	"image",
+	"nano-banana-2",
+	false,
+	true,
+);
+const whereslowImageRoute = route(
+	"whereslow-image.nano-banana-2",
+	"whereslow-image",
+	"nano-banana-2",
+	"自定义 Gemini",
+	"image",
+	"whereslow-image",
+	"nano-banana-2",
+	"whereslow-image.gemini",
+	"https://ai.google.dev/api/generate-content",
+	nanoParams(),
+	false,
+	true,
+	"",
+	nanoParamCombos(),
+);
+
+export const fallbackCatalog: GenerationModelsResponse = {
+	...legacyFallbackCatalog,
+	families: [
+		whereslowImageFamily,
+		...legacyFallbackCatalog.families.filter((family) => family.kind !== "image"),
+	],
+	versions: [
+		whereslowImageVersion,
+		...legacyFallbackCatalog.versions.filter((item) => item.kind !== "image"),
+	],
+	routes: [
+		whereslowImageRoute,
+		...legacyFallbackCatalog.routes.filter((item) => item.kind !== "image"),
+	],
+	providers: [
+		{ id: "whereslow-image", label: "自定义 Gemini", providerType: "aggregator" },
+		...legacyFallbackCatalog.providers.filter((provider) => provider.id !== "whereslow-image"),
 	],
 };

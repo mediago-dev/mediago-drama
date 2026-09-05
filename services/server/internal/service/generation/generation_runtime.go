@@ -125,8 +125,19 @@ func (workflow *GenerationService) SetDocumentResolver(documents GenerationDocum
 // ListGenerationModels returns the generation model catalog for HTTP handlers.
 func (workflow *GenerationService) ListGenerationModels() generationModelsResponse {
 	catalog := coregeneration.Catalog()
+	customImageSettings, _ := workflow.settings.GetCustomImageAPISettings(context.Background())
+	customProviderLabel := "自定义 Gemini"
+	for index := range catalog.Providers {
+		if catalog.Providers[index].ID == coregeneration.ProviderWhereslowImage {
+			catalog.Providers[index].Label = customProviderLabel
+		}
+	}
 	mediagoModels, hasMediagoCatalog := workflow.mediagoAvailableModelsForCatalog(context.Background())
 	for index := range catalog.Routes {
+		if catalog.Routes[index].ID == coregeneration.RouteWhereslowNanoBanana2 {
+			catalog.Routes[index].Model = strings.TrimSpace(customImageSettings.Model)
+			catalog.Routes[index].Label = customProviderLabel
+		}
 		catalog.Routes[index].Configured = workflow.generationRouteConfiguredWithMediagoModels(
 			catalog.Routes[index],
 			mediagoModels,
@@ -169,6 +180,7 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	payload.PromptSupplements = NormalizeGenerationPromptSupplements(payload.PromptSupplements)
 	payload.ReferenceURLs = CompactStrings(payload.ReferenceURLs)
 	payload.ReferenceAssetIDs = CompactStrings(payload.ReferenceAssetIDs)
+	payload.ShotIDs = uniqueCompactStrings(payload.ShotIDs)
 	payload.ReferenceBindings = normalizeGenerationReferenceBindings(payload.ReferenceBindings)
 	var sourceRefsErr error
 	payload.SourceRefs, sourceRefsErr = normalizeContentSourceRefs(payload.SourceRefs)
@@ -202,12 +214,27 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	if err != nil {
 		return generationMessageResponse{}, http.StatusBadRequest, err
 	}
+	if route.Kind == coregeneration.KindImage && route.ID != coregeneration.RouteWhereslowNanoBanana2 {
+		return generationMessageResponse{}, http.StatusBadRequest, fmt.Errorf("图片生成仅支持 %s", coregeneration.RouteWhereslowNanoBanana2)
+	}
 	payload.Kind = string(route.Kind)
 	payload.RouteID = route.ID
 	payload.FamilyID = route.FamilyID
 	payload.VersionID = route.VersionID
 	payload.Provider = route.Provider
-	if payload.Model == "" {
+	if route.Provider == coregeneration.ProviderWhereslowImage {
+		customSettings, settingsErr := workflow.settings.GetCustomImageAPISettings(ctx)
+		if settingsErr != nil {
+			return generationMessageResponse{}, http.StatusServiceUnavailable, settingsErr
+		}
+		payload.Model = strings.TrimSpace(customSettings.Model)
+		payload.Params = generationParamsWithCustomImageMetadata(
+			payload.Params,
+			customSettings.BaseURL,
+			payload.Model,
+			customSettings.Protocol,
+		)
+	} else if payload.Model == "" {
 		payload.Model = route.Model
 	}
 	if payload.ModelID == "" {

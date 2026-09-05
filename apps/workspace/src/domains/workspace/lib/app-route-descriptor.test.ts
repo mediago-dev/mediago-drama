@@ -9,7 +9,7 @@ describe("app route descriptor", () => {
 		expect(resolveAppRouteDescriptor("/", "", { workMode: "agent" })).toMatchObject({
 			level: 1,
 			sidebarScreen: "projects",
-			title: "智能体工作台",
+			title: "制作中心",
 		});
 		expect(resolveAppRouteDescriptor("/", "", { workMode: "studio" })).toMatchObject({
 			level: 1,

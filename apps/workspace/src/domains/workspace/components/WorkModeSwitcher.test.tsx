@@ -111,7 +111,7 @@ describe("StudioSessionsScreen", () => {
 		cleanup();
 	});
 
-	it("renders generation conversations under video, image, and text groups", async () => {
+	it("renders the production-facing video and image conversation groups", async () => {
 		vi.mocked(getGenerationConversations).mockImplementation(async (kind) => {
 			const conversationKind = kind ?? "image";
 			return {
@@ -143,7 +143,7 @@ describe("StudioSessionsScreen", () => {
 		expect(getGenerationConversations).toHaveBeenCalledWith("image", "studio", {
 			allScopes: true,
 		});
-		expect(getGenerationConversations).toHaveBeenCalledWith("text", "studio", {
+		expect(getGenerationConversations).not.toHaveBeenCalledWith("text", "studio", {
 			allScopes: true,
 		});
 		expect(screen.getByText("项目图片会话")).toBeTruthy();

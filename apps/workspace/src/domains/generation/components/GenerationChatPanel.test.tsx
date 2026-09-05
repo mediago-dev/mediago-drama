@@ -16,6 +16,28 @@ vi.mock("@/components/VideoPlayer", () => ({
 }));
 
 describe("GenerationChatPanel", () => {
+	it("guides first-time image generation and fills a starter prompt", () => {
+		const onOpenSettings = vi.fn();
+		const onUsePrompt = vi.fn();
+
+		render(
+			<GenerationChatPanel
+				entries={[]}
+				kind="image"
+				onOpenSettings={onOpenSettings}
+				onRefreshVideo={vi.fn()}
+				onSelectEntry={vi.fn()}
+				onUsePrompt={onUsePrompt}
+			/>,
+		);
+
+		expect(screen.getByText("从一个想法，开始一张可用的图")).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: /产品主视觉/ }));
+		expect(onUsePrompt).toHaveBeenCalledWith(expect.stringContaining("高级商业广告主视觉"));
+		fireEvent.click(screen.getByRole("button", { name: /模型设置/ }));
+		expect(onOpenSettings).toHaveBeenCalledOnce();
+	});
+
 	it("shows a loading label for empty streaming text results", () => {
 		HTMLElement.prototype.scrollTo = vi.fn();
 		const entries: GenerationEntry[] = [

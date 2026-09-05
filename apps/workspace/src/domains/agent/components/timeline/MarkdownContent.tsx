@@ -2,6 +2,9 @@ import type React from "react";
 import { memo, useMemo } from "react";
 import { FileText } from "lucide-react";
 import type { AgentMessage } from "@/domains/agent/stores";
+import { useDocumentsStore } from "@/domains/documents/stores";
+import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
+import { useToast } from "@/hooks/useToast";
 import { cn } from "@/shared/lib/utils";
 import { CodeBlock } from "./CodeBlocks";
 import { ThoughtBlock } from "./ThoughtBlock";
@@ -326,11 +329,55 @@ const MarkdownLink: React.FC<{ href: string; text: string }> = ({ href, text }) 
 };
 
 const NonClickableMarkdownFile: React.FC<{ href: string; text: string }> = ({ href, text }) => {
+	const documents = useDocumentsStore((state) => state.documents);
+	const selectDocument = useDocumentsStore((state) => state.selectDocument);
+	const setAgentLayoutTab = useAgentLayoutStore((state) => state.setTab);
+	const toast = useToast();
+	const requestedFilename = markdownFilename(href || text);
+	const requestedTitle = requestedFilename.replace(/\.(?:md|markdown)$/i, "");
+	const document = documents.find((item) => {
+		const filename = markdownFilename(item.filename ?? "");
+		return (
+			(filename && filename.toLocaleLowerCase() === requestedFilename.toLocaleLowerCase()) ||
+			item.title.trim().toLocaleLowerCase() === requestedTitle.trim().toLocaleLowerCase()
+		);
+	});
+	const openDocument = () => {
+		if (!document) {
+			toast.error("找不到项目文档", {
+				description: `未在当前项目中找到“${requestedFilename || text}”。`,
+			});
+			return;
+		}
+		selectDocument(document.id);
+		setAgentLayoutTab("document");
+		const params = new URLSearchParams(window.location.search);
+		params.set("documentId", document.id);
+		params.delete("assetId");
+		window.history.pushState({}, "", `${window.location.pathname}?${params.toString()}`);
+		window.dispatchEvent(new PopStateEvent("popstate"));
+	};
 	return (
-		<span title={href} className="inline text-primary">
+		<button
+			type="button"
+			title={document ? `打开 ${document.title}` : href}
+			className="inline text-left text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+			onClick={openDocument}
+		>
 			<FileText className="mr-1 inline-block size-3.5 align-[-0.2em]" aria-hidden="true" />
 			<span className="break-all">{text}</span>
-		</span>
+		</button>
+	);
+};
+
+const markdownFilename = (value: string) => {
+	const decoded = safeDecodeURIComponent(stripLineSuffix(value.trim())).split(/[?#]/, 1)[0] ?? "";
+	return (
+		decoded
+			.replace(/^file:\/\//i, "")
+			.split(/[\\/]/)
+			.at(-1)
+			?.trim() ?? ""
 	);
 };
 

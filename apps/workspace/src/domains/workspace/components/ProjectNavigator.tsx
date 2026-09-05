@@ -1,30 +1,39 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { FolderKanban, Image, Settings, Trash2, Video } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import useSWR, { mutate as mutateSWR } from "swr";
 import {
 	archiveProject,
+	collectReusableProductionMemory,
 	createProject,
 	deleteProject,
 	getProjects,
 	projectsKey,
 	projectsKeyForStatus,
+	updateProjectConfig,
 	updateProject,
 	type WorkspaceProject,
 } from "@/domains/projects/api/projects";
-import { agentBackendsKey, getAgentBackends } from "@/domains/agent/api/agent";
 import { openProjectRenameDialog } from "@/domains/projects/components/ProjectRenameDialog";
 import {
 	type GenerationSuccessNotification,
 	useGenerationNotificationStore,
 } from "@/domains/generation/stores/generation-notifications";
 import { MediaGenerationDialogHost } from "@/domains/generation/components/MediaGenerationDialogHost";
+import { AssetLibraryButton } from "@/domains/workspace/components/AssetLibraryButton";
+import { GlobalToolboxButton } from "@/domains/workspace/components/GlobalToolboxDrawer";
+import { GenerationNotificationButton } from "@/domains/workspace/components/GenerationNotificationButton";
 import { GenerationNotificationSync } from "@/domains/generation/components/GenerationNotificationSync";
 import { markGenerationNotificationRead } from "@/domains/generation/api/generation";
 import { deleteProjectAsset, uploadProjectAsset } from "@/domains/workspace/api/project-assets";
-import { getWorkspaceDocuments, workspaceDocumentsKey } from "@/domains/workspace/api/workspace";
+import {
+	createWorkspaceDocument,
+	getWorkspaceDocuments,
+	workspaceDocumentsKey,
+} from "@/domains/workspace/api/workspace";
 import { useToast } from "@/hooks/useToast";
+import { cn } from "@/shared/lib/utils";
 import {
 	type DocumentCategory,
 	type MarkdownDocument,
@@ -47,14 +56,24 @@ import {
 	getRouteAssetId,
 	getRouteDocumentId,
 	getRouteProjectId,
+	getRouteProjectWorkspace,
 	isProjectSettingsRoute,
 	settingsPath,
 	studioTabPath,
+	type ProjectWorkspaceView,
 } from "@/domains/workspace/lib/workbench-route";
+import { projectCreateRequestEvent } from "@/domains/workspace/lib/project-create-request";
 import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
 import { projectSettingsGeneralTab, useSettingsNavigationStore } from "@/lib/stores/settings";
 import { useWorkModeStore } from "@/lib/stores/work-mode";
 import { openAgentProjectCreateDialog } from "./AgentProjectCreateDialog";
+import type { AgentProjectCreateChoice } from "./AgentProjectCreateDialog";
+import {
+	buildProductionTemplateDocuments,
+	productionTemplateById,
+	productionTemplateSnapshot,
+	productionStageStates,
+} from "@/lib/production/production-templates";
 import { openNewDocumentDialog, type NewDocumentDialogChoice } from "./NewDocumentDialog";
 import { openNewReferenceDocumentDialog } from "./NewReferenceDocumentDialog";
 import { SettingsSidebarPanel, StudioSessionsScreen } from "./ProjectNavigatorPanels";
@@ -73,7 +92,6 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 	const toast = useToast();
 	const setActiveProjectId = useProjectStore((state) => state.setActiveProjectId);
 	const { data, error, isLoading, mutate } = useSWR(projectsKey, getProjects);
-	const { data: agentBackends } = useSWR(agentBackendsKey, getAgentBackends);
 	const createDocument = useDocumentsStore((state) => state.createDocument);
 	const deleteDocument = useDocumentsStore((state) => state.deleteDocument);
 	const documentsProjectId = useDocumentsStore((state) => state.projectId);
@@ -125,6 +143,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 	const routeDocumentId = getRouteDocumentId(location.search);
 	const routeAssetId = getRouteAssetId(location.search);
 	const isOverviewActive = !routeDocumentId && !routeAssetId;
+	const activeProjectWorkspace = getRouteProjectWorkspace(location.search);
 	const showProjectSidebarActiveSelection = agentLayoutTab === "document";
 	const settingsScreenIsProjectSettings = usesProjectSettingsSidebar(
 		activeScreen,
@@ -175,19 +194,22 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		setAgentLayoutTab("document");
 	}, [setAgentLayoutTab]);
 
-	const showAgentPane = useCallback(() => {
-		setAgentLayoutTab("agent");
-	}, [setAgentLayoutTab]);
-
 	const openProject = useCallback(
 		(project: WorkspaceProject) => {
-			showAgentPane();
+			showDocumentPane();
 			setActiveProjectId(project.id);
-			navigate(agentProjectPath(project.id), {
-				state: agentProjectRouteState("agent"),
-			});
+			// “继续制作”必须进入真实工作台，而不是先落到统计总览。
+			navigate(
+				agentProjectPath(project.id, {
+					workspace: "workflow",
+					stageId: project.production?.currentStageId,
+				}),
+				{
+					state: agentProjectRouteState("overview"),
+				},
+			);
 		},
-		[navigate, setActiveProjectId, showAgentPane],
+		[navigate, setActiveProjectId, showDocumentPane],
 	);
 
 	const archiveSidebarProject = useCallback(
@@ -316,6 +338,17 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		[navigate, setActiveProjectId, showDocumentPane],
 	);
 
+	const openProjectWorkspace = useCallback(
+		(project: WorkspaceProject, workspace: ProjectWorkspaceView) => {
+			showDocumentPane();
+			setActiveProjectId(project.id);
+			navigate(agentProjectPath(project.id, { workspace }), {
+				state: agentProjectRouteState("overview"),
+			});
+		},
+		[navigate, setActiveProjectId, showDocumentPane],
+	);
+
 	const deleteProjectDocument = useCallback(
 		(project: WorkspaceProject, document: MarkdownDocument, deletedIds: string[]) => {
 			if (documentsProjectId !== project.id) {
@@ -405,6 +438,28 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		setActiveSettingsTab("appearance");
 		navigate("/settings");
 	}, [navigate, setActiveSettingsTab]);
+
+	const openProjectCenter = useCallback(() => {
+		setWorkMode("agent");
+		if (displayProject) {
+			setActiveProjectId(displayProject.id);
+			navigate(
+				agentProjectPath(displayProject.id, {
+					workspace: "workflow",
+					stageId: displayProject.production?.currentStageId,
+				}),
+				{ state: agentProjectRouteState("overview") },
+			);
+			return;
+		}
+		setActiveProjectId(null);
+		navigate("/");
+	}, [displayProject, navigate, setActiveProjectId, setWorkMode]);
+
+	const openGenerationKind = useCallback((kind: "image" | "video") => {
+		setWorkMode("studio");
+		navigate(studioTabPath(kind));
+	}, [navigate, setWorkMode]);
 
 	const openProjectSettings = useCallback(() => {
 		setActiveSettingsTab(projectSettingsGeneralTab);
@@ -498,21 +553,65 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 	);
 
 	const createProjectFromName = useCallback(
-		async (name: string) => {
+		async (choice: AgentProjectCreateChoice) => {
 			if (isCreating) return;
-			const projectName = name.trim() || "未命名项目";
+			const projectName = choice.name.trim() || "未命名项目";
+			const template = productionTemplateById(choice.templateId);
 
 			setIsCreating(true);
 			try {
+				const reusableMemory = await collectReusableProductionMemory(data?.projects ?? []);
 				const project = await createProject({ name: projectName });
-				await mutate();
-				await mutateSWR(projectsKey);
-				showAgentPane();
-				setActiveProjectId(project.id);
-				navigate(agentProjectPath(project.id), {
-					state: agentProjectRouteState("agent"),
+				const documents = buildProductionTemplateDocuments(template, projectName);
+				for (const document of documents) {
+					await createWorkspaceDocument(
+						{
+							id: document.id,
+							title: document.title,
+							content: document.content,
+							category: document.category,
+							parentId: null,
+							sortOrder: document.sortOrder,
+						},
+						project.id,
+					);
+				}
+				const snapshot = productionTemplateSnapshot(template);
+				await updateProjectConfig(project.id, {
+					overview: {
+						production: {
+							template: snapshot,
+							stageStates: productionStageStates(template),
+							currentStageId: template.id === "custom" ? undefined : template.stages[0]?.id,
+							overallProgress: 0,
+							coreAssetCount: 0,
+							shotCount: 0,
+							completedShotCount: 0,
+							reviewShotCount: 0,
+							version: "V01",
+							updatedAt: new Date().toISOString(),
+							blockers: [],
+							nextAction: `完成“${template.stages[0]?.title ?? "项目总控"}”并提交审核。`,
+							sharedContext: Object.values(reusableMemory).some((items) => items.length > 0)
+								? {
+										...reusableMemory,
+										updatedAt: new Date().toISOString(),
+									}
+								: undefined,
+						},
+					},
 				});
-				toast.success("项目已创建", { description: project.name });
+				// 先锁定新项目并进入第一个可执行阶段。列表刷新不能阻塞或重置
+				// 刚刚建立的工作区路由，否则用户会被送回项目中心。
+				showDocumentPane();
+				setActiveProjectId(project.id);
+				navigate(agentProjectPath(project.id, { workspace: "workflow", stageId: "stage-1" }), {
+					state: agentProjectRouteState("overview"),
+				});
+				void Promise.all([mutate(), mutateSWR(projectsKey)]);
+				toast.success("心悦制作台项目已创建", {
+					description: `${project.name} · ${template.label}`,
+				});
 			} catch (err) {
 				const message = err instanceof Error ? err.message : "创建项目失败。";
 				toast.error("创建项目失败", { description: message });
@@ -520,16 +619,22 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 				setIsCreating(false);
 			}
 		},
-		[isCreating, mutate, navigate, setActiveProjectId, showAgentPane, toast],
+		[data?.projects, isCreating, mutate, navigate, setActiveProjectId, showDocumentPane, toast],
 	);
 
 	const openAgentCreateDialog = useCallback(() => {
 		void (async () => {
-			const projectName = await openAgentProjectCreateDialog();
-			if (!projectName) return;
-			await createProjectFromName(projectName);
+			const choice = await openAgentProjectCreateDialog();
+			if (!choice) return;
+			await createProjectFromName(choice);
 		})();
 	}, [createProjectFromName]);
+
+	useEffect(() => {
+		const handleCreateRequest = () => openAgentCreateDialog();
+		window.addEventListener(projectCreateRequestEvent, handleCreateRequest);
+		return () => window.removeEventListener(projectCreateRequestEvent, handleCreateRequest);
+	}, [openAgentCreateDialog]);
 
 	useEffect(() => {
 		if (activeProjectId) setDisplayProjectId(activeProjectId);
@@ -569,8 +674,48 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		<>
 			<GenerationNotificationSync />
 			<MediaGenerationDialogHost />
-			<div className="flex h-full min-h-0 flex-col overflow-hidden text-ide-sidebar-foreground">
-				<div className="relative min-h-0 flex-1 overflow-hidden">
+			<div className="flex h-full min-h-0 overflow-hidden text-ide-sidebar-foreground">
+				<nav className="brand-activity-rail flex w-16 shrink-0 flex-col items-center px-1.5 pb-3 pt-2 text-white">
+					<button
+						type="button"
+						aria-label="返回主界面"
+						title="返回主界面"
+						onClick={openProjectCenter}
+						className="mb-5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+					>
+						<img src="/heart-logo.png" alt="心悦制作台" className="size-10 rounded-xl" />
+					</button>
+					<PrimaryRailButton
+						active={activeWorkMode === "agent" && !isProjectSettingsMode}
+						icon={FolderKanban}
+						label="项目"
+						onClick={openProjectCenter}
+					/>
+					<PrimaryRailButton
+						active={activeWorkMode === "studio" && activeStudioTab === "image"}
+						icon={Image}
+						label="图片生成"
+						onClick={() => openGenerationKind("image")}
+					/>
+					<PrimaryRailButton
+						active={activeWorkMode === "studio" && activeStudioTab === "video"}
+						icon={Video}
+						label="视频生成"
+						onClick={() => openGenerationKind("video")}
+					/>
+					<div className="rail-utility mt-auto flex flex-col items-center gap-1">
+						<AssetLibraryButton />
+						<GlobalToolboxButton />
+						<GenerationNotificationButton onOpenNotification={openGenerationNotification} />
+						<PrimaryRailButton
+							active={activeScreen === "settings"}
+							icon={Settings}
+							label="设置"
+							onClick={openGlobalSettings}
+						/>
+					</div>
+				</nav>
+				<div className="relative min-h-0 min-w-0 flex-1 overflow-hidden px-3 pb-3 pt-4">
 					<SidebarScreenStack
 						activeId={activeScreen}
 						screens={[
@@ -602,6 +747,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 								level: sidebarScreenLevel("project", { isProjectSettings: false }),
 								node: (
 									<ProjectSidebarPanel
+										activeProjectWorkspace={activeProjectWorkspace}
 										displayProject={displayProject}
 										documentsProjectId={documentsProjectId}
 										error={error}
@@ -621,6 +767,7 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 										}
 										onOpenNewDocument={requestNewDocument}
 										onOpenOverview={openOverview}
+										onOpenProjectWorkspace={openProjectWorkspace}
 										onOpenSearch={openSearch}
 										onOpenSettings={openProjectSettings}
 									/>
@@ -655,7 +802,6 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 								level: settingsScreenLevel,
 								node: (
 									<SettingsSidebarPanel
-										activeAgentBackendId={agentBackends?.activeId ?? "codex"}
 										activeTab={activeSettingsTab}
 										isProjectSettings={settingsScreenIsProjectSettings}
 										onBack={returnFromSettings}
@@ -678,6 +824,27 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		</>
 	);
 };
+
+const PrimaryRailButton: React.FC<{
+	active: boolean;
+	icon: React.ComponentType<{ className?: string }>;
+	label: string;
+	onClick: () => void;
+}> = ({ active, icon: Icon, label, onClick }) => (
+	<button
+		type="button"
+		className={cn(
+			"mb-2 flex w-14 flex-col items-center gap-1.5 rounded-xl px-1 py-2 text-xs transition-colors",
+			active
+				? "bg-white/20 font-medium text-white shadow-sm"
+				: "text-white/70 hover:bg-white/12 hover:text-white",
+		)}
+		onClick={onClick}
+	>
+		<Icon className="size-5" />
+		<span>{label}</span>
+	</button>
+);
 
 const compareProjectsByCreatedAtDesc = (left: WorkspaceProject, right: WorkspaceProject) => {
 	const leftTime = getProjectCreatedAtTime(left);

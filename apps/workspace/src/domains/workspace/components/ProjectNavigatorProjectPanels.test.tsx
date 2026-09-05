@@ -75,7 +75,7 @@ describe("ProjectSidebarPanel", () => {
 	it("hides overview and document active highlights when active selection is disabled", () => {
 		renderProjectSidebar(false);
 
-		expect(screen.getByRole("button", { name: "项目概览" }).className).not.toContain(
+		expect(screen.getByRole("button", { name: "项目总览" }).className).not.toContain(
 			"bg-ide-list-active",
 		);
 		expect(documentItemClassName()).not.toContain("bg-ide-list-active");
@@ -84,7 +84,7 @@ describe("ProjectSidebarPanel", () => {
 	it("highlights overview instead of the store document when no document is in the URL", () => {
 		renderProjectSidebar(true);
 
-		expect(screen.getByRole("button", { name: "项目概览" }).className).toContain(
+		expect(screen.getByRole("button", { name: "项目总览" }).className).toContain(
 			"bg-ide-list-active",
 		);
 		expect(documentItemClassName("第一集")).not.toContain("bg-ide-list-active");
@@ -105,7 +105,7 @@ describe("ProjectSidebarPanel", () => {
 			locationSearch: "?projectId=project-a&documentId=doc-b",
 		});
 
-		expect(screen.getByRole("button", { name: "项目概览" }).className).not.toContain(
+		expect(screen.getByRole("button", { name: "项目总览" }).className).not.toContain(
 			"bg-ide-list-active",
 		);
 		expect(documentItemClassName("第一集")).not.toContain("bg-ide-list-active");
@@ -251,6 +251,7 @@ const renderProjectSidebar = (
 ) =>
 	render(
 		<ProjectSidebarPanel
+			activeProjectWorkspace="dashboard"
 			displayProject={project}
 			documentsProjectId={project.id}
 			isOverviewActive
@@ -266,6 +267,7 @@ const renderProjectSidebar = (
 			onOpenDocument={vi.fn()}
 			onOpenNewDocument={vi.fn()}
 			onOpenOverview={vi.fn()}
+			onOpenProjectWorkspace={vi.fn()}
 			onOpenSearch={vi.fn()}
 			onOpenSettings={vi.fn()}
 			{...overrides}

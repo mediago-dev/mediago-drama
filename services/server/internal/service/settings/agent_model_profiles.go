@@ -556,6 +556,19 @@ func AgentModelProfileTemplates() []AgentModelProfileTemplate {
 	zero := 0.0
 	templates := []AgentModelProfileTemplate{
 		{
+			ID:               "openai-gpt-5-6-sol",
+			Name:             "OpenAI GPT-5.6 Sol",
+			ProviderID:       "openai",
+			ProviderLabel:    "OpenAI",
+			BaseURL:          "https://api.openai.com/v1",
+			Model:            "gpt-5.6-sol",
+			ModelDisplayName: "GPT-5.6 Sol",
+			SupportsImages:   true,
+			SupportsTools:    true,
+			ContextWindow:    1050000,
+			MaxOutputTokens:  128000,
+		},
+		{
 			ID:               "minimax",
 			Name:             "MiniMax 国内",
 			ProviderID:       "minimax-cn",
@@ -741,6 +754,10 @@ func catalogAgentRuntimeProfilesForSpec(spec officialAgentModelProfileSpec) []do
 		}
 		seenModels[route.Model] = true
 		displayName := agentRuntimeModelDisplayName(route.Model)
+		temperature := cloneFloat(spec.Temperature)
+		if route.Model == "gpt-5.6-sol" || route.Model == "gpt-5.6" {
+			temperature = nil
+		}
 		profiles = append(profiles, domainAgentModelProfile{
 			ID:               profileIDFromProviderID(spec.ProviderID + "-" + displayName),
 			Name:             strings.TrimSpace(spec.ProviderLabel + " " + displayName),
@@ -752,7 +769,7 @@ func catalogAgentRuntimeProfilesForSpec(spec officialAgentModelProfileSpec) []do
 			Enabled:          true,
 			SupportsImages:   spec.SupportsImages,
 			SupportsTools:    spec.SupportsTools,
-			Temperature:      cloneFloat(spec.Temperature),
+			Temperature:      temperature,
 		})
 	}
 	return profiles

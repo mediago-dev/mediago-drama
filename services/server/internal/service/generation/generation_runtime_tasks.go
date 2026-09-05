@@ -99,6 +99,7 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 		Model:             task.Model,
 		ProjectID:         task.ProjectID,
 		SectionID:         task.SectionID,
+		ShotIDs:           task.ShotIDs,
 		CapabilityID:      task.CapabilityID,
 		ResourceType:      task.ResourceType,
 		Prompt:            task.Prompt,
@@ -126,7 +127,19 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 	payload.FamilyID = route.FamilyID
 	payload.VersionID = route.VersionID
 	payload.Provider = route.Provider
-	if payload.Model == "" {
+	if route.Provider == coregeneration.ProviderWhereslowImage {
+		customSettings, settingsErr := workflow.settings.GetCustomImageAPISettings(ctx)
+		if settingsErr != nil {
+			return generationMessageResponse{}, http.StatusServiceUnavailable, settingsErr
+		}
+		payload.Model = strings.TrimSpace(customSettings.Model)
+		payload.Params = generationParamsWithCustomImageMetadata(
+			payload.Params,
+			customSettings.BaseURL,
+			payload.Model,
+			customSettings.Protocol,
+		)
+	} else if payload.Model == "" {
 		payload.Model = route.Model
 	}
 	if payload.ModelID == "" {
@@ -146,6 +159,9 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 	}
 	payload.Model = generationModelForReferences(route, payload.Model, referenceURLs)
 	task.Model = payload.Model
+	task.BaseURL = stringFromGenerationParam(payload.Params, generationBaseURLRequestOption)
+	task.Protocol = stringFromGenerationParam(payload.Params, generationProtocolRequestOption)
+	task.Endpoint = stringFromGenerationParam(payload.Params, generationEndpointRequestOption)
 
 	generationRequest := GenerationRequestFromMessage(payload, route, referenceURLs)
 	generationRequest.Prompt = workflow.providerPromptForGeneration(route, payload)
@@ -259,6 +275,7 @@ func (workflow *GenerationService) generationRequestForTask(
 		Model:             task.Model,
 		ProjectID:         task.ProjectID,
 		DocumentID:        task.DocumentID,
+		ShotIDs:           task.ShotIDs,
 		ConversationID:    task.ConversationID,
 		Prompt:            task.Prompt,
 		SourceRefs:        task.SourceRefs,
@@ -271,7 +288,19 @@ func (workflow *GenerationService) generationRequestForTask(
 		return coregeneration.Request{}, err
 	}
 	payload.ProjectName = workflow.generationProjectName(payload.ProjectID)
-	if payload.Model == "" {
+	if route.Provider == coregeneration.ProviderWhereslowImage {
+		customSettings, settingsErr := workflow.settings.GetCustomImageAPISettings(ctx)
+		if settingsErr != nil {
+			return coregeneration.Request{}, settingsErr
+		}
+		payload.Model = strings.TrimSpace(customSettings.Model)
+		payload.Params = generationParamsWithCustomImageMetadata(
+			payload.Params,
+			customSettings.BaseURL,
+			payload.Model,
+			customSettings.Protocol,
+		)
+	} else if payload.Model == "" {
 		payload.Model = route.Model
 	}
 	if payload.ModelID == "" {

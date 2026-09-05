@@ -1,14 +1,18 @@
 import {
 	AlertCircle,
+	ArrowUpRight,
 	AudioLines,
 	Check,
 	ChevronDown,
 	Clipboard,
+	Download,
+	FileText,
 	Film,
 	Image as ImageIcon,
 	Loader2,
 	RefreshCw,
 	Save,
+	Sparkles,
 } from "lucide-react";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -20,6 +24,12 @@ import { VideoPlayer } from "@/components/VideoPlayer";
 import type { GenerationAsset } from "@/domains/generation/api/generation";
 import { MarkdownContent } from "@/domains/agent/components/timeline/MarkdownContent";
 import { Button } from "@/shared/components/ui/button";
+import {
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuTrigger,
+} from "@/shared/components/ui/context-menu";
 import {
 	generationAssetPosterSource,
 	generationAssetSelectionKey,
@@ -33,10 +43,12 @@ import {
 	type GenerationEntry,
 } from "@/domains/generation/hooks/useGenerationWorkspace.helpers";
 import { cn } from "@/shared/lib/utils";
+import type { GenerationKind } from "@/domains/generation/api/generation";
 import {
 	generatedAssetSaveKey,
 	generatedTextSaveKey,
 } from "@/domains/generation/components/generatedResultActions";
+import { entryPromptText } from "@/domains/generation/components/mediaGenerationHelpers";
 import {
 	compactGenerationError,
 	shouldHideGenerationErrorDetail,
@@ -46,6 +58,9 @@ import {
 export const GenerationChatPanel: React.FC<{
 	canSaveText?: boolean;
 	entries: GenerationEntry[];
+	kind?: GenerationKind;
+	onOpenSettings?: () => void;
+	onUsePrompt?: (prompt: string) => void;
 	onCopyPrompt?: (entry: GenerationEntry) => void;
 	onCopyResult?: (entry: GenerationEntry) => void;
 	onRefreshVideo: (message: ChatMessage) => void;
@@ -59,6 +74,9 @@ export const GenerationChatPanel: React.FC<{
 }> = ({
 	canSaveText = false,
 	entries,
+	kind = "image",
+	onOpenSettings,
+	onUsePrompt,
 	onCopyPrompt,
 	onCopyResult,
 	onRefreshVideo,
@@ -77,43 +95,140 @@ export const GenerationChatPanel: React.FC<{
 
 	return (
 		<section className="flex min-h-0 flex-1 flex-col bg-ide-editor">
-			<Virtuoso
-				key={listIdentity}
-				className="h-full min-h-0 flex-1"
-				data={entries}
-				alignToBottom
-				computeItemKey={(index, entry) => entry?.id ?? `generation-entry:${index}`}
-				followOutput={(atBottom) => (atBottom ? "smooth" : false)}
-				initialItemCount={Math.min(entries.length, 20)}
-				increaseViewportBy={{ top: 900, bottom: 900 }}
-				skipAnimationFrameInResizeObserver
-				itemContent={(index, entry) => (
-					<div
-						className={cn(
-							"mx-auto w-full max-w-6xl px-4 pb-6 md:px-6",
-							index === 0 && "pt-4 md:pt-6",
-						)}
-					>
-						<GenerationChatEntry
-							entry={entry}
-							canSaveText={canSaveText}
-							onRefreshVideo={onRefreshVideo}
-							onCopyPrompt={onCopyPrompt}
-							onCopyResult={onCopyResult}
-							onSaveAsset={onSaveAsset}
-							onSaveText={onSaveText}
-							onSelect={() => onSelectEntry(entry.id)}
-							onSelectGeneratedAsset={onSelectGeneratedAsset}
-							savedKeys={savedKeys}
-							savingKeys={savingKeys}
-							selectedGeneratedAssetKey={selectedGeneratedAssetKey}
-						/>
-					</div>
-				)}
-			/>
+			{entries.length === 0 ? (
+				<GenerationWelcome kind={kind} onOpenSettings={onOpenSettings} onUsePrompt={onUsePrompt} />
+			) : null}
+			{entries.length > 0 ? (
+				<Virtuoso
+					key={listIdentity}
+					className="h-full min-h-0 flex-1"
+					data={entries}
+					alignToBottom
+					computeItemKey={(index, entry) => entry?.id ?? `generation-entry:${index}`}
+					followOutput={(atBottom) => (atBottom ? "smooth" : false)}
+					initialItemCount={Math.min(entries.length, 20)}
+					increaseViewportBy={{ top: 900, bottom: 900 }}
+					skipAnimationFrameInResizeObserver
+					itemContent={(index, entry) => (
+						<div
+							className={cn(
+								"mx-auto w-full max-w-6xl px-4 pb-6 md:px-6",
+								index === 0 && "pt-4 md:pt-6",
+							)}
+						>
+							<GenerationChatEntry
+								entry={entry}
+								canSaveText={canSaveText}
+								onRefreshVideo={onRefreshVideo}
+								onCopyPrompt={onCopyPrompt}
+								onCopyResult={onCopyResult}
+								onSaveAsset={onSaveAsset}
+								onSaveText={onSaveText}
+								onSelect={() => onSelectEntry(entry.id)}
+								onSelectGeneratedAsset={onSelectGeneratedAsset}
+								savedKeys={savedKeys}
+								savingKeys={savingKeys}
+								selectedGeneratedAssetKey={selectedGeneratedAssetKey}
+							/>
+						</div>
+					)}
+				/>
+			) : null}
 		</section>
 	);
 };
+
+const welcomePrompts = [
+	{
+		label: "产品主视觉",
+		prompt:
+			"一张高级商业广告主视觉，主体居中，克制的棚拍灯光，真实材质，留出标题安全区，电影级质感",
+	},
+	{
+		label: "角色设定",
+		prompt:
+			"建立一套角色设定图：正面、侧面、背面和三种表情，统一服装与发型，干净背景，适合后续镜头保持一致",
+	},
+	{
+		label: "参考图迁移",
+		prompt:
+			"拆解参考图的构图、光线、材质和氛围，只迁移视觉 DNA，不照搬人物和产品，输出可执行的生图提示词",
+	},
+];
+
+const GenerationWelcome: React.FC<{
+	kind: GenerationKind;
+	onOpenSettings?: () => void;
+	onUsePrompt?: (prompt: string) => void;
+}> = ({ kind, onOpenSettings, onUsePrompt }) => (
+	<div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-5 py-10 md:px-8">
+		<div className="w-full max-w-4xl">
+			<div className="mb-10 max-w-2xl">
+				<div className="mb-5 flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
+					<Sparkles className="size-5" />
+				</div>
+				<p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+					AIGC 制作工作区
+				</p>
+				<h1 className="text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
+					从一个想法，开始一张可用的图
+				</h1>
+				<p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
+					先写清楚主体、动作、环境和光线，再选择模型。每次生成都会保留
+					Prompt、模型和版本，方便继续迭代。
+				</p>
+			</div>
+
+			<div className="mb-8 grid gap-3 md:grid-cols-3">
+				{["写下画面目标", "选择模型与画幅", "生成并保留版本"].map((step, index) => (
+					<div
+						key={step}
+						className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3"
+					>
+						<span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground">
+							0{index + 1}
+						</span>
+						<span className="text-sm font-medium text-foreground">{step}</span>
+					</div>
+				))}
+			</div>
+
+			<div className="mb-4 flex items-center justify-between gap-3">
+				<div>
+					<h2 className="text-sm font-semibold text-foreground">从一个制作意图开始</h2>
+					<p className="mt-1 text-xs text-muted-foreground">
+						选择示例会自动填入输入框，你可以继续修改。
+					</p>
+				</div>
+				{kind === "image" && onOpenSettings ? (
+					<button
+						type="button"
+						onClick={onOpenSettings}
+						className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+					>
+						模型设置 <ArrowUpRight className="size-3.5" />
+					</button>
+				) : null}
+			</div>
+			<div className="grid gap-3 md:grid-cols-3">
+				{welcomePrompts.map((item) => (
+					<button
+						key={item.label}
+						type="button"
+						onClick={() => onUsePrompt?.(item.prompt)}
+						className="group min-h-28 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+					>
+						<div className="mb-3 flex items-center justify-between">
+							<span className="text-sm font-semibold text-foreground">{item.label}</span>
+							<ArrowUpRight className="size-4 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+						</div>
+						<p className="line-clamp-3 text-xs leading-5 text-muted-foreground">{item.prompt}</p>
+					</button>
+				))}
+			</div>
+		</div>
+	</div>
+);
 
 const GenerationChatEntry: React.FC<{
 	canSaveText: boolean;
@@ -418,6 +533,10 @@ const GenerationFailureCard: React.FC<{
 	});
 	const errorDetail = visibleGenerationErrorDetail(legacyRawError);
 	const retryable = Boolean(entry.retryable || entry.assistantMessage?.retryable);
+	const errorProvider = entry.errorProvider || entry.assistantMessage?.errorProvider;
+	const errorModel = entry.errorModel || entry.assistantMessage?.errorModel;
+	const errorEndpoint = entry.errorEndpoint || entry.assistantMessage?.errorEndpoint;
+	const errorHTTPStatus = entry.errorHTTPStatus || entry.assistantMessage?.errorHTTPStatus;
 
 	return (
 		<div className="max-w-[min(44rem,92%)] overflow-hidden rounded-sm border border-error-border bg-error-surface">
@@ -437,6 +556,14 @@ const GenerationFailureCard: React.FC<{
 						) : null}
 					</div>
 					<p className="mt-1 text-xs leading-5 text-error-foreground">{summary}</p>
+					{errorProvider || errorModel || errorEndpoint || errorHTTPStatus ? (
+						<div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-error-foreground/80">
+							{errorHTTPStatus ? <span>HTTP {errorHTTPStatus}</span> : null}
+							{errorProvider ? <span>Provider: {errorProvider}</span> : null}
+							{errorModel ? <span>Model: {errorModel}</span> : null}
+							{errorEndpoint ? <span className="break-all">Endpoint: {errorEndpoint}</span> : null}
+						</div>
+					) : null}
 					{retryable ? (
 						<p className="mt-1 text-xs leading-5 text-error-foreground/80">可以稍后重试。</p>
 					) : null}
@@ -574,12 +701,25 @@ const generationFailureSummary = ({
 		return "供应商请求频率受限，请稍后重试。";
 	}
 	if (normalizedType.includes("authentication")) {
+		const normalizedRaw = rawError.toLowerCase();
+		if (normalizedRaw.includes("no access to model")) {
+			return "当前密钥没有所选模型的访问权限。请切换到已授权模型；本机默认使用 MediaGo · Nano Banana 2。";
+		}
 		return "供应商密钥未配置或无效，请检查供应商配置。";
 	}
 
 	const detail = visibleGenerationErrorDetail(rawError) || compactGenerationError(rawError);
 	const normalized = detail.toLowerCase();
 	if (!normalized) return "生成服务没有返回错误详情。";
+	if (
+		normalized.includes("model_not_found") ||
+		normalized.includes("no available channel for model")
+	) {
+		return "当前网关的 default 分组没有所选模型的可用渠道。请在网关后台启用对应渠道，或更换属于可用分组的 API Key 后重试。";
+	}
+	if (normalized.includes("no access to model")) {
+		return "当前密钥没有所选模型的访问权限。请切换到已授权模型；本机默认使用 MediaGo · Nano Banana 2。";
+	}
 
 	// Legacy fallback for locally cached messages created before backend error mapping.
 	if (normalized.includes("空的图片数据") || normalized.includes("empty image")) {
@@ -713,48 +853,79 @@ const GenerationAssetGallery: React.FC<{
 							) : null}
 						</div>
 					) : (
-						<div
-							key={source}
-							className={cn(
-								"relative shrink-0 overflow-hidden rounded-sm border bg-muted-foreground/10",
-								selected ? "border-primary" : "border-border",
-							)}
-						>
-							<PhotoView src={source}>
-								<button type="button" className="block cursor-zoom-in" aria-label="预览生成图片">
-									<img
-										src={source}
-										alt=""
-										className="block h-[22rem] max-h-[62vh] max-w-[min(18rem,78vw)] object-contain"
-									/>
-								</button>
-							</PhotoView>
-							{onSaveAsset ? (
-								<SaveGeneratedResultButton
-									className="absolute right-2 top-2 z-10"
-									saved={savedKeys.includes(generatedAssetSaveKey(entry, asset))}
-									saving={savingKeys.includes(generatedAssetSaveKey(entry, asset))}
-									onSave={() => onSaveAsset(entry, asset)}
-								/>
-							) : null}
-							{onSelectGeneratedAsset ? (
-								<div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-ide-editor/90 px-2 py-2">
-									<span className="truncate text-xs text-foreground">
-										{selected ? "已选用到当前标题区域" : "生成结果"}
-									</span>
-									<Button
-										type="button"
-										size="sm"
-										variant={selected ? "default" : "outline"}
-										className="h-7 shrink-0 rounded-sm px-2"
-										onClick={() => onSelectGeneratedAsset(asset)}
-									>
-										{selected ? <Check className="size-3.5" /> : <ImageIcon className="size-3.5" />}
-										<span>{selected ? "已选用" : "选用"}</span>
-									</Button>
+						<ContextMenu>
+							<ContextMenuTrigger asChild>
+								<div
+									key={source}
+									className={cn(
+										"relative shrink-0 overflow-hidden rounded-sm border bg-muted-foreground/10",
+										selected ? "border-primary" : "border-border",
+									)}
+								>
+									<PhotoView src={source}>
+										<button
+											type="button"
+											className="block cursor-zoom-in"
+											aria-label="预览生成图片"
+										>
+											<img
+												src={source}
+												alt=""
+												className="block h-[22rem] max-h-[62vh] max-w-[min(18rem,78vw)] object-contain"
+											/>
+										</button>
+									</PhotoView>
+									{onSaveAsset ? (
+										<SaveGeneratedResultButton
+											className="absolute right-2 top-2 z-10"
+											saved={savedKeys.includes(generatedAssetSaveKey(entry, asset))}
+											saving={savingKeys.includes(generatedAssetSaveKey(entry, asset))}
+											onSave={() => onSaveAsset(entry, asset)}
+										/>
+									) : null}
+									{onSelectGeneratedAsset ? (
+										<div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-ide-editor/90 px-2 py-2">
+											<span className="truncate text-xs text-foreground">
+												{selected ? "已选用到当前标题区域" : "生成结果"}
+											</span>
+											<Button
+												type="button"
+												size="sm"
+												variant={selected ? "default" : "outline"}
+												className="h-7 shrink-0 rounded-sm px-2"
+												onClick={() => onSelectGeneratedAsset(asset)}
+											>
+												{selected ? (
+													<Check className="size-3.5" />
+												) : (
+													<ImageIcon className="size-3.5" />
+												)}
+												<span>{selected ? "已选用" : "选用"}</span>
+											</Button>
+										</div>
+									) : null}
 								</div>
-							) : null}
-						</div>
+							</ContextMenuTrigger>
+							<ContextMenuContent>
+								<ContextMenuItem onSelect={() => void copyGeneratedImage(source)}>
+									<Clipboard className="size-4" />
+									<span>复制图片</span>
+								</ContextMenuItem>
+								<ContextMenuItem
+									disabled={!onSaveAsset}
+									onSelect={() => onSaveAsset?.(entry, asset)}
+								>
+									<Download className="size-4" />
+									<span>另存为</span>
+								</ContextMenuItem>
+								<ContextMenuItem
+									onSelect={() => void navigator.clipboard.writeText(entryPromptText(entry))}
+								>
+									<FileText className="size-4" />
+									<span>复制提示词</span>
+								</ContextMenuItem>
+							</ContextMenuContent>
+						</ContextMenu>
 					);
 				})}
 				{Array.from({ length: pendingPlaceholderCount }, (_, index) => (
@@ -763,6 +934,16 @@ const GenerationAssetGallery: React.FC<{
 			</div>
 		</PhotoProvider>
 	);
+};
+
+const copyGeneratedImage = async (source: string) => {
+	const response = await fetch(source);
+	const blob = await response.blob();
+	if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+		await navigator.clipboard.write([new ClipboardItem({ [blob.type || "image/png"]: blob })]);
+		return;
+	}
+	await navigator.clipboard.writeText(source);
 };
 
 const GenerationPendingImageCard: React.FC = () => (

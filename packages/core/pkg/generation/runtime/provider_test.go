@@ -891,8 +891,8 @@ func TestProviderRejectsUnsupportedReferenceURLsBeforeCredentials(t *testing.T) 
 	}
 
 	_, err = provider.Generate(context.Background(), generation.Request{
-		RouteID:       generation.RouteOfficialGPTImage2,
-		Prompt:        "edit this image",
+		RouteID:       generation.RouteOfficialGPT41MiniText,
+		Prompt:        "describe this image",
 		ReferenceURLs: []string{"https://example.test/reference.png"},
 	})
 	if err == nil {

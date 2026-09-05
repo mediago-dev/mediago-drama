@@ -41,4 +41,18 @@ describe("useMediaGenerationLifecycle", () => {
 		result.current.syncGenerationEntries([entry({ id: "gen-1", status: "failed" })]);
 		expect(onGenerationError).toHaveBeenCalledWith("gen-1");
 	});
+
+	it("preserves the service error message for a tracked failed generation", () => {
+		const onGenerationError = vi.fn();
+		const { result } = renderHook(() =>
+			useMediaGenerationLifecycle({ kind: "image", onGenerationError }),
+		);
+
+		result.current.syncGenerationEntries([entry({ id: "gen-2", status: "running" })]);
+		result.current.syncGenerationEntries([
+			entry({ id: "gen-2", status: "failed", error: "DMX API Key 尚未配置" }),
+		]);
+
+		expect(onGenerationError).toHaveBeenCalledWith("gen-2", "DMX API Key 尚未配置");
+	});
 });

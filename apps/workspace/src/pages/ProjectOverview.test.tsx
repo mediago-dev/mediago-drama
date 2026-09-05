@@ -646,7 +646,7 @@ describe("ProjectOverview", () => {
 	it("does not render the selected generation resources overview section", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a&workspace=assets"]}>
 					<ProjectOverview />
 				</MemoryRouter>
 			</SWRConfig>,
@@ -697,7 +697,7 @@ describe("ProjectOverview", () => {
 
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a&workspace=assets"]}>
 					<ProjectOverview />
 				</MemoryRouter>
 			</SWRConfig>,
@@ -732,7 +732,7 @@ describe("ProjectOverview", () => {
 	it("opens document-derived resources with section ids from the overview cards", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a&workspace=assets"]}>
 					<ProjectOverview />
 				</MemoryRouter>
 			</SWRConfig>,
@@ -781,7 +781,7 @@ describe("ProjectOverview", () => {
 	it("keeps the resource list open after its local image generation dialog closes", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a&workspace=assets"]}>
 					<ProjectOverview />
 				</MemoryRouter>
 			</SWRConfig>,
@@ -817,7 +817,7 @@ describe("ProjectOverview", () => {
 	it("hides audio actions for non-character document resources", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a&workspace=assets"]}>
 					<ProjectOverview />
 				</MemoryRouter>
 			</SWRConfig>,
@@ -854,7 +854,7 @@ describe("ProjectOverview", () => {
 
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a&workspace=assets"]}>
 					<ProjectOverview />
 				</MemoryRouter>
 			</SWRConfig>,
@@ -882,7 +882,7 @@ describe("ProjectOverview", () => {
 	it("opens audio selection as a locally owned child dialog", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a&workspace=assets"]}>
 					<ProjectOverview />
 				</MemoryRouter>
 			</SWRConfig>,
@@ -917,7 +917,7 @@ describe("ProjectOverview", () => {
 	it("shows in-progress generation status in resource dialogs", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a&workspace=assets"]}>
 					<ProjectOverview />
 				</MemoryRouter>
 			</SWRConfig>,
@@ -934,25 +934,12 @@ describe("ProjectOverview", () => {
 		expect(documentStatus.parentElement?.className).toContain("right-2");
 		expect(documentStatus.parentElement?.className).toContain("top-2");
 		expect(within(documentDialog).queryByText("已完成")).not.toBeInTheDocument();
-
-		fireEvent.keyDown(document, { key: "Escape" });
-		await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-
-		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 视频生成" }));
-		const videoDialog = await screen.findByRole("dialog");
-		expect(within(videoDialog).getByText("第 02 组 总时长：00:06")).toBeInTheDocument();
-		const videoStatus = within(videoDialog).getByText("生成中");
-		expect(videoStatus).toBeInTheDocument();
-		expect(videoStatus.parentElement?.className).toContain("absolute");
-		expect(videoStatus.parentElement?.className).toContain("right-2");
-		expect(videoStatus.parentElement?.className).toContain("top-2");
-		expect(within(videoDialog).queryByText("已完成")).not.toBeInTheDocument();
 	});
 
 	it("submits document-derived resources for background batch image generation", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a&workspace=assets"]}>
 					<ProjectOverview />
 				</MemoryRouter>
 			</SWRConfig>,
@@ -1065,7 +1052,7 @@ describe("ProjectOverview", () => {
 	it("opens storyboard video resources for the selected storyboard document", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a&workspace=shots"]}>
 					<ProjectOverview />
 				</MemoryRouter>
 			</SWRConfig>,
@@ -1158,7 +1145,7 @@ describe("ProjectOverview", () => {
 	it("shows storyboard clipping workbench tabs inside video resources", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a&workspace=shots"]}>
 					<Routes>
 						<Route
 							path="/projects"
@@ -1213,7 +1200,7 @@ describe("ProjectOverview", () => {
 	it("submits storyboard video reels for background batch video generation", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-				<MemoryRouter initialEntries={["/projects?projectId=project-a"]}>
+				<MemoryRouter initialEntries={["/projects?projectId=project-a&workspace=shots"]}>
 					<ProjectOverview />
 				</MemoryRouter>
 			</SWRConfig>,

@@ -83,6 +83,54 @@ func TestListGenerationModelsFiltersMediagoRoutesByUserCatalog(t *testing.T) {
 	}
 }
 
+func TestListGenerationModelsFallsBackToOpenAIModelsCatalog(t *testing.T) {
+	paths := make([]string, 0, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		paths = append(paths, request.URL.Path)
+		if request.Header.Get("Authorization") != "Bearer mgak-newapi" {
+			http.Error(response, "missing bearer token", http.StatusUnauthorized)
+			return
+		}
+		response.Header().Set("Content-Type", "application/json")
+		switch request.URL.Path {
+		case "/v1/models/user":
+			_, _ = response.Write([]byte(`{"error":{"code":"model_not_found","message":"The model 'user' does not exist"}}`))
+		case "/v1/models":
+			_, _ = response.Write([]byte(`{"data":[
+				{"id":"nano-banana-pro","object":"model"},
+				{"id":"nano-banana-2","object":"model"},
+				{"id":"gpt-image-2","object":"model"}
+			]}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	defer server.Close()
+
+	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
+		values: map[string]string{coregeneration.ProviderMediagoImage: "mgak-newapi"},
+	})
+	workflow := NewGenerationService(settingsSvc, nil, nil)
+	workflow.SetMediagoBaseURL(server.URL + "/v1")
+
+	catalog := workflow.ListGenerationModels()
+	for _, routeID := range []string{
+		coregeneration.RouteMediagoGPTImage2,
+		coregeneration.RouteMediagoNanoBanana31,
+		coregeneration.RouteMediagoNanoBananaPro,
+	} {
+		if !generationRouteConfiguredInCatalog(catalog, routeID) {
+			t.Fatalf("route %q should be configured from NewAPI model aliases", routeID)
+		}
+	}
+	if generationRouteConfiguredInCatalog(catalog, coregeneration.RouteMediagoSeedream5Lite) {
+		t.Fatal("unlisted MediaGo route should not be configured")
+	}
+	if got, want := strings.Join(paths, ","), "/v1/models/user,/v1/models"; got != want {
+		t.Fatalf("catalog request paths = %q, want %q", got, want)
+	}
+}
+
 func TestListGenerationModelsHonorsBuildPlatformAllowlistWithExistingKeys(t *testing.T) {
 	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
 		values: map[string]string{

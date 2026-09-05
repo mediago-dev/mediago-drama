@@ -1,31 +1,10 @@
-import { Bot, FileText } from "lucide-react";
+import { Bot, PanelRightClose } from "lucide-react";
 import type React from "react";
-import { useCallback } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 import { useDesktopWindowDrag } from "@/domains/workspace/lib/desktop-window-drag";
-import {
-	agentProjectPath,
-	agentProjectRouteState,
-	getRouteAgentSessionId,
-	getRouteAssetId,
-	getRouteDocumentId,
-	getRouteProjectId,
-	isAgentRoute,
-} from "@/domains/workspace/lib/workbench-route";
-import { useAgentLayoutStore, type AgentLayoutTab } from "@/lib/stores/agent-layout";
-import { OVERVIEW_SENTINEL, useLastDocumentStore } from "@/lib/stores/last-document";
+import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
 import { useWorkModeStore, type WorkMode } from "@/lib/stores/work-mode";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/lib/utils";
-
-const tabs: Array<{
-	value: AgentLayoutTab;
-	label: string;
-	icon: React.ElementType;
-}> = [
-	{ value: "document", label: "文档", icon: FileText },
-	{ value: "agent", label: "agent", icon: Bot },
-];
 
 interface AgentWorkbenchTopBarProps {
 	mode?: WorkMode;
@@ -36,11 +15,11 @@ export const AgentWorkbenchTopBar: React.FC<AgentWorkbenchTopBarProps> = ({ mode
 	const storedWorkMode = useWorkModeStore((state) => state.mode);
 	const startWindowDrag = useDesktopWindowDrag();
 	const workMode = mode ?? storedWorkMode;
-	const title = workMode === "studio" ? "生成历史" : "智能体工作台";
+	const title = workMode === "studio" ? "生成中心" : "项目制作台";
 
 	return (
 		<header
-			className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border bg-ide-toolbar/95 px-3 text-ide-toolbar-foreground"
+			className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card/90 px-5 text-ide-toolbar-foreground"
 			onPointerDown={startWindowDrag}
 		>
 			<div
@@ -58,90 +37,31 @@ export const AgentWorkbenchHeaderActions: React.FC<AgentWorkbenchTopBarProps> = 
 	mode,
 	showTabs,
 }) => {
-	const navigate = useNavigate();
-	const location = useLocation();
 	const tab = useAgentLayoutStore((state) => state.tab);
 	const setTab = useAgentLayoutStore((state) => state.setTab);
 	const storedWorkMode = useWorkModeStore((state) => state.mode);
-	const getLastDocumentId = useLastDocumentStore((state) => state.getLastDocumentId);
 	const workMode = mode ?? storedWorkMode;
 	const shouldShowTabs = showTabs ?? workMode === "agent";
-	const projectId = getRouteProjectId(location.search);
-	const routeAgentSessionId = getRouteAgentSessionId(location.search);
-	const routeDocumentId = getRouteDocumentId(location.search);
-	const routeAssetId = getRouteAssetId(location.search);
-	const selectTab = useCallback(
-		(nextTab: AgentLayoutTab) => {
-			setTab(nextTab);
-			if (workMode !== "agent" || !projectId || !isAgentRoute(location.pathname)) {
-				return;
-			}
-			if (nextTab === "agent") {
-				navigate(agentProjectPath(projectId, { agentSessionId: routeAgentSessionId }), {
-					state: agentProjectRouteState("agent"),
-				});
-				return;
-			}
-			if (!routeDocumentId && !routeAssetId) {
-				const lastDocumentId = getLastDocumentId(projectId);
-				if (lastDocumentId && lastDocumentId !== OVERVIEW_SENTINEL) {
-					navigate(agentProjectPath(projectId, { documentId: lastDocumentId }), {
-						state: agentProjectRouteState("document"),
-					});
-					return;
-				}
-				navigate(agentProjectPath(projectId), {
-					replace: true,
-					state: agentProjectRouteState("overview"),
-				});
-			}
-		},
-		[
-			getLastDocumentId,
-			location.pathname,
-			navigate,
-			projectId,
-			routeAgentSessionId,
-			routeAssetId,
-			routeDocumentId,
-			setTab,
-			workMode,
-		],
-	);
 
 	if (!shouldShowTabs) return null;
 
 	return (
-		<div
-			className="flex h-8 items-center rounded-sm border border-border bg-ide-toolbar p-0.5"
+		<Button
+			type="button"
+			variant={tab === "agent" ? "secondary" : "outline"}
+			size="sm"
+			className={cn(
+				"h-9 gap-2 rounded-lg px-3",
+				tab === "agent" && "border-primary/20 bg-primary/10 text-primary",
+			)}
 			data-desktop-no-drag
-			aria-label="工作台内容"
-			role="group"
+			onClick={() => setTab(tab === "agent" ? "document" : "agent")}
+			aria-pressed={tab === "agent"}
+			aria-label={tab === "agent" ? "收起制作助理" : "打开制作助理"}
+			title={tab === "agent" ? "收起底部制作助理" : "打开底部制作助理"}
 		>
-			{tabs.map((item) => {
-				const Icon = item.icon;
-				const isActive = tab === item.value;
-				const label = item.label;
-				return (
-					<Button
-						key={item.value}
-						type="button"
-						variant="ghost"
-						size="sm"
-						className={cn(
-							"h-7 rounded-control px-2 text-muted-foreground hover:bg-ide-list-hover hover:text-foreground",
-							isActive && "bg-ide-list-active text-ide-list-active-foreground",
-						)}
-						onClick={() => selectTab(item.value)}
-						aria-pressed={isActive}
-						aria-label={label}
-						title={label}
-					>
-						<Icon className="size-3.5" />
-						<span>{label}</span>
-					</Button>
-				);
-			})}
-		</div>
+			{tab === "agent" ? <PanelRightClose className="size-4" /> : <Bot className="size-4" />}
+			<span>{tab === "agent" ? "收起助理" : "底部助理"}</span>
+		</Button>
 	);
 };

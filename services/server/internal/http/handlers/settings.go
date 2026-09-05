@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/whereslowimage"
 	httpresponse "github.com/mediago-dev/mediago-drama/services/server/internal/http/response"
 	service "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 )
@@ -25,6 +26,14 @@ func NewSettings(service *service.Settings) Settings {
 // APIKeyUpdateRequest updates a provider API key.
 type APIKeyUpdateRequest struct {
 	APIKey string `json:"apiKey"`
+}
+
+// CustomImageAPISettingsRequest updates the image-only custom provider.
+type CustomImageAPISettingsRequest struct {
+	BaseURL  string `json:"baseURL"`
+	APIKey   string `json:"apiKey,omitempty"`
+	Model    string `json:"model"`
+	Protocol string `json:"protocol"`
 }
 
 // ProviderLoginStartRequest starts a provider login flow.
@@ -68,6 +77,36 @@ func (handler Settings) HandleAPIKeys(context *gin.Context) {
 	}
 
 	httpresponse.OK(context, list)
+}
+
+// HandleCustomImageAPISettings returns the custom image API configuration without its secret.
+func (handler Settings) HandleCustomImageAPISettings(context *gin.Context) {
+	result, err := handler.service.GetCustomImageAPISettings(context.Request.Context())
+	if err != nil {
+		writeSettingsError(context, err)
+		return
+	}
+	httpresponse.OK(context, result)
+}
+
+// HandlePutCustomImageAPISettings stores the custom image API configuration.
+func (handler Settings) HandlePutCustomImageAPISettings(context *gin.Context) {
+	request, err := decodeJSON[CustomImageAPISettingsRequest](context)
+	if err != nil {
+		httpresponse.Fail(context, http.StatusBadRequest, "invalid request", err)
+		return
+	}
+	result, err := handler.service.SetCustomImageAPISettings(context.Request.Context(), service.CustomImageAPISettingsInput{
+		BaseURL:  request.BaseURL,
+		APIKey:   request.APIKey,
+		Model:    request.Model,
+		Protocol: whereslowimage.Protocol(request.Protocol),
+	})
+	if err != nil {
+		httpresponse.Fail(context, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+	httpresponse.OK(context, result)
 }
 
 // HandleModelPlatforms godoc

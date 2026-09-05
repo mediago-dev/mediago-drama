@@ -4,7 +4,7 @@ import type {
 	GenerationRoute,
 	GenerationVersion,
 } from "@/domains/generation/api/generation";
-import { displayGenerationLabelWithoutAlias } from "@/domains/generation/components/generationDisplayLabels";
+import { displayGenerationVersionLabel } from "@/domains/generation/components/generationDisplayLabels";
 import {
 	resolveImageGenerationSpec,
 	type ImageGenerationSpec,
@@ -139,7 +139,7 @@ export const generationRouteDisplayLabel = (
 	route: GenerationRoute,
 ) => {
 	const version = catalog.versions.find((candidate) => candidate.id === route.versionId);
-	const model = version ? displayGenerationLabelWithoutAlias(version.label) : route.model;
+	const model = version ? displayGenerationVersionLabel(version.label) : route.model;
 	return `${providerLabel(route.provider)} · ${model}`;
 };
 

@@ -15,9 +15,20 @@ type CredentialSpec struct {
 func CredentialSpecs() []CredentialSpec {
 	specs := []CredentialSpec{
 		{
-			ID:          ProviderMediago,
-			Label:       "MediaGo",
-			Description: "MediaGo unified aggregation platform",
+			ID:              ProviderMediago,
+			Label:           "MediaGo",
+			Description:     "统一网关文本和视频路由",
+			CredentialLabel: "文本 / 视频 API Key",
+			Placeholder:     "输入 GPT 文本 API Key",
+			Help:            "仅供文本和视频生成使用。",
+		},
+		{
+			ID:              ProviderWhereslowImage,
+			Label:           "自定义 Gemini",
+			Description:     "WhereSlow Nano Banana 2 静态图片生成",
+			CredentialLabel: "API Key",
+			Placeholder:     "输入图片生成 API Key",
+			Help:            "仅用于 WhereSlow 图片生成，不会用于 Codex 推理。",
 		},
 		{
 			ID:              ProviderDMX,
@@ -33,14 +44,20 @@ func CredentialSpecs() []CredentialSpec {
 			Description: "OpenRouter multimodal routes",
 		},
 		{
-			ID:          ProviderOpenAI,
-			Label:       "OpenAI",
-			Description: "OpenAI official text and image routes",
+			ID:              ProviderOpenAI,
+			Label:           "OpenAI",
+			Description:     "OpenAI 文本推理",
+			CredentialLabel: "OpenAI API Key",
+			Placeholder:     "输入 OpenAI API Key",
+			Help:            "配置后可使用 OpenAI 文本模型；调用会消耗你的 OpenAI API 额度。",
 		},
 		{
-			ID:          ProviderGoogle,
-			Label:       "Google Gemini",
-			Description: "Google official Gemini text and image routes",
+			ID:              ProviderGoogle,
+			Label:           "Google Gemini",
+			Description:     "Google Gemini 文本模型",
+			CredentialLabel: "Google AI API Key",
+			Placeholder:     "输入 Google AI API Key",
+			Help:            "配置后可使用 Google Gemini 文本模型；调用会消耗你的 Google API 额度。",
 		},
 		{
 			ID:              ProviderMiniMax,
@@ -60,16 +77,16 @@ func CredentialSpecs() []CredentialSpec {
 		},
 		{
 			ID:          ProviderVolcengine,
-			Label:       "Volcengine",
-			Description: "Seedream and Seedance official routes",
+			Label:       "火山引擎",
+			Description: "Seedance 视频官方模型",
 		},
 		{
 			ID:              ProviderAliyun,
 			Label:           "阿里云百炼",
-			Description:     "阿里云百炼万相图像与 HappyHorse 视频生成路由",
+			Description:     "阿里云百炼 HappyHorse 视频生成路由",
 			CredentialLabel: "百炼 API Key",
 			Placeholder:     "输入阿里云百炼 API Key",
-			Help:            "用于 wan2.7-image-pro、wan2.7-image 图像生成与编辑，以及 HappyHorse 1.1 视频生成。",
+			Help:            "用于 HappyHorse 1.1 视频生成。",
 		},
 		{
 			ID:             ProviderJimeng,

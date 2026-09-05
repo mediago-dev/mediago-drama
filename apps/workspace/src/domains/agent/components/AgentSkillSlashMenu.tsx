@@ -82,7 +82,7 @@ export const AgentSkillSlashMenu: React.FC<AgentSkillSlashMenuProps> = ({
 		>
 			<div className="agent-skill-slash-menu" role="listbox" aria-label="Skill 列表">
 				<div ref={scrollRef} className="agent-skill-slash-scroll" onScroll={updateScrollHint}>
-					<div className="agent-skill-slash-heading">Skills</div>
+					<div className="agent-skill-slash-heading">可用技能</div>
 					{isLoading ? (
 						<div className="agent-skill-slash-empty">正在加载 Skill...</div>
 					) : errorMessage ? (

@@ -5,6 +5,14 @@ node_modules
 dist
 bin
 coverage
+test-results
+playwright-report
+*.log
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
 packages/server/internal/app/docs/
 /mediago-server
 __pycache__/

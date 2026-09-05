@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import httpClient from "@/shared/lib/http";
 import {
 	agentGenerationConversationScopeId,
+	canonicalGenerationSessionId,
 	getGenerationModels,
 	getGenerationTasks,
 	projectGenerationConversation,
 	projectGenerationConversationId,
 	retryGenerationTask,
 	sendGenerationBatch,
+	sendProjectGenerationMessage,
 	updateGenerationTaskAsset,
 } from "@/domains/generation/api/generation";
 
@@ -146,6 +148,15 @@ describe("projectGenerationConversationId", () => {
 	});
 });
 
+describe("canonicalGenerationSessionId", () => {
+	it("folds the legacy duplicated project prefix into the current project session", () => {
+		expect(canonicalGenerationSessionId("project-project-ce899-image")).toBe(
+			"project-ce899-image",
+		);
+		expect(canonicalGenerationSessionId("project-ce899-image")).toBe("project-ce899-image");
+	});
+});
+
 describe("projectGenerationConversation", () => {
 	it("returns undefined without a project id", () => {
 		expect(projectGenerationConversation(undefined, "image")).toBeUndefined();
@@ -192,5 +203,63 @@ describe("projectGenerationConversation", () => {
 			conversationTitle: "剧集 B · 提示词生成",
 			historyScopeId: "proj-3-text",
 		});
+	});
+});
+
+describe("sendProjectGenerationMessage", () => {
+	it("creates and submits through the single project image conversation", async () => {
+		vi.mocked(httpClient.post)
+			.mockResolvedValueOnce({
+				code: 0,
+				message: "ok",
+				success: true,
+				data: {
+					sessionId: "proj-1-image",
+					scopeId: "agent",
+					kind: "image",
+					title: "测试项目 · 图片",
+				},
+			})
+			.mockResolvedValueOnce({
+				code: 0,
+				message: "ok",
+				success: true,
+				data: { id: "generation-1", status: "completed", assets: [] },
+			});
+
+		await sendProjectGenerationMessage({
+			kind: "image",
+			projectId: " proj-1 ",
+			projectName: "测试项目",
+			routeId: "whereslow-image.nano-banana-2",
+			familyId: "whereslow-image",
+			versionId: "nano-banana-2",
+			provider: "whereslow-image",
+			modelId: "nano-banana-2",
+			model: "nano-banana-2",
+			prompt: "角色标准图",
+			params: { aspectRatio: "16:9", resolution: "2K", n: 1 },
+			referenceUrls: [],
+			referenceAssetIds: [],
+		});
+
+		expect(httpClient.post).toHaveBeenNthCalledWith(1, "/generation/sessions", {
+			sessionId: "proj-1-image",
+			scopeId: "agent",
+			kind: "image",
+			title: "测试项目 · 图片",
+		});
+		expect(httpClient.post).toHaveBeenNthCalledWith(
+			2,
+			"/generation/sessions/proj-1-image/messages",
+			expect.objectContaining({
+				sessionId: "proj-1-image",
+				projectId: "proj-1",
+				kind: "image",
+				routeId: "whereslow-image.nano-banana-2",
+				params: { aspectRatio: "16:9", resolution: "2K", n: 1 },
+			}),
+			expect.objectContaining({ timeout: expect.any(Number) }),
+		);
 	});
 });

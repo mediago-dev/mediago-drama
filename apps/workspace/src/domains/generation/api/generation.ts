@@ -95,6 +95,21 @@ export type ImportGenerationMediaAssetsRequest = Omit<
 export type GenerationAsset = GeneratedGenerationAsset & { sourceType?: string };
 export type GenerationUsage = GeneratedGenerationUsage;
 export type GenerationMessageResponse = GeneratedGenerationMessageResponse;
+
+export interface CodexImageRequest {
+	prompt: string;
+	referenceUrls?: string[];
+	resourceId: string;
+	resourceTitle: string;
+	resourceType: SelectedGenerationResourceType;
+	shotIds?: string[];
+}
+
+export interface CodexImageResponse {
+	mediaAssetId: string;
+	url: string;
+	selected?: SelectedGenerationAsset;
+}
 export type GenerationOptimizeAndGenerateResponse = GeneratedGenerationOptimizeAndGenerateResponse;
 export type GenerationVoicePreviewRequest = GeneratedGenerationVoicePreviewRequest;
 export type GenerationVoicePreviewResponse = GeneratedGenerationVoicePreviewResponse;
@@ -178,6 +193,15 @@ export const generationConversationsKey = "/generation/sessions";
 export const generationNotificationsKey = "/generation/notifications";
 export const selectedGenerationAssetsKey = "/generation/selected-assets";
 export const defaultGenerationConversationScopeId = "studio";
+
+export const generateCodexImage = async (projectId: string, payload: CodexImageRequest) => {
+	const response = await httpClient.post<CodexImageResponse>(
+		`/projects/${encodeURIComponent(projectId)}/codex-image`,
+		payload,
+		{ timeout: 330000 },
+	);
+	return response.data;
+};
 export const agentGenerationConversationScopeId = "agent";
 
 export const generationProjectConversationScopeId = (projectId: string) => projectId.trim();
@@ -312,7 +336,13 @@ export const getGenerationConversations = async (
 			}
 		).conversations ??
 		[];
-	const conversations = sessions.map(normalizeGenerationConversation);
+	const conversations = Array.from(
+		new Map(
+			sessions
+				.map(normalizeGenerationConversation)
+				.map((conversation) => [conversation.id, conversation] as const),
+		).values(),
+	);
 	return {
 		...response.data,
 		sessions: conversations,
@@ -527,6 +557,43 @@ export const sendGenerationMessage = async (request: GenerationMessageRequest) =
 	return response.data;
 };
 
+export interface ProjectGenerationMessageRequest extends Omit<
+	GenerationMessageRequest,
+	"conversationId" | "scopeId" | "projectId" | "kind"
+> {
+	kind: GenerationKind;
+	projectId: string;
+	projectName?: string | null;
+}
+
+/**
+ * 项目内所有生成入口的唯一提交链路。
+ * 阶段工作台、Creator Workspace 与生成中心必须通过同一个项目会话提交，
+ * 这样历史、归档、版本与素材绑定不会因入口不同而分叉。
+ */
+export const sendProjectGenerationMessage = async ({
+	kind,
+	projectId,
+	projectName,
+	...request
+}: ProjectGenerationMessageRequest) => {
+	const conversation = projectGenerationConversation(projectId, kind, projectName);
+	if (!conversation) throw new Error("项目生图缺少 projectId。");
+	await createGenerationConversation({
+		id: conversation.conversationId,
+		kind,
+		scopeId: conversation.conversationScopeId,
+		title: conversation.conversationTitle,
+	});
+	return sendGenerationMessage({
+		...request,
+		kind,
+		projectId: projectId.trim(),
+		conversationId: conversation.conversationId,
+		scopeId: conversation.conversationScopeId,
+	});
+};
+
 export const sendGenerationBatch = async (request: GenerationBatchRequest) => {
 	const response = await httpClient.post<GenerationBatchResponse>(generationBatchesKey, request, {
 		timeout: generationRequestTimeoutMs,
@@ -644,6 +711,22 @@ export const getGenerationVideo = async (id: string) => {
 	return response.data;
 };
 
+export const waitForGenerationResult = async (
+	initial: GenerationMessageResponse,
+	options: { intervalMs?: number; maxAttempts?: number } = {},
+) => {
+	if (initial.status === "completed" || initial.status === "failed") return initial;
+	const intervalMs = options.intervalMs ?? 2_000;
+	const maxAttempts = options.maxAttempts ?? 300;
+	let response = initial;
+	for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+		await new Promise<void>((resolve) => window.setTimeout(resolve, intervalMs));
+		response = await getGenerationVideo(initial.id);
+		if (response.status === "completed" || response.status === "failed") return response;
+	}
+	throw new Error("图片生成仍在后台运行，请稍后在生成历史查看结果。");
+};
+
 const generationMessagePayload = (request: GenerationMessageRequest) => {
 	const raw = request as GenerationMessageRequest & {
 		conversationId?: string;
@@ -690,7 +773,7 @@ const normalizeGenerationConversation = (
 		sessionId?: string;
 		scopeId?: string;
 	};
-	const sessionId = raw.sessionId ?? raw.id ?? "";
+	const sessionId = canonicalGenerationSessionId(raw.sessionId ?? raw.id ?? "");
 	return {
 		...conversation,
 		id: sessionId,
@@ -701,13 +784,18 @@ const normalizeGenerationConversation = (
 
 const normalizeGenerationTask = (task: GenerationTaskRecord): GenerationTask => {
 	const raw = task as GenerationTaskRecord & { conversationId?: string; sessionId?: string };
-	const sessionId = raw.sessionId ?? raw.conversationId ?? "";
+	const sessionId = canonicalGenerationSessionId(raw.sessionId ?? raw.conversationId ?? "");
 	return {
 		...task,
 		sessionId,
 		conversationId: sessionId,
 	};
 };
+
+// 早期项目入口曾把已经以 project- 开头的项目 ID 再加一次前缀，形成
+// project-project-xxx-image。读取时折叠为当前 canonical session，避免历史在 UI 中分叉。
+export const canonicalGenerationSessionId = (value: string) =>
+	value.trim().replace(/^project-project-/u, "project-");
 
 const normalizeGenerationPreference = (
 	preference: GenerationPreferenceRecord | GenerationPreference,

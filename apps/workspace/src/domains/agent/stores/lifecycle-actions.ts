@@ -287,6 +287,8 @@ export const createAgentLifecycleActions = ({
 		});
 	},
 	hydrateAgentChatState: (messages, activity, options) => {
+		const localState = get();
+		const optimisticPending = localState.conversations[pendingRootRunId];
 		let conversations = normalizeAgentConversations(options?.conversations ?? {});
 		// Normalization re-keys conversations by their runId, so a backend rootRunId can fail to
 		// match even when the data is present. Fall back to the latest conversation instead of null,
@@ -297,6 +299,41 @@ export const createAgentLifecycleActions = ({
 				: latestConversationRunId(conversations);
 		const normalizedMessages = normalizeAgentMessages(messages);
 		const isRunning = options?.running ?? deriveIsRunning(conversations);
+		const latestOptimisticUserMessage = [...(optimisticPending?.messages ?? [])]
+			.reverse()
+			.find((message) => message.role === "user");
+		const incomingMessages = [
+			...normalizedMessages,
+			...Object.values(conversations).flatMap((conversation) => conversation.messages),
+		];
+		const shouldKeepOptimisticUserMessage =
+			Boolean(latestOptimisticUserMessage) &&
+			!incomingMessages.some(
+				(message) =>
+					message.role === "user" &&
+					message.content === latestOptimisticUserMessage?.content &&
+					JSON.stringify(message.metadata?.displayAttachments ?? []) ===
+						JSON.stringify(latestOptimisticUserMessage?.metadata?.displayAttachments ?? []),
+			);
+		if (latestOptimisticUserMessage && shouldKeepOptimisticUserMessage) {
+			const targetRunId = rootRunId ?? latestConversationRunId(conversations) ?? pendingRootRunId;
+			const target =
+				conversations[targetRunId] ??
+				createConversation(targetRunId, {
+					name: "主智能体",
+					status: isRunning ? "running" : "completed",
+				});
+			conversations = {
+				...conversations,
+				[targetRunId]: {
+					...target,
+					messages: [...target.messages, latestOptimisticUserMessage],
+					status: isRunning ? "running" : target.status,
+					updatedAt: new Date().toISOString(),
+				},
+			};
+			rootRunId = targetRunId;
+		}
 		if (!rootRunId && normalizedMessages.length > 0) {
 			const fallbackRootRunId = pendingRootRunId;
 			conversations = {

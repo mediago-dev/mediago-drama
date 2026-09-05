@@ -550,6 +550,13 @@ func (store *Service) loadProjectsUnlocked(status string) ([]workspaceProjectRec
 			if err := store.ensureProjectLayout(projects[index]); err != nil {
 				return nil, err
 			}
+			manifest, err := shared.ReadProjectManifestFile(filepath.Join(projects[index].ProjectDir, "project.media.json"))
+			if err != nil {
+				return nil, fmt.Errorf("reading project summary for %s: %w", projects[index].ID, err)
+			}
+			projects[index].Production = manifest.Overview.Production
+			projects[index].CoverAssetID = manifest.Overview.CoverAssetID
+			projects[index].SortOrder = manifest.Overview.SortOrder
 		}
 		count, err := store.countProjectDocumentsUnlocked(projects[index].ID)
 		if err != nil && projects[index].Status != repository.ProjectStatusTrashed {

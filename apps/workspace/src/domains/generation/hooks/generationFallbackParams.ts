@@ -30,6 +30,7 @@ const paramGroupByName: Record<string, NonNullable<GenerationParam["group"]>> = 
 	returnLastFrame: "other",
 	executionExpiresAfter: "other",
 	maxTokens: "other",
+	reasoningEffort: "other",
 	generateAudio: "other",
 	temperature: "other",
 	voiceId: "voice",
@@ -351,11 +352,11 @@ export function libTVGPTImageParams(): GenerationParam[] {
 				"9:21",
 			]),
 		),
-		selectParam("resolution", "Resolution", "2K", libTVImageOptions(["1K", "2K", "4K"])),
-		selectParam("quality", "Quality", "medium", [
-			{ label: "Low", value: "low" },
-			{ label: "Medium", value: "medium" },
-			{ label: "High", value: "high" },
+		selectParam("resolution", "分辨率", "2K", libTVImageOptions(["1K", "2K", "4K"])),
+		selectParam("quality", "画质", "medium", [
+			{ label: "低", value: "low" },
+			{ label: "中", value: "medium" },
+			{ label: "高", value: "high" },
 		]),
 	];
 }
@@ -939,7 +940,7 @@ export function libTVSeedanceStandardParams(): GenerationParam[] {
 function libTVSeedanceParamSet(allowHighRes: boolean): GenerationParam[] {
 	return [
 		selectParam("aspectRatio", "比例", "16:9", [
-			{ label: "Auto", value: "adaptive" },
+			{ label: "自动", value: "adaptive" },
 			{ label: "16:9", value: "16:9" },
 			{ label: "4:3", value: "4:3" },
 			{ label: "1:1", value: "1:1" },
@@ -1066,6 +1067,20 @@ export function textParams(): GenerationParam[] {
 	return [
 		numberParam("temperature", "温度", 0.7, 0, 2),
 		optionalNumberParam("maxTokens", "最大令牌数", 1, 32768),
+	];
+}
+
+export function gpt56SolTextParams(): GenerationParam[] {
+	return [
+		selectParam("reasoningEffort", "推理强度", "medium", [
+			{ label: "不推理", value: "none" },
+			{ label: "低", value: "low" },
+			{ label: "中（推荐）", value: "medium" },
+			{ label: "高", value: "high" },
+			{ label: "超高", value: "xhigh" },
+			{ label: "最大", value: "max" },
+		]),
+		optionalNumberParam("maxTokens", "最大输出令牌数", 1, 128000),
 	];
 }
 

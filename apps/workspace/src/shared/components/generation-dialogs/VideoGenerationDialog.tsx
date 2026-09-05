@@ -23,7 +23,7 @@ interface VideoGenerationDialogProps {
 		assets: GenerationAsset[],
 		sourceTaskId: string,
 	) => void;
-	onGenerationError?: (pendingId: string) => void;
+	onGenerationError?: (pendingId: string, message?: string) => void;
 	onGenerationStart?: (pendingId: string, prompt: string) => void;
 	onOpenChange: (open: boolean) => void;
 	onOpenReferenceGeneration?: (section: MarkdownSectionContext) => void;

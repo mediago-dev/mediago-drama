@@ -94,6 +94,8 @@ export interface UseGenerationWorkspaceOptions {
 	projectStyleOnly?: boolean;
 	requireConversation?: boolean;
 	sectionId?: string | null;
+	/** Production shots this generation is intended to serve. */
+	shotIds?: string[];
 	taskType?: GenerationTaskType;
 	uploadIdPrefix?: string;
 	useRawPrompt?: boolean;
@@ -141,6 +143,7 @@ export const useGenerationWorkspace = ({
 	projectStyleOnly = false,
 	requireConversation = false,
 	sectionId,
+	shotIds = [],
 	taskType = "studio",
 	uploadIdPrefix = "generation",
 	useRawPrompt = false,
@@ -237,6 +240,7 @@ export const useGenerationWorkspace = ({
 		(loadedPromptCategories !== undefined || promptCategoriesError !== undefined);
 	const {
 		catalog,
+		hasAvailableRoutesForKind,
 		hasConfiguredRoutesForKind,
 		hasLiveCatalog,
 		kind,
@@ -404,6 +408,7 @@ export const useGenerationWorkspace = ({
 		requireConversation,
 		resolvedConversationScopeId,
 		sectionId: trimmedSectionId,
+		shotIds,
 		selectedFamily,
 		selectedParams,
 		selectedRoute,
@@ -518,6 +523,7 @@ export const useGenerationWorkspace = ({
 		fullPrompt,
 		generationPreferences,
 		generationEntries,
+		hasAvailableRoutesForKind,
 		hasConfiguredRoutesForKind,
 		hasLoadedPromptInsertItems,
 		hasLiveCatalog,

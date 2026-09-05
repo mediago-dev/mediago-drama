@@ -10,7 +10,7 @@ interface ThemeState {
 	toggle: () => void;
 }
 
-const themeStoreKey = "app.theme.v1";
+const themeStoreKey = "app.theme.v2";
 
 const isThemeMode = (value: unknown): value is ThemeMode =>
 	value === "light" || value === "dark" || value === "system";
@@ -18,7 +18,7 @@ const isThemeMode = (value: unknown): value is ThemeMode =>
 export const useThemeStore = create<ThemeState>()(
 	persist(
 		immer((set, get) => ({
-			mode: "system",
+			mode: "light",
 			setMode: (m) =>
 				set((state) => {
 					state.mode = m;
@@ -33,7 +33,7 @@ export const useThemeStore = create<ThemeState>()(
 		{
 			name: themeStoreKey,
 			storage: createJSONStorage(() => localStorage),
-			version: 1,
+			version: 2,
 			partialize: (state) => ({ mode: state.mode }),
 			merge: (persisted, current) => {
 				const mode = (persisted as Partial<Pick<ThemeState, "mode">> | undefined)?.mode;

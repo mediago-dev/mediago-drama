@@ -29,7 +29,7 @@ export const useMediaGenerationLifecycle = ({
 		assets: GenerationAsset[],
 		sourceEntryId: string,
 	) => void;
-	onGenerationError?: (pendingId: string) => void;
+	onGenerationError?: (pendingId: string, message?: string) => void;
 	onGenerationResponse?: (pendingId: string, response: GenerationMessageResponse) => void;
 	onGenerationStart?: (pendingId: string, prompt: string) => void;
 }) => {
@@ -70,7 +70,8 @@ export const useMediaGenerationLifecycle = ({
 			if (failedPendingIdsRef.current.has(pendingId)) return;
 
 			failedPendingIdsRef.current.add(pendingId);
-			onGenerationError?.(pendingId);
+			if (event.message) onGenerationError?.(pendingId, event.message);
+			else onGenerationError?.(pendingId);
 		},
 		[kind, onGenerationError],
 	);
@@ -102,7 +103,8 @@ export const useMediaGenerationLifecycle = ({
 					failedPendingIdsRef.current.add(pendingId);
 					materializedPendingIdsRef.current.delete(pendingId);
 					delete pendingEntryIdsRef.current[entry.id];
-					onGenerationError?.(pendingId);
+					if (entry.error) onGenerationError?.(pendingId, entry.error);
+					else onGenerationError?.(pendingId);
 					continue;
 				}
 

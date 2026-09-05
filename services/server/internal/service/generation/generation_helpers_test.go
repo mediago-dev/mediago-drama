@@ -6,6 +6,39 @@ import (
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 )
 
+func TestFailedGenerationResponseReturnsCustomProviderDetails(t *testing.T) {
+	response := FailedGenerationResponse("task-custom", &coregeneration.HTTPError{
+		Provider:   coregeneration.ProviderWhereslowImage,
+		Model:      "nano-banana-2",
+		Endpoint:   "https://cn.whereslow.online/v1beta/models/nano-banana-2:generateContent",
+		StatusCode: 503,
+		Body:       `{"error":{"message":"upstream unavailable"}}`,
+		Code:       "upstream_unavailable",
+		Reason:     coregeneration.FailureProviderError,
+		Message:    "upstream unavailable",
+	})
+	if response.Message != "upstream unavailable" || response.ErrorProvider != coregeneration.ProviderWhereslowImage || response.ErrorModel != "nano-banana-2" || response.ErrorEndpoint != "https://cn.whereslow.online/v1beta/models/nano-banana-2:generateContent" || response.ErrorHTTPStatus != 503 {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestGenerationTaskFromMessageStoresCustomImageRequestMetadata(t *testing.T) {
+	params := generationParamsWithCustomImageMetadata(
+		map[string]any{"aspectRatio": "1:1"},
+		"https://cn.whereslow.online/",
+		"nano-banana-2",
+		"gemini_generate_content",
+	)
+	task := GenerationTaskFromMessage(
+		GenerationMessageRequest{Model: "nano-banana-2", Prompt: "draw", Params: params},
+		coregeneration.ModelRoute{ID: coregeneration.RouteWhereslowNanoBanana2, Provider: coregeneration.ProviderWhereslowImage, Kind: coregeneration.KindImage},
+		GenerationMessageResponse{ID: "task-custom", Status: "submitted"},
+	)
+	if task.BaseURL != "https://cn.whereslow.online" || task.Protocol != "gemini_generate_content" || task.Endpoint != "https://cn.whereslow.online/v1beta/models/nano-banana-2:generateContent" {
+		t.Fatalf("task metadata = %#v", task)
+	}
+}
+
 func TestGenerationProjectIDFromScopeID(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -11,7 +11,7 @@ editable: true
 ## 回复与任务边界
 
 - 使用中文回复用户。
-- 处理创作任务时，优先使用运行时自带的文件/命令能力或 MediaGo Drama MCP 工具完成；
+- 处理创作任务时，优先使用运行时自带的文件、命令和 AIGC Production OS 项目工具完成；
   不要为了完成创作任务临时写代码或脚本。
 - 用户只是问候、闲聊或询问能力时，不要修改文件。
 
@@ -54,6 +54,11 @@ editable: true
 
 ## 生成媒体（图片/视频）
 
+- 图片生成优先使用运行环境内置的 Codex `Image generation` 工具。它使用当前 Codex 账户执行，完成后由桌面端自动把图片回显到对话并归档到当前项目资产库。不要因为 MediaGo 路由不可用而中止。
+- 使用 Codex 生图时，一次请求对应一张完整成图；分镜母图必须作为一张 4x5 或用户指定宫格的整体图片生成，不得拆成多个独立任务。完成后直接汇报结果，不再弹 MediaGo 参数确认表。
+- MediaGo Generation MCP 仅作为用户明确选择且路由有权限时的备用通道。视频生成仍使用 MediaGo Generation MCP。
+
+- 使用 MediaGo 备用通道时，遵循下面的 Generation MCP 确认和异步提交规则。
 - Generation MCP 只提供 `generate_media` 和 `generate_media_batch`，分别用于提交单项和批量生成。
 - 生成、修改或重绘图片前，必须先调用 MCP `load_skill` 装载 `image-generation`；
   图片专属的参数确认、参考图与异步提交流程以该 Skill 为准。

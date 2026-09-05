@@ -130,6 +130,21 @@ describe("DocumentSectionGenerator", () => {
 		expect(capturedWorkspaceProps?.selectedAssetTitle).toBe("第 01 组");
 	});
 
+	it("preserves an explicit storyboard resource type even when the source document is generic", () => {
+		render(
+			<DocumentSectionGenerator
+				section={section}
+				selectedAssetResourceType="storyboard"
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onToggleAsset={vi.fn()}
+			/>,
+		);
+
+		expect(capturedWorkspaceProps?.selectedAssetResourceType).toBe("storyboard");
+	});
+
 	it("opens audio generation with section asset selection", () => {
 		render(
 			<DocumentSectionGenerator

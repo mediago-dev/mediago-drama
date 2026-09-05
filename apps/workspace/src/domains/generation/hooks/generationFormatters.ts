@@ -42,13 +42,21 @@ export const userRequestDetails = (
 	route: GenerationRoute,
 	params: Record<string, unknown>,
 	referenceCount = 0,
-): ChatMessageDetail[] => [
-	{
-		label: "供应商",
-		value: `${routeProviderLabel(route)} · ${generationModelForReferences(route, referenceCount)}`,
-	},
-	...paramDetails(params, route.params),
-];
+): ChatMessageDetail[] => {
+	const providerDetails =
+		route.provider === "whereslow-image"
+			? [
+					{ label: "供应商", value: routeProviderLabel(route) },
+					{ label: "模型", value: generationModelForReferences(route, referenceCount) },
+				]
+			: [
+					{
+						label: "供应商",
+						value: `${routeProviderLabel(route)} · ${generationModelForReferences(route, referenceCount)}`,
+					},
+				];
+	return [...providerDetails, ...paramDetails(params, route.params)];
+};
 
 export const userTaskDetails = (
 	task: GenerationTask,
@@ -63,17 +71,35 @@ export const userTaskDetails = (
 				),
 			)
 		: taskParams;
+	const providerDetails =
+		task.provider === "whereslow-image" || route?.provider === "whereslow-image"
+			? [
+					{ label: "供应商", value: route ? routeProviderLabel(route, catalog.providers) : "自定义 Gemini" },
+					{ label: "模型", value: task.model || route?.model || "" },
+					...(task.baseUrl ? [{ label: "API Base URL", value: task.baseUrl }] : []),
+					...(task.protocol ? [{ label: "协议", value: protocolLabel(task.protocol) }] : []),
+				]
+			: [
+					{
+						label: "供应商",
+						value: route
+							? `${routeProviderLabel(route, catalog.providers)} · ${task.model || route.model}`
+							: task.model,
+					},
+				];
 	return [
 		...requestDetailsFromTaskParams(taskParams),
-		{
-			label: "供应商",
-			value: route
-				? `${routeProviderLabel(route, catalog.providers)} · ${task.model || route.model}`
-				: task.model,
-		},
+		...providerDetails,
 		...paramDetails(visibleParams, route?.params ?? []),
 	];
 };
+
+const protocolLabel = (protocol: string) =>
+	protocol === "gemini_generate_content"
+		? "Gemini generateContent"
+		: protocol === "openai_compatible"
+			? "OpenAI Compatible"
+			: protocol;
 
 const generationModelForReferences = (route: GenerationRoute, referenceCount: number) => {
 	if (route.id !== "mediago.happyhorse-1.1") return route.model;
@@ -221,6 +247,8 @@ export const providerLabel = (provider: string) => {
 			return "阿里云百炼";
 		case "mediago":
 			return "MediaGo";
+		case "whereslow-image":
+			return "自定义 Gemini";
 		case "dmx":
 			return "DMX";
 		case "openrouter":
@@ -255,6 +283,13 @@ export const routeProviderLabel = (
 	providers?: GenerationProviderInfo[],
 ) => {
 	if (route.provider === "mediago") return `${providerLabel(route.provider)} · 统一接口`;
+	if (route.provider === "whereslow-image") {
+		return (
+			route.label?.trim() ||
+			providers?.find((provider) => provider.id === route.provider)?.label ||
+			"自定义图片 API"
+		);
+	}
 
 	return `${providerLabel(route.provider)} · ${providerTypeLabel(providerTypeOf(route.provider, providers))}`;
 };

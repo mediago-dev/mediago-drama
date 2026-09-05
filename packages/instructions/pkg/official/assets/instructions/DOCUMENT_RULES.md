@@ -1,7 +1,7 @@
 ---
 slug: DOCUMENT_RULES
 title: 核心文档规则
-description: MediaGo Drama 的文档分类、二级标题资源边界和 section-id 规则。
+description: AIGC Production OS 的文档分类、二级标题资源边界和 section-id 规则。
 order: 2
 editable: false
 injectable: true

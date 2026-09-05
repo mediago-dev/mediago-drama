@@ -57,7 +57,7 @@ func TestDocumentMCPServersValidateProjectID(t *testing.T) {
 		agentEnv[item.Name] = item.Value
 	}
 	if agentEnv["MEDIAGO_DRAMA_AGENT_TAG"] != "MediaGo Drama Agent" ||
-		!strings.Contains(agentEnv["MEDIAGO_DRAMA_ROLE_PERSONA"], "本地工作区 Agent") {
+		!strings.Contains(agentEnv["MEDIAGO_DRAMA_ROLE_PERSONA"], "AIGC Production OS 内的本地工作区助手") {
 		t.Fatalf("agent env = %#v, want fixed agent guideline env", agentEnv)
 	}
 	if _, ok := agentEnv["MEDIAGO_DRAMA_AGENT_ROLE_ID"]; ok {

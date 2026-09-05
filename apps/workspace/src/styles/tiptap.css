@@ -420,9 +420,13 @@
 }
 
 .tiptap-content blockquote {
-	border-left: var(--border-width-scale-md) solid var(--border);
-	padding-left: 0.75rem;
-	color: var(--muted-foreground);
+	border: 1px solid color-mix(in srgb, #dc2626 24%, transparent);
+	border-left: 4px solid #dc2626;
+	border-radius: 0.5rem;
+	background: color-mix(in srgb, #dc2626 7%, transparent);
+	padding: 0.75rem 0.875rem;
+	color: #b91c1c;
+	font-weight: 600;
 }
 
 .tiptap-content a {

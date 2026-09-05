@@ -242,6 +242,22 @@ describe("ImageGenerationDialog", () => {
 		expect(capturedGeneratorProps?.selectedAssetKeys).toBeUndefined();
 	});
 
+	it("forwards an explicit resource type to the section generator", () => {
+		render(
+			<ImageGenerationDialog
+				open
+				section={section}
+				selectedAssetResourceType="storyboard"
+				onGenerationComplete={vi.fn()}
+				onGenerationError={vi.fn()}
+				onGenerationStart={vi.fn()}
+				onOpenChange={vi.fn()}
+			/>,
+		);
+
+		expect(capturedGeneratorProps?.selectedAssetResourceType).toBe("storyboard");
+	});
+
 	it("toggles the generated image on the dialog section that owns the asset", async () => {
 		const onToggleImage = vi.fn();
 		const referenceSection: MarkdownSectionContext = {

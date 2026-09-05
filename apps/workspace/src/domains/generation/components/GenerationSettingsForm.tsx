@@ -25,7 +25,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/components/ui/select";
 import { cn } from "@/shared/lib/utils";
 import { GenerationBrandMark, generationFamilyBrand } from "./GenerationBrandMark";
-import { displayGenerationLabelWithoutAlias } from "./generationDisplayLabels";
+import {
+	displayGenerationLabelWithoutAlias,
+	displayGenerationSupplierLabel,
+	displayGenerationVersionLabel,
+} from "./generationDisplayLabels";
 import { GenerationModelRoutePicker } from "./GenerationModelRoutePicker";
 import { ImageGenerationSpecControl } from "./ImageGenerationSpecControl";
 import {
@@ -44,6 +48,7 @@ import {
 export interface GenerationSettingsFormProps {
 	controller: GenerationSettingsFormController;
 	disabled?: boolean;
+	mode?: "standard" | "storyboard-draft";
 }
 
 // GenerationSettingsForm is the shared, shell-free generation settings body.
@@ -51,13 +56,21 @@ export interface GenerationSettingsFormProps {
 export const GenerationSettingsForm: React.FC<GenerationSettingsFormProps> = ({
 	controller,
 	disabled = false,
+	mode = "standard",
 }) => {
 	const effectiveDisabled = disabled || controller.isBusy;
 	const { imageSpec, primaryParamGroups, secondaryRouteParams } = controller.routeParamControls;
 	const selectedFamilyLabel = displayGenerationLabelWithoutAlias(controller.selectedFamily.label);
 	const selectedFamilyBrand = generationFamilyBrand(controller.selectedFamily);
 	const modelSummary = controller.hasAvailableRoute
-		? `${selectedFamilyLabel} / ${displayGenerationLabelWithoutAlias(controller.selectedVersion.label)} / ${routeProviderLabel(controller.selectedRoute)}`
+		? [
+				selectedFamilyLabel,
+				displayGenerationVersionLabel(controller.selectedVersion.label),
+				displayGenerationSupplierLabel(controller.selectedVersion),
+				routeProviderLabel(controller.selectedRoute),
+			]
+				.filter(Boolean)
+				.join(" / ")
 		: `暂无可用${kindLabel(controller.value.kind)}生成供应商`;
 	const promptSupplementReady = controller.selectedPromptSupplementItems.length > 0;
 	const promptOptimizationReady = Boolean(
@@ -80,6 +93,15 @@ export const GenerationSettingsForm: React.FC<GenerationSettingsFormProps> = ({
 
 	return (
 		<>
+			{mode === "storyboard-draft" ? (
+				<div className="border-b border-border/70 bg-primary/5 px-4 py-3">
+					<p className="text-sm font-semibold text-foreground">只生成分镜示意图</p>
+					<p className="mt-1 text-xs leading-5 text-muted-foreground">
+						用于确认故事、镜头顺序和构图，不创建正式人物、场景或道具资产。确认分镜后，再到第 02
+						阶段拆解资产关系。
+					</p>
+				</div>
+			) : null}
 			<fieldset
 				disabled={effectiveDisabled}
 				className="m-0 min-w-0 divide-y divide-border/70 border-0 p-0"
@@ -248,147 +270,153 @@ export const GenerationSettingsForm: React.FC<GenerationSettingsFormProps> = ({
 					</section>
 				) : null}
 
-				<section aria-label="补充提示词设置" className={generationSettingsSectionClassName}>
-					<div className="flex min-w-0 items-center justify-between gap-3">
-						<div className="flex min-w-0 items-center gap-2.5">
-							<div className={generationSettingsSectionIconClassName}>
-								<MessageSquarePlus className="size-4 shrink-0" />
+				{mode === "standard" ? (
+					<section aria-label="补充提示词设置" className={generationSettingsSectionClassName}>
+						<div className="flex min-w-0 items-center justify-between gap-3">
+							<div className="flex min-w-0 items-center gap-2.5">
+								<div className={generationSettingsSectionIconClassName}>
+									<MessageSquarePlus className="size-4 shrink-0" />
+								</div>
+								<h3 className="text-sm font-semibold text-foreground">补充提示词</h3>
 							</div>
-							<h3 className="text-sm font-semibold text-foreground">补充提示词</h3>
+							<label className={generationSettingsToggleClassName}>
+								<input
+									type="checkbox"
+									checked={controller.promptSupplementEnabled}
+									className="size-4 rounded-sm border-border accent-primary"
+									onChange={(event) => controller.setPromptSupplementEnabled(event.target.checked)}
+								/>
+								<span>生成时追加</span>
+							</label>
 						</div>
-						<label className={generationSettingsToggleClassName}>
-							<input
-								type="checkbox"
-								checked={controller.promptSupplementEnabled}
-								className="size-4 rounded-sm border-border accent-primary"
-								onChange={(event) => controller.setPromptSupplementEnabled(event.target.checked)}
+						<div className="flex flex-wrap items-center gap-2">
+							<LabeledInlineControl label="提示词">
+								<PromptPackSelect
+									ariaLabel="补充提示词"
+									disabled={
+										effectiveDisabled ||
+										!controller.promptSupplementEnabled ||
+										controller.promptInsertItems.length === 0
+									}
+									items={controller.promptInsertItems}
+									multiple
+									selectedIds={controller.selectedPromptSupplementItems.map((item) => item.id)}
+									onSelect={controller.togglePromptSupplementItem}
+								/>
+							</LabeledInlineControl>
+							<PromptPackChips
+								disabled={effectiveDisabled || !controller.promptSupplementEnabled}
+								items={controller.selectedPromptSupplementItems}
+								onRemove={controller.togglePromptSupplementItem}
 							/>
-							<span>生成时追加</span>
-						</label>
-					</div>
-					<div className="flex flex-wrap items-center gap-2">
-						<LabeledInlineControl label="提示词">
-							<PromptPackSelect
-								ariaLabel="补充提示词"
-								disabled={
-									effectiveDisabled ||
-									!controller.promptSupplementEnabled ||
-									controller.promptInsertItems.length === 0
-								}
-								items={controller.promptInsertItems}
-								multiple
-								selectedIds={controller.selectedPromptSupplementItems.map((item) => item.id)}
-								onSelect={controller.togglePromptSupplementItem}
-							/>
-						</LabeledInlineControl>
-						<PromptPackChips
-							disabled={effectiveDisabled || !controller.promptSupplementEnabled}
-							items={controller.selectedPromptSupplementItems}
-							onRemove={controller.togglePromptSupplementItem}
-						/>
-					</div>
-					{controller.promptSupplementEnabled && !promptSupplementReady ? (
-						<p className="text-xs text-muted-foreground">
-							{controller.promptInsertItems.length === 0
-								? "需要可用的提示词后才能追加并生成。"
-								: "需要选择至少一个提示词后才能追加并生成。"}
-						</p>
-					) : null}
-				</section>
+						</div>
+						{controller.promptSupplementEnabled && !promptSupplementReady ? (
+							<p className="text-xs text-muted-foreground">
+								{controller.promptInsertItems.length === 0
+									? "需要可用的提示词后才能追加并生成。"
+									: "需要选择至少一个提示词后才能追加并生成。"}
+							</p>
+						) : null}
+					</section>
+				) : null}
 
-				<section aria-label="优化提示词设置" className={generationSettingsSectionClassName}>
-					<div className="flex min-w-0 items-center justify-between gap-3">
-						<div className="flex min-w-0 items-center gap-2.5">
-							<div className={generationSettingsSectionIconClassName}>
-								<Wand2 className="size-4 shrink-0" />
+				{mode === "standard" ? (
+					<section aria-label="优化提示词设置" className={generationSettingsSectionClassName}>
+						<div className="flex min-w-0 items-center justify-between gap-3">
+							<div className="flex min-w-0 items-center gap-2.5">
+								<div className={generationSettingsSectionIconClassName}>
+									<Wand2 className="size-4 shrink-0" />
+								</div>
+								<h3 className="text-sm font-semibold text-foreground">优化提示词</h3>
 							</div>
-							<h3 className="text-sm font-semibold text-foreground">优化提示词</h3>
+							<label className={generationSettingsToggleClassName}>
+								<input
+									type="checkbox"
+									checked={controller.value.promptOptimization.enabled}
+									className="size-4 rounded-sm border-border accent-primary"
+									onChange={(event) =>
+										controller.setPromptOptimizationEnabled(event.target.checked)
+									}
+								/>
+								<span>优化并生成时使用</span>
+							</label>
 						</div>
-						<label className={generationSettingsToggleClassName}>
-							<input
-								type="checkbox"
-								checked={controller.value.promptOptimization.enabled}
-								className="size-4 rounded-sm border-border accent-primary"
-								onChange={(event) => controller.setPromptOptimizationEnabled(event.target.checked)}
-							/>
-							<span>优化并生成时使用</span>
-						</label>
-					</div>
-					<div className="flex flex-wrap items-center gap-2">
-						<LabeledInlineControl label="提示词">
-							<PromptPackSelect
-								ariaLabel="优化提示词"
-								disabled={
-									effectiveDisabled ||
-									!controller.value.promptOptimization.enabled ||
-									controller.promptInsertItems.length === 0
-								}
-								items={controller.promptInsertItems}
-								selectedIds={
-									controller.selectedPromptOptimizationItem
-										? [controller.selectedPromptOptimizationItem.id]
-										: []
-								}
-								onSelect={(id) => controller.setPromptOptimizationItemId(id)}
-							/>
-						</LabeledInlineControl>
-						<LabeledInlineControl label="优化模型">
-							<Select
-								value={controller.selectedPromptOptimizationModel?.id}
-								disabled={
-									effectiveDisabled ||
-									!controller.value.promptOptimization.enabled ||
-									controller.promptOptimizationModelOptions.length === 0
-								}
-								onValueChange={controller.setPromptOptimizationRouteId}
-							>
-								<SelectTrigger
-									aria-label="优化模型"
-									className="h-8 min-w-44 max-w-72 rounded-md border-0 bg-muted px-2.5 text-xs font-semibold shadow-none focus:ring-2 focus:ring-ring data-[state=open]:ring-2 data-[state=open]:ring-ring"
+						<div className="flex flex-wrap items-center gap-2">
+							<LabeledInlineControl label="提示词">
+								<PromptPackSelect
+									ariaLabel="优化提示词"
+									disabled={
+										effectiveDisabled ||
+										!controller.value.promptOptimization.enabled ||
+										controller.promptInsertItems.length === 0
+									}
+									items={controller.promptInsertItems}
+									selectedIds={
+										controller.selectedPromptOptimizationItem
+											? [controller.selectedPromptOptimizationItem.id]
+											: []
+									}
+									onSelect={(id) => controller.setPromptOptimizationItemId(id)}
+								/>
+							</LabeledInlineControl>
+							<LabeledInlineControl label="优化模型">
+								<Select
+									value={controller.selectedPromptOptimizationModel?.id}
+									disabled={
+										effectiveDisabled ||
+										!controller.value.promptOptimization.enabled ||
+										controller.promptOptimizationModelOptions.length === 0
+									}
+									onValueChange={controller.setPromptOptimizationRouteId}
 								>
-									{controller.selectedPromptOptimizationModel ? (
-										<>
-											<GenerationBrandMark
-												brand={generationFamilyBrand(
-													controller.selectedPromptOptimizationModel.family,
-												)}
-												className="size-4 text-[0.5rem]"
-											/>
-											<span className="min-w-0 truncate">
-												{controller.selectedPromptOptimizationModel.label}
-											</span>
-										</>
-									) : controller.codexAvailable ? (
-										<>
-											<GenerationBrandMark brand="openai" className="size-4 text-[0.5rem]" />
-											<span className="min-w-0 truncate">Codex · 当前登录账户</span>
-										</>
-									) : (
-										<span className="min-w-0 truncate">无可用文本模型</span>
-									)}
-								</SelectTrigger>
-								<SelectContent align="start">
-									{controller.promptOptimizationModelOptions.map((option) => (
-										<SelectItem key={option.id} value={option.id} textValue={option.label}>
-											<span className="flex min-w-0 items-center gap-2">
+									<SelectTrigger
+										aria-label="优化模型"
+										className="h-8 min-w-44 max-w-72 rounded-md border-0 bg-muted px-2.5 text-xs font-semibold shadow-none focus:ring-2 focus:ring-ring data-[state=open]:ring-2 data-[state=open]:ring-ring"
+									>
+										{controller.selectedPromptOptimizationModel ? (
+											<>
 												<GenerationBrandMark
-													brand={generationFamilyBrand(option.family)}
+													brand={generationFamilyBrand(
+														controller.selectedPromptOptimizationModel.family,
+													)}
 													className="size-4 text-[0.5rem]"
 												/>
-												<span className="min-w-0 truncate">{option.label}</span>
-											</span>
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</LabeledInlineControl>
-					</div>
-					{controller.value.promptOptimization.enabled && !promptOptimizationReady ? (
-						<p className="text-xs text-muted-foreground">
-							需要可用的提示词和文本模型后才能优化并生成。
-						</p>
-					) : null}
-				</section>
+												<span className="min-w-0 truncate">
+													{controller.selectedPromptOptimizationModel.label}
+												</span>
+											</>
+										) : controller.codexAvailable ? (
+											<>
+												<GenerationBrandMark brand="openai" className="size-4 text-[0.5rem]" />
+												<span className="min-w-0 truncate">Codex · 当前登录账户</span>
+											</>
+										) : (
+											<span className="min-w-0 truncate">无可用文本模型</span>
+										)}
+									</SelectTrigger>
+									<SelectContent align="start">
+										{controller.promptOptimizationModelOptions.map((option) => (
+											<SelectItem key={option.id} value={option.id} textValue={option.label}>
+												<span className="flex min-w-0 items-center gap-2">
+													<GenerationBrandMark
+														brand={generationFamilyBrand(option.family)}
+														className="size-4 text-[0.5rem]"
+													/>
+													<span className="min-w-0 truncate">{option.label}</span>
+												</span>
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</LabeledInlineControl>
+						</div>
+						{controller.value.promptOptimization.enabled && !promptOptimizationReady ? (
+							<p className="text-xs text-muted-foreground">
+								需要可用的提示词和文本模型后才能优化并生成。
+							</p>
+						) : null}
+					</section>
+				) : null}
 			</fieldset>
 
 			<ReferenceSelectionDialog

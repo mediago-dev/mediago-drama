@@ -14,7 +14,7 @@ func TestPromptBuilderUsesFixedAgentPrompt(t *testing.T) {
 		Document:     &AgentDocumentContext{ID: "doc-1", Title: "第一集", Content: "# 第一集"},
 	})
 
-	if !strings.Contains(prompt, "你是 MediaGo Drama 的项目 Agent。") ||
+	if !strings.Contains(prompt, "你是 AIGC Production OS 的项目制作助手。") ||
 		!strings.Contains(prompt, "当前工作目录已经是当前项目的文档根目录") ||
 		!strings.Contains(prompt, "不要再访问或创建名为 `work/` 的子目录") ||
 		!strings.Contains(prompt, "不要把整篇内容一次性放进单个 `write` / `edit` 工具调用") ||

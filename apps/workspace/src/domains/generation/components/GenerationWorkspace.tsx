@@ -469,128 +469,150 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 
 	const generationComposer = (
 		<form onSubmit={ws.submit} className="shrink-0">
-			{ws.hasConfiguredRoutesForKind ? (
-				<GenerationComposerPanel
-					canCopyPrompt={Boolean(ws.fullPrompt.trim())}
-					canSelectReference={canSelectReferenceAssets}
-					canSubmit={ws.canSubmit}
-					error={ws.error || sessionRequiredMessage}
-					errorTone={ws.error ? "error" : "warning"}
-					isSubmitting={ws.isSubmitting}
-					leftControls={
-						<>
-							{lockKind ? null : <ModeToggle compact kind={ws.kind} onChange={ws.setKind} />}
-							<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
-								<SelectTrigger
-									aria-label="模型名称"
-									className={generationComposerSelectClassName()}
-								>
-									<GenerationBrandMark
-										brand={selectedFamilyBrand}
-										className="size-4 text-[0.5rem]"
-									/>
-									<span>{selectedFamilyLabel}</span>
-								</SelectTrigger>
-								<SelectContent align="start">
-									{ws.visibleFamilies.map((family) => (
-										<SelectItem
-											key={family.id}
-											value={family.id}
-											textValue={displayGenerationLabelWithoutAlias(family.label)}
-										>
-											<span className="flex min-w-0 items-center gap-2">
-												<GenerationBrandMark
-													brand={generationFamilyBrand(family)}
-													className="size-4 text-[0.5rem]"
-												/>
-												<span className="min-w-0 truncate">
-													{displayGenerationLabelWithoutAlias(family.label)}
-												</span>
-											</span>
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-							<GenerationModelRoutePicker
-								routes={ws.visibleFamilyRoutes}
-								selectedRoute={ws.selectedRoute}
-								selectedVersion={ws.selectedVersion}
-								versions={ws.visibleVersions}
-								onSelect={ws.updateModelRoute}
-							/>
-							<Button
-								type="button"
-								variant="ghost"
-								size="sm"
-								aria-label="打开模型文档"
-								className={generationComposerToolbarGhostButtonClassName()}
-								onClick={() => void openDocumentationUrl(ws.selectedRoute.docUrl)}
-							>
-								<FileText className="size-4 shrink-0 text-muted-foreground" />
-								<span>文档</span>
-							</Button>
-						</>
-					}
-					promptInput={
-						<PromptEditor
-							value={ws.prompt}
-							onChange={ws.setPrompt}
-							onInsertItem={ws.addPromptSource}
-							placeholder={compactPromptPlaceholder}
-							className={generationComposerPromptInputClassName}
-							slashItems={promptSlashItems}
+			{ws.hasAvailableRoutesForKind ? (
+				<>
+					{ws.hasConfiguredRoutesForKind ? null : (
+						<GenerationSetupNotice
+							hasCatalog={ws.hasLiveCatalog}
+							isLoading={!ws.hasLiveCatalog}
+							kind={ws.kind}
+							onSettingsClick={openSettings}
 						/>
-					}
-					referenceButtonLabel={referenceButtonLabel}
-					referencePreview={
-						canSelectReferenceAssets ? (
-							<ReferencePreviewStrip
-								disabled={!ws.hasConfiguredRoutesForKind || !ws.selectedRoute.supportsReferenceUrls}
-								enableImagePreview
-								references={ws.selectedReferenceAssets}
-								simple
-								onRemove={ws.toggleReferenceAsset}
+					)}
+					<GenerationComposerPanel
+						canCopyPrompt={Boolean(ws.fullPrompt.trim())}
+						canSelectReference={canSelectReferenceAssets}
+						canSubmit={ws.canSubmit}
+						error={ws.error || sessionRequiredMessage}
+						errorTone={ws.error ? "error" : "warning"}
+						isSubmitting={ws.isSubmitting}
+						leftControls={
+							<>
+								{lockKind ? null : <ModeToggle compact kind={ws.kind} onChange={ws.setKind} />}
+								{ws.kind === "image" ? (
+									<div className={generationComposerSelectClassName()} aria-label="Nano Banana 2">
+										<GenerationBrandMark brand={selectedFamilyBrand} className="size-4 text-[0.5rem]" />
+										<span>Nano Banana 2</span>
+									</div>
+								) : (
+								<>
+								<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
+									<SelectTrigger
+										aria-label="模型名称"
+										className={generationComposerSelectClassName()}
+									>
+										<GenerationBrandMark
+											brand={selectedFamilyBrand}
+											className="size-4 text-[0.5rem]"
+										/>
+										<span>{selectedFamilyLabel}</span>
+									</SelectTrigger>
+									<SelectContent align="start">
+										{ws.visibleFamilies.map((family) => (
+											<SelectItem
+												key={family.id}
+												value={family.id}
+												textValue={displayGenerationLabelWithoutAlias(family.label)}
+											>
+												<span className="flex min-w-0 items-center gap-2">
+													<GenerationBrandMark
+														brand={generationFamilyBrand(family)}
+														className="size-4 text-[0.5rem]"
+													/>
+													<span className="min-w-0 truncate">
+														{displayGenerationLabelWithoutAlias(family.label)}
+													</span>
+												</span>
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								<GenerationModelRoutePicker
+									routes={ws.visibleFamilyRoutes}
+									selectedRoute={ws.selectedRoute}
+									selectedVersion={ws.selectedVersion}
+									versions={ws.visibleVersions}
+									onSelect={ws.updateModelRoute}
+								/>
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									aria-label="打开模型文档"
+									className={generationComposerToolbarGhostButtonClassName()}
+									onClick={() => void openDocumentationUrl(ws.selectedRoute.docUrl)}
+								>
+									<FileText className="size-4 shrink-0 text-muted-foreground" />
+									<span>文档</span>
+								</Button>
+								</>
+								)}
+							</>
+						}
+						promptInput={
+							<PromptEditor
+								value={ws.prompt}
+								onChange={ws.setPrompt}
+								onInsertItem={ws.addPromptSource}
+								placeholder={compactPromptPlaceholder}
+								className={generationComposerPromptInputClassName}
+								slashItems={promptSlashItems}
 							/>
-						) : null
-					}
-					rightControls={
-						<>
-							{imageSpec ? (
-								<ImageGenerationSpecControl
-									label={activeGenerationKind === "video" ? "视频大小" : "图片大小"}
-									showSizePreview={activeGenerationKind === "image"}
-									spec={imageSpec}
-									onChange={ws.updateParam}
+						}
+						referenceButtonLabel={referenceButtonLabel}
+						referencePreview={
+							canSelectReferenceAssets ? (
+								<ReferencePreviewStrip
+									disabled={
+										!ws.hasConfiguredRoutesForKind || !ws.selectedRoute.supportsReferenceUrls
+									}
+									enableImagePreview
+									references={ws.selectedReferenceAssets}
+									simple
+									onRemove={ws.toggleReferenceAsset}
 								/>
-							) : null}
-							{primaryParamControls}
-							{isTextGeneration || !routeGenerationCountParam ? null : (
-								<GenerationCountControl
-									max={generationCountMax}
-									min={generationCountMin}
-									value={selectedGenerationCount}
-									onChange={(value) => updateComposerGenerationCount(String(value))}
-								/>
-							)}
-							{secondaryRouteParams.length > 0 ? (
-								<SecondaryParamsDropdown
-									label={otherParamGroup?.label}
-									params={secondaryRouteParams}
-									values={ws.selectedParams}
-									onChange={ws.updateParam}
-								/>
-							) : null}
-						</>
-					}
-					submitLabel={submitLabel}
-					submitTone={activeGenerationKind}
-					onCopyPrompt={copyComposerPrompt}
-					onOpenReferenceDialog={
-						canSelectReferenceAssets ? () => setReferenceDialogOpen(true) : undefined
-					}
-				/>
+							) : null
+						}
+						rightControls={
+							<>
+								{imageSpec ? (
+									<ImageGenerationSpecControl
+										label={activeGenerationKind === "video" ? "视频大小" : "图片大小"}
+										showSizePreview={activeGenerationKind === "image"}
+										spec={imageSpec}
+										onChange={ws.updateParam}
+									/>
+								) : null}
+								{primaryParamControls}
+								{isTextGeneration || !routeGenerationCountParam ? null : (
+									<GenerationCountControl
+										max={generationCountMax}
+										min={generationCountMin}
+										value={selectedGenerationCount}
+										onChange={(value) => updateComposerGenerationCount(String(value))}
+									/>
+								)}
+								{secondaryRouteParams.length > 0 ? (
+									<SecondaryParamsDropdown
+										label={otherParamGroup?.label}
+										params={secondaryRouteParams}
+										values={ws.selectedParams}
+										onChange={ws.updateParam}
+									/>
+								) : null}
+							</>
+						}
+						submitLabel={submitLabel}
+						submitTone={activeGenerationKind}
+						onCopyPrompt={copyComposerPrompt}
+						onOpenReferenceDialog={
+							canSelectReferenceAssets ? () => setReferenceDialogOpen(true) : undefined
+						}
+					/>
+				</>
 			) : (
 				<GenerationSetupNotice
+					hasCatalog={ws.hasLiveCatalog}
 					isLoading={!ws.hasLiveCatalog}
 					kind={ws.kind}
 					onSettingsClick={openSettings}
@@ -607,6 +629,9 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 			<main className="flex min-h-0 min-w-0 flex-1 flex-col">
 				<GenerationChatPanel
 					entries={visibleGenerationEntries}
+					kind={ws.kind}
+					onOpenSettings={openSettings}
+					onUsePrompt={ws.setPrompt}
 					canSaveText={resultActions.canSaveText}
 					savedKeys={resultActions.savedKeys}
 					savingKeys={resultActions.savingKeys}

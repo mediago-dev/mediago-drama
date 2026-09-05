@@ -17,6 +17,7 @@ type GenerationTaskModel struct {
 	ProjectID       *string   `gorm:"column:project_id;index:generation_tasks_project_id_idx"`
 	DocumentID      *string   `gorm:"column:document_id;index:generation_tasks_document_id_idx"`
 	SectionID       *string   `gorm:"column:section_id;index:generation_tasks_section_id_idx"`
+	ShotIDsJSON     string    `gorm:"column:shot_ids_json;not null;type:text;default:'[]'"`
 	CapabilityID    *string   `gorm:"column:capability_id;index:generation_tasks_capability_idx"`
 	ResourceType    *string   `gorm:"column:resource_type;index:generation_tasks_resource_type_idx"`
 	Kind            string    `gorm:"column:kind;not null;index:generation_tasks_kind_status_updated_idx,priority:1"`
@@ -24,6 +25,9 @@ type GenerationTaskModel struct {
 	FamilyID        string    `gorm:"column:family_id;not null"`
 	VersionID       string    `gorm:"column:version_id;not null"`
 	Provider        string    `gorm:"column:provider;not null"`
+	BaseURL         string    `gorm:"column:base_url;not null;default:''"`
+	Protocol        string    `gorm:"column:protocol;not null;default:''"`
+	Endpoint        string    `gorm:"column:endpoint;not null;default:''"`
 	ModelID         string    `gorm:"column:model_id;not null"`
 	Model           string    `gorm:"column:model;not null"`
 	Prompt          string    `gorm:"column:prompt;not null"`
@@ -40,6 +44,10 @@ type GenerationTaskModel struct {
 	Error           string    `gorm:"column:error;not null;default:''"`
 	ErrorCode       string    `gorm:"column:error_code;not null;default:''"`
 	ErrorType       string    `gorm:"column:error_type;not null;default:''"`
+	ErrorProvider   string    `gorm:"column:error_provider;not null;default:''"`
+	ErrorModel      string    `gorm:"column:error_model;not null;default:''"`
+	ErrorEndpoint   string    `gorm:"column:error_endpoint;not null;default:''"`
+	ErrorHTTPStatus int       `gorm:"column:error_http_status;not null;default:0"`
 	Retryable       bool      `gorm:"column:retryable;not null;default:false"`
 	CreatedAt       time.Time `gorm:"column:created_at;not null;autoCreateTime:nano"`
 	UpdatedAt       time.Time `gorm:"column:updated_at;not null;autoUpdateTime:nano;index:generation_tasks_kind_status_updated_idx,priority:3,sort:asc"`
@@ -136,6 +144,7 @@ type ProjectSelectedAssetModel struct {
 	SourceTaskID     *string        `gorm:"column:source_task_id;index:project_selected_assets_source_task_idx"`
 	SourceSlotIndex  int            `gorm:"column:source_slot_index;not null"`
 	SourceDocumentID *string        `gorm:"column:source_document_id;index:project_selected_assets_source_document_idx"`
+	ShotIDsJSON      string         `gorm:"column:shot_ids_json;not null;type:text;default:'[]'"`
 	SortOrder        int            `gorm:"column:sort_order;not null;default:0"`
 	DeletedAt        gorm.DeletedAt `gorm:"column:deleted_at;index:project_selected_assets_deleted_idx"`
 	CreatedAt        time.Time      `gorm:"column:created_at;not null;autoCreateTime:nano"`

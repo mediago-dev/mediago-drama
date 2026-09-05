@@ -4,23 +4,25 @@ import * as React from "react";
 import { cn } from "@/shared/lib/utils";
 
 const buttonVariants = cva(
-	"inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-control text-xs font-medium ring-offset-background transition-[background-color,color,box-shadow,border-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 shrink-0",
+	"inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg text-xs font-medium ring-offset-background transition-[background-color,color,box-shadow,border-color,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-offset-2 active:translate-y-px disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4",
 	{
 		variants: {
 			variant: {
-				default: "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90",
+				default:
+					"bg-primary text-primary-foreground shadow-[0_3px_10px_color-mix(in_srgb,var(--primary)_22%,transparent)] hover:bg-primary/90 hover:shadow-md",
 				destructive: "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
 				outline:
-					"border border-input bg-ide-editor shadow-sm hover:bg-ide-list-hover hover:text-foreground",
-				secondary: "border border-border bg-ide-toolbar text-foreground hover:bg-ide-list-hover",
+					"border border-input bg-card text-foreground shadow-sm hover:border-primary/25 hover:bg-accent",
+				secondary:
+					"border border-border bg-card text-foreground shadow-sm hover:border-primary/20 hover:bg-accent",
 				ghost: "hover:bg-ide-list-hover hover:text-foreground",
 				link: "text-primary underline-offset-4 hover:underline",
 			},
 			size: {
-				default: "h-8 px-3 py-1.5",
-				sm: "h-7 rounded-control px-2",
-				lg: "h-9 rounded-control px-4",
-				icon: "h-8 w-8",
+				default: "h-9 px-4 py-2",
+				sm: "h-8 px-3",
+				lg: "h-10 px-5 text-sm",
+				icon: "size-9",
 			},
 		},
 		defaultVariants: {

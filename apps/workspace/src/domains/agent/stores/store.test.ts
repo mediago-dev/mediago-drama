@@ -95,6 +95,36 @@ describe("agent store runtime recovery", () => {
 		expect(useAgentStore.getState().permissionRequests).toEqual([]);
 	});
 
+	it("keeps the just-sent text and image cards while the backend run is starting", () => {
+		useAgentStore.getState().startRun("按照这些参考图分析剧本", {
+			displayAttachments: [
+				{
+					id: "asset-reference-1",
+					kind: "image",
+					mimeType: "image/png",
+					name: "参考图 1.png",
+					url: "/api/v1/projects/project-1/assets/asset-reference-1/content",
+				},
+			],
+		});
+
+		useAgentStore.getState().hydrateAgentChatState([], [], {
+			sessionId: "session-1",
+			running: true,
+			conversations: {},
+		});
+
+		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
+			expect.objectContaining({
+				role: "user",
+				content: "按照这些参考图分析剧本",
+				metadata: expect.objectContaining({
+					displayAttachments: [expect.objectContaining({ name: "参考图 1.png" })],
+				}),
+			}),
+		]);
+	});
+
 	it("syncs pending permission requests as the backend status mirror", () => {
 		useAgentStore.getState().syncPermissionRequests([
 			{

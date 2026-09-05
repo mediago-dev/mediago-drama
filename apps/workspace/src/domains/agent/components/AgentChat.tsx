@@ -7,6 +7,7 @@ import {
 	agentRuntimeConfigKey,
 	getAgentBackends,
 	getAgentRuntimeConfig,
+	getAgentSessionStatus,
 	type AgentReference,
 	type AgentRuntimeConfigPayload,
 } from "@/domains/agent/api/agent";
@@ -38,7 +39,11 @@ import {
 } from "@/domains/agent/components/chat/AgentAttachments";
 import { AgentTimeline } from "@/domains/agent/components/AgentTimeline";
 import { PendingPermissionRequests } from "@/domains/agent/components/PendingPermissionRequests";
-import { runAgentPrompt, stopAgentRun } from "@/domains/agent/lib/controller";
+import {
+	resumeAgentSessionEventStream,
+	runAgentPrompt,
+	stopAgentRun,
+} from "@/domains/agent/lib/controller";
 import {
 	selectAgentComposerSeed,
 	selectAgentIsRunning,
@@ -95,6 +100,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 	const setSettingsTab = useSettingsNavigationStore((state) => state.setActiveTab);
 	const composerRef = useRef<AgentComposerHandle>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
+	const submitInFlightRef = useRef(false);
 	const hasUploadingAttachment = attachments.some(
 		(attachment) => attachment.status === "uploading",
 	);
@@ -173,6 +179,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 	}, [composerSeed, consumeComposerSeed]);
 
 	const runPrompt = async () => {
+		if (submitInFlightRef.current) return;
 		const composerValue = composerRef.current?.getValue() ?? {
 			displaySegments: [],
 			displayText: "",
@@ -191,6 +198,29 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 			isSavingAttachments
 		) {
 			return;
+		}
+		submitInFlightRef.current = true;
+
+		const activeSessionId = useAgentStore.getState().sessionId?.trim();
+		if (activeSessionId && projectId) {
+			try {
+				const status = await getAgentSessionStatus(activeSessionId, projectId);
+				if (status.running) {
+					useAgentStore.setState({ isRunning: true });
+					resumeAgentSessionEventStream(activeSessionId, projectId);
+					useAgentStore
+						.getState()
+						.recordActivity(
+							"runtime",
+							"上一项任务仍在处理",
+							"已恢复运行状态，请等待完成或点击停止。",
+						);
+					submitInFlightRef.current = false;
+					return;
+				}
+			} catch {
+				// 状态预检失败时仍允许正常提交，由正式请求返回准确错误。
+			}
 		}
 
 		// The bubble shows exactly what the user composed: chips travel as
@@ -236,13 +266,18 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 						"资料保存失败",
 						err instanceof Error ? err.message : "附件写入资料失败。",
 					);
+				submitInFlightRef.current = false;
 				return;
 			} finally {
 				setIsSavingAttachments(false);
 			}
 		}
 
-		await startAgentPrompt(pendingSend);
+		try {
+			await startAgentPrompt(pendingSend);
+		} finally {
+			submitInFlightRef.current = false;
+		}
 	};
 
 	const startAgentPrompt = async (pendingSend: PendingAttachmentSend) => {
@@ -271,9 +306,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 		}
 	};
 
-	const attachFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
-		const files = Array.from(event.target.files ?? []);
-		event.target.value = "";
+	const addFiles = async (files: File[]) => {
 		if (files.length === 0) return;
 
 		const nextAttachments = files.map(createPendingAttachment);
@@ -302,6 +335,12 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 				}
 			}),
 		);
+	};
+
+	const attachFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
+		const files = Array.from(event.target.files ?? []);
+		event.target.value = "";
+		await addFiles(files);
 	};
 
 	const updateRuntimeConfigValue = (field: AgentRuntimeConfigField, value: string) => {
@@ -372,6 +411,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 				skillItems={skillItems}
 				skillsErrorMessage={skillsError ? "Skill 列表加载失败" : ""}
 				onAttachFiles={(event) => void attachFiles(event)}
+				onAddFiles={(files) => void addFiles(files)}
 				onComposerChange={handleComposerChange}
 				onModelChange={(value) => updateRuntimeConfigValue("model", value)}
 				onOpenRuntimeSettings={openRuntimeSettings}

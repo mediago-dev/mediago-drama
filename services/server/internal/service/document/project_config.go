@@ -48,6 +48,18 @@ func (store *Service) SaveProjectConfigPatchInput(projectID string, input mediam
 		if input.Overview.CategoryDefaults != nil {
 			next.Overview.CategoryDefaults = normalizeCategoryDefaults(input.Overview.CategoryDefaults)
 		}
+		if input.Overview.Production != nil {
+			next.Overview.Production = input.Overview.Production
+		}
+		if input.Overview.CoverAssetID != nil {
+			next.Overview.CoverAssetID = strings.TrimSpace(*input.Overview.CoverAssetID)
+		}
+		if input.Overview.SortOrder != nil {
+			next.Overview.SortOrder = input.Overview.SortOrder
+		}
+		if input.Overview.OutputDirectory != nil {
+			next.Overview.OutputDirectory = strings.TrimSpace(*input.Overview.OutputDirectory)
+		}
 	}
 	if reflect.DeepEqual(next, config) {
 		return ProjectConfigMutationResult{Config: config, Changed: false}, nil
@@ -100,6 +112,10 @@ func mcpProjectConfigFromManifest(manifest shared.ProjectManifestFile) mediamcp.
 		Description:   manifest.Description,
 		Overview: mediamcp.ProjectOverviewConfig{
 			CategoryDefaults: normalizeCategoryDefaults(manifest.Overview.CategoryDefaults),
+			Production:       manifest.Overview.Production,
+			CoverAssetID:     manifest.Overview.CoverAssetID,
+			SortOrder:        manifest.Overview.SortOrder,
+			OutputDirectory:  strings.TrimSpace(manifest.Overview.OutputDirectory),
 		},
 		CreatedAt: manifest.CreatedAt,
 	}
@@ -133,6 +149,10 @@ func projectManifestFromMCPConfig(config mediamcp.ProjectConfig) shared.ProjectM
 		Description:   strings.TrimSpace(config.Description),
 		Overview: shared.ProjectManifestOverviewFile{
 			CategoryDefaults: normalizeCategoryDefaults(config.Overview.CategoryDefaults),
+			Production:       config.Overview.Production,
+			CoverAssetID:     config.Overview.CoverAssetID,
+			SortOrder:        config.Overview.SortOrder,
+			OutputDirectory:  strings.TrimSpace(config.Overview.OutputDirectory),
 		},
 		CreatedAt: strings.TrimSpace(config.CreatedAt),
 	}

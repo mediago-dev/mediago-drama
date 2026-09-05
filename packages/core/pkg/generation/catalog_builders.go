@@ -371,7 +371,7 @@ func kindForFamily(familyID string) Kind {
 		return KindAudio
 	case FamilyGPTText, FamilyGeminiText, FamilyMiniMaxText, FamilyDeepSeekText:
 		return KindText
-	case FamilySeedream, FamilyGPTImage, FamilyNanoBanana:
+	case FamilyWhereslowImage:
 		return KindImage
 	case FamilySeedance:
 		return KindVideo

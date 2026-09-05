@@ -101,18 +101,10 @@ func (provider *Provider) Generate(ctx context.Context, request generation.Reque
 		return provider.generateText(ctx, request)
 	case generation.AdapterOfficialDeepSeekChatText:
 		return provider.generateText(ctx, request)
-	case generation.AdapterOfficialOpenAIImage:
-		return provider.generateOpenAIImage(ctx, request)
-	case generation.AdapterOfficialGoogleImage:
-		return provider.generateGoogleImage(ctx, request)
 	case generation.AdapterOfficialMiniMaxSpeech:
 		return provider.generateMiniMaxSpeech(ctx, request)
-	case generation.AdapterOfficialVolcengineImage:
-		return provider.generateVolcengineImage(ctx, request)
 	case generation.AdapterOfficialVolcengineVideo:
 		return provider.createVolcengineVideo(ctx, request)
-	case generation.AdapterOfficialAliyunWanImage:
-		return provider.generateAliyunWanImage(ctx, request)
 	case generation.AdapterOfficialAliyunHappyHorseVideo:
 		return provider.createAliyunHappyHorseVideo(ctx, request)
 	default:

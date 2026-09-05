@@ -67,6 +67,10 @@ describe("server sidecar lifecycle", () => {
 		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_BUNDLE_REV");
 		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_SCHEMA_VERSION");
 		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_INSTANCE_TOKEN");
+		expect(spawnOptions.env).toMatchObject({
+			MEDIAGO_AGENT_ID: "none",
+			MEDIAGO_GENERATION_CLIS: "none",
+		});
 	});
 
 	it("refuses to start when the server sidecar is missing", async () => {
@@ -100,6 +104,8 @@ describe("server sidecar lifecycle", () => {
 
 		const spawnOptions = mocks.spawn.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
 		expect(spawnOptions.env).toMatchObject({
+			MEDIAGO_AGENT_ID: "none",
+			MEDIAGO_GENERATION_CLIS: "none",
 			MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: "",
 			MEDIAGO_SERVER_PORT: "48273",
 			MEDIAGO_SIDECAR_MODE: "1",

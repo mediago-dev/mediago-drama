@@ -20,6 +20,7 @@ import (
 type GenerationTaskService interface {
 	ListGenerationModels() dto.GenerationModelsResponse
 	CreateGenerationMessage(ctx context.Context, payload dto.GenerationMessageRequest) (dto.GenerationMessageResponse, int, error)
+	GenerateCodexImage(ctx context.Context, projectID string, payload dto.CodexImageRequest) (dto.CodexImageResponse, int, error)
 	CreatePromptOptimizedGenerationMessage(ctx context.Context, payload dto.GenerationMessageRequest) (dto.GenerationOptimizeAndGenerateResponse, int, error)
 	CreateGenerationBatch(ctx context.Context, payload dto.GenerationBatchRequest) (dto.GenerationBatchResponse, int, error)
 	GetGenerationBatch(batchID string) (dto.GenerationBatchTasksResponse, bool, error)
@@ -47,6 +48,22 @@ type GenerationTaskService interface {
 	MarkAllGenerationNotificationsRead(projectID string) error
 	SubscribeGenerationNotifications() (<-chan dto.GenerationNotificationEvent, func())
 	GenerationNotificationConnectedEvent(projectID string) dto.GenerationNotificationEvent
+}
+
+// HandleProjectCodexImage generates one image with the local Codex image skill
+// and immediately archives it to the target production resource.
+func (handler GenerationTasks) HandleProjectCodexImage(context *gin.Context) {
+	payload, err := decodeJSON[dto.CodexImageRequest](context)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)
+		return
+	}
+	response, status, err := handler.service.GenerateCodexImage(context.Request.Context(), pathParam(context, "projectId"), payload)
+	if err != nil {
+		httpresponse.ErrorFromStatus(context, status, err)
+		return
+	}
+	httpresponse.OK(context, response)
 }
 
 // GenerationTasks handles generation task HTTP routes.

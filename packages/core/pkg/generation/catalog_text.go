@@ -12,3 +12,10 @@ func textParams() RouteParamConfig {
 		optionalNumberRouteParam(ParamMaxTokens, 1, 32768),
 	})
 }
+
+func gpt56SolTextParams() RouteParamConfig {
+	return identityRouteParamConfig([]RouteParam{
+		selectRouteParam(ParamReasoningEffort, "medium", reasoningEffortOptions()),
+		optionalNumberRouteParam(ParamMaxTokens, 1, 128000),
+	})
+}

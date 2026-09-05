@@ -2,10 +2,16 @@ package document
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func TestProjectTrashMoveAndRestoreDirectory(t *testing.T) {
@@ -41,6 +47,51 @@ func TestProjectTrashMoveAndRestoreDirectory(t *testing.T) {
 	}
 	if got, err := os.ReadFile(filepath.Join(projectDir, "work", "doc.md")); err != nil || string(got) != "hello" {
 		t.Fatalf("restored doc = %q err=%v, want hello", got, err)
+	}
+}
+
+func TestMoveDirectorySerializesConcurrentProjectMoves(t *testing.T) {
+	root := t.TempDir()
+	originalRename := renameDirectory
+	var active int32
+	var maximum int32
+	renameDirectory = func(source, target string) error {
+		current := atomic.AddInt32(&active, 1)
+		for {
+			seen := atomic.LoadInt32(&maximum)
+			if current <= seen || atomic.CompareAndSwapInt32(&maximum, seen, current) {
+				break
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+		atomic.AddInt32(&active, -1)
+		return originalRename(source, target)
+	}
+	defer func() { renameDirectory = originalRename }()
+
+	var group sync.WaitGroup
+	errors := make(chan error, 7)
+	for index := 0; index < 7; index++ {
+		source := filepath.Join(root, fmt.Sprintf("source-%d", index))
+		target := filepath.Join(root, fmt.Sprintf("target-%d", index))
+		if err := os.MkdirAll(source, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			errors <- moveDirectory(source, target)
+		}()
+	}
+	group.Wait()
+	close(errors)
+	for err := range errors {
+		if err != nil {
+			t.Fatalf("concurrent move error = %v", err)
+		}
+	}
+	if got := atomic.LoadInt32(&maximum); got != 1 {
+		t.Fatalf("maximum concurrent directory moves = %d, want 1", got)
 	}
 }
 
@@ -94,5 +145,37 @@ func TestProjectTrashMoveFallsBackToCopyDelete(t *testing.T) {
 	}
 	if got, err := os.ReadFile(filepath.Join(trashDir, "doc.md")); err != nil || string(got) != "copy" {
 		t.Fatalf("copied doc = %q err=%v, want copy", got, err)
+	}
+}
+
+func TestProjectTrashMoveRetriesTransientWindowsLock(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows locking behavior")
+	}
+	workspaceDir := t.TempDir()
+	projectDir := filepath.Join(workspaceDir, "Locked Project")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("creating project dir: %v", err)
+	}
+
+	originalRename := renameDirectory
+	var attempts atomic.Int32
+	renameDirectory = func(source, target string) error {
+		if attempts.Add(1) < 3 {
+			return &os.PathError{Op: "rename", Path: source, Err: syscall.Errno(32)}
+		}
+		return os.Rename(source, target)
+	}
+	defer func() { renameDirectory = originalRename }()
+
+	trashDir, err := moveProjectDirToTrash(workspaceDir, projectDir, "project-locked", "Locked Project", "2026-06-17T00:00:00Z")
+	if err != nil {
+		t.Fatalf("moveProjectDirToTrash() error = %v", err)
+	}
+	if attempts.Load() != 3 {
+		t.Fatalf("rename attempts = %d, want 3", attempts.Load())
+	}
+	if _, err := os.Stat(trashDir); err != nil {
+		t.Fatalf("trashed project dir missing: %v", err)
 	}
 }

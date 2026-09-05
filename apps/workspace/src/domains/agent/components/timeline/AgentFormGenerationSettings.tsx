@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { GenerationSettingsForm } from "@/domains/generation/components/GenerationSettingsForm";
 import type { GenerationSettingsValue } from "@/domains/generation/components/generationSettingsValue";
 import { useGenerationSettingsForm } from "@/domains/generation/hooks/useGenerationSettingsForm";
@@ -9,6 +9,7 @@ export interface AgentFormGenerationSettingsProps {
 	disabled: boolean;
 	fieldId: string;
 	kind: "image" | "video";
+	mode?: "standard" | "storyboard-draft";
 	onBusyChange?: (busy: boolean) => void;
 	onChange: (value: GenerationSettingsValue) => void;
 	onValidityChange?: (valid: boolean) => void;
@@ -23,6 +24,7 @@ export const AgentFormGenerationSettings: React.FC<AgentFormGenerationSettingsPr
 	disabled,
 	fieldId,
 	kind,
+	mode = "standard",
 	onBusyChange,
 	onChange,
 	onValidityChange,
@@ -37,6 +39,20 @@ export const AgentFormGenerationSettings: React.FC<AgentFormGenerationSettingsPr
 		uploadIdPrefix: `agent-generation-settings-${selectionId}-${fieldId}`,
 	});
 	const valid = controller.isReady && controller.isValid;
+	const storyboardDefaultsAppliedRef = useRef(false);
+
+	useEffect(() => {
+		if (
+			mode !== "storyboard-draft" ||
+			!controller.isReady ||
+			storyboardDefaultsAppliedRef.current
+		) {
+			return;
+		}
+		storyboardDefaultsAppliedRef.current = true;
+		controller.setPromptSupplementEnabled(false);
+		controller.setPromptOptimizationEnabled(false);
+	}, [controller, mode]);
 
 	useEffect(() => {
 		if (controller.isReady) onChange(controller.value);
@@ -51,5 +67,5 @@ export const AgentFormGenerationSettings: React.FC<AgentFormGenerationSettingsPr
 		onValidityChange?.(valid);
 	}, [onValidityChange, valid]);
 
-	return <GenerationSettingsForm controller={controller} disabled={disabled} />;
+	return <GenerationSettingsForm controller={controller} disabled={disabled} mode={mode} />;
 };

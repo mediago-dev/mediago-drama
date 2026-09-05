@@ -33,7 +33,13 @@ class HttpClient {
 			(response: AxiosResponse<ApiResponse>) => {
 				const { data } = response;
 
-				if (data.success && data.code === ErrorCode.SUCCESS) {
+				// MediaGo's local server historically omitted the optional `success`
+				// field on successful envelopes and only returned `{ code: 0, ... }`.
+				// Treat the canonical success code as authoritative so the frontend
+				// can consume both envelope shapes. Without this compatibility guard,
+				// the model catalog request is rejected, the UI falls back to an empty
+				// catalog, and every image route is incorrectly shown as unavailable.
+				if (data.code === ErrorCode.SUCCESS && data.success !== false) {
 					return response;
 				}
 

@@ -144,6 +144,34 @@ func TestListWorkspaceDocumentResourcesParsesStoryboardGroupsFromH2(t *testing.T
 	}
 }
 
+func TestListWorkspaceDocumentResourcesIgnoresProductionStageScaffold(t *testing.T) {
+	store := requireDocumentStore(t)
+	projectID := "project-production-stage-resources"
+	requireTestProject(t, store, projectID)
+
+	_, _, err := store.CreateWorkspaceDocument(projectID, CreateWorkspaceDocumentRequest{
+		ID:       "production-stage",
+		Title:    "动态制作",
+		Category: "storyboard",
+		Content: strings.Join([]string{
+			"# 动态制作", "<!-- production-stage: {\"stageId\":\"stage-4\"} -->",
+			"## 本阶段目的", "测试动作。", "## 应交付内容", "- [ ] 动态 Prompt",
+			"## P01 月下奔跑", "女主骑马从左向右。", "## 版本记录", "| V01 | |",
+		}, "\n"),
+	})
+	if err != nil {
+		t.Fatalf("creating production stage document: %v", err)
+	}
+
+	response, err := store.ListWorkspaceDocumentResources(projectID)
+	if err != nil {
+		t.Fatalf("ListWorkspaceDocumentResources returned error: %v", err)
+	}
+	if len(response.Resources) != 1 || response.Resources[0].Title != "P01 月下奔跑" {
+		t.Fatalf("resources = %#v, want only the real shot section", response.Resources)
+	}
+}
+
 func TestListWorkspaceDocumentResourcesAppliesGeneratedImageCounts(t *testing.T) {
 	store := requireDocumentStore(t)
 	projectID := "project-document-resources-generated-count"

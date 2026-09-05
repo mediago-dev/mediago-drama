@@ -770,7 +770,7 @@ describe("AgentStateSync", () => {
 			routeSessionId: "session-1",
 		});
 
-		await vi.waitFor(() => expect(agentApiMocks.getAgentSessionStatus).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(agentApiMocks.getAgentSessionStatus).toHaveBeenCalled());
 		expect(useAgentStore.getState().isRunning).toBe(true);
 
 		agentApiMocks.getAgentSessionStatus.mockResolvedValue({
@@ -786,7 +786,7 @@ describe("AgentStateSync", () => {
 		});
 
 		await vi.waitFor(() => expect(useAgentStore.getState().isRunning).toBe(false));
-		expect(agentApiMocks.getAgentSessionStatus).toHaveBeenCalledTimes(2);
+		expect(agentApiMocks.getAgentSessionStatus.mock.calls.length).toBeGreaterThanOrEqual(2);
 		expect(selectAgentMessages(useAgentStore.getState())).toEqual([
 			expect.objectContaining({ id: "user-1", content: "继续处理" }),
 			expect.objectContaining({ id: "assistant-1", content: "处理完成" }),

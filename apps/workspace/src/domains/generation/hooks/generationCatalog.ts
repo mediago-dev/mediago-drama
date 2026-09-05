@@ -14,7 +14,7 @@ import { fallbackCatalog } from "./generationFallbackCatalog";
 export { fallbackCatalog } from "./generationFallbackCatalog";
 
 export const defaultFamilyIds: Record<GenerationKind, string> = {
-	image: "gpt-image",
+	image: "nano-banana",
 	text: "gpt-text",
 	video: "seedance",
 	audio: "minimax-speech",
@@ -62,8 +62,17 @@ export const generatedAssetsIncludeMediaAssets = (assets: GenerationAsset[] = []
 
 export const preferredRoute = (routes: GenerationRoute[]) =>
 	preferredTextRoute(routes.filter(isConfiguredRoute)) ??
+	preferredMediaGoNanoBanana2Route(routes) ??
 	routes.find(isConfiguredRoute) ??
 	routes[0];
+
+const preferredMediaGoNanoBanana2Route = (routes: GenerationRoute[]) => {
+	const route = routes.find(
+		(candidate) =>
+			candidate.id === "mediago.gemini-3.1-flash-image" && isConfiguredRoute(candidate),
+	);
+	return route;
+};
 
 const preferredTextRoute = (routes: GenerationRoute[]) => {
 	if (!routes.some((route) => route.kind === "text")) return undefined;

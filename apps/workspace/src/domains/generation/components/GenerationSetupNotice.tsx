@@ -18,18 +18,27 @@ export const InspectorHeading: React.FC<{
 );
 
 export const GenerationSetupNotice: React.FC<{
+	hasCatalog?: boolean;
 	isLoading: boolean;
 	kind: GenerationKind;
 	onSettingsClick: () => void;
-}> = ({ isLoading, kind, onSettingsClick }) => (
+}> = ({ hasCatalog = false, isLoading, kind, onSettingsClick }) => (
 	<Alert className="rounded-md">
 		{isLoading ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
-		<AlertTitle>{isLoading ? "正在加载模型供应商" : "暂无已配置供应商"}</AlertTitle>
+		<AlertTitle>
+			{isLoading
+				? "正在加载模型供应商"
+				: hasCatalog
+					? "模型已接入，尚未配置 Key"
+					: "暂无已配置供应商"}
+		</AlertTitle>
 		<AlertDescription className="flex flex-wrap items-center justify-between gap-3">
 			<span>
 				{isLoading
 					? "正在检查已配置的 API Key。"
-					: `生成前请先为${kindLabel(kind)}供应商配置 API Key。`}
+					: hasCatalog
+						? `当前${kindLabel(kind)}模型可以选择，但生成前需要先配置对应供应商的 API Key。`
+						: `生成前请先为${kindLabel(kind)}供应商配置 API Key。`}
 			</span>
 			{isLoading ? null : (
 				<Button type="button" variant="outline" size="sm" onClick={onSettingsClick}>

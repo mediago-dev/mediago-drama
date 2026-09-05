@@ -84,7 +84,7 @@ const packagedLocalCLIConfig = () => {
 			: [];
 		return { generationClis: values.map((value) => value.trim()).filter(Boolean) };
 	} catch {
-		return { generationClis: ["dreamina"] };
+		return { generationClis: [] };
 	}
 };
 
@@ -109,7 +109,7 @@ const sidecarEnvironment = (
 
 	return {
 		...inherited,
-		MEDIAGO_AGENT_ID: configuredValue("MEDIAGO_AGENT_ID", platformConfig.agent || "opencode"),
+		MEDIAGO_AGENT_ID: configuredValue("MEDIAGO_AGENT_ID", platformConfig.agent || "none"),
 		MEDIAGO_MODEL_PLATFORM: configuredValue(
 			"MEDIAGO_MODEL_PLATFORM",
 			platformConfig.modelPlatform || "mediago",

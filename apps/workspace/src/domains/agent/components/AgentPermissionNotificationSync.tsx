@@ -1,9 +1,9 @@
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { showAgentPermissionSystemNotification } from "@/domains/agent/lib/permission-notifications";
 import { selectAgentPermissionRequests, useAgentStore } from "@/domains/agent/stores";
-import { agentProjectPath, agentProjectRouteState } from "@/domains/workspace/lib/workbench-route";
+import { agentProjectRouteState } from "@/domains/workspace/lib/workbench-route";
 import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
 import { useToast } from "@/hooks/useToast";
 
@@ -17,6 +17,7 @@ export const AgentPermissionNotificationSync: React.FC<AgentPermissionNotificati
 	projectId,
 }) => {
 	const navigate = useNavigate();
+	const location = useLocation();
 	const toast = useToast();
 	const permissionRequests = useAgentStore(selectAgentPermissionRequests);
 	const [windowActive, setWindowActive] = useState(isWindowActive);
@@ -51,7 +52,7 @@ export const AgentPermissionNotificationSync: React.FC<AgentPermissionNotificati
 				window.focus();
 				useAgentLayoutStore.getState().setTab("agent");
 				if (projectId) {
-					navigate(agentProjectPath(projectId), {
+					navigate(preserveProjectRoute(location, projectId), {
 						state: agentProjectRouteState("agent"),
 					});
 				}
@@ -62,10 +63,24 @@ export const AgentPermissionNotificationSync: React.FC<AgentPermissionNotificati
 				});
 			});
 		}
-	}, [isAgentSurfaceActive, navigate, permissionRequests, projectId, toast, windowActive]);
+	}, [
+		isAgentSurfaceActive,
+		location,
+		navigate,
+		permissionRequests,
+		projectId,
+		toast,
+		windowActive,
+	]);
 
 	return null;
 };
 
 const isWindowActive = () =>
 	typeof document !== "undefined" && document.visibilityState === "visible" && document.hasFocus();
+
+const preserveProjectRoute = (location: ReturnType<typeof useLocation>, projectId: string) => {
+	const params = new URLSearchParams(location.search);
+	params.set("projectId", projectId);
+	return `${location.pathname === "/projects" ? location.pathname : "/projects"}?${params.toString()}`;
+};

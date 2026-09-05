@@ -467,6 +467,18 @@ func (runner *acpAgentRunner) runOnce(ctx context.Context, request agentRunReque
 	if final.Message == "" {
 		final.Message = "ACP Agent 已完成。"
 	}
+	if imagePaths, imageErr := importCodexGeneratedImages(string(sessionID), request.ProjectDir, promptStartedAt); imageErr != nil {
+		acpLog().Warn("codex generated image import failed", append(logArgs, "acp_session_id", sessionID, "error", imageErr)...)
+	} else if len(imagePaths) > 0 {
+		var imageMarkdown strings.Builder
+		imageMarkdown.WriteString("\n\n已生成并归档到当前项目资产库：\n")
+		for index, imagePath := range imagePaths {
+			imageURL := codexGeneratedProjectAssetURL(request.ProjectID, imagePath)
+			fmt.Fprintf(&imageMarkdown, "\n![Codex 生图 %d](%s)\n", index+1, imageURL)
+		}
+		final.Message += imageMarkdown.String()
+		publish(agentEvent{Type: "agent.activity", Message: fmt.Sprintf("Codex 生图已自动归档：%d 张", len(imagePaths))})
+	}
 	acpLog().Debug(
 		"acp final response parsed",
 		append(logArgs,

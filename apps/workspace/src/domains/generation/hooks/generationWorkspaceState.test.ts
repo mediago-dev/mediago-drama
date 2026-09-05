@@ -2,11 +2,38 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	removeStaleLocalPendingMessages,
 	useGenerationWorkspacePreferenceStore,
+	whereslowImageDefaultSelection,
 } from "./generationWorkspaceState";
 import type { ChatMessage } from "./generationTypes";
 
 const T0 = Date.parse("2026-06-04T00:00:00.000Z");
 const at = (offsetMs: number) => new Date(T0 + offsetMs).toISOString();
+
+describe("default image model migration", () => {
+	it("switches image preferences to the single WhereSlow route and preserves video", () => {
+		const migrated = whereslowImageDefaultSelection({
+			familyIds: { image: "nano-banana", video: "seedance" },
+			versionIds: { "nano-banana": "gemini-3-pro-image-preview", seedance: "seedance-2" },
+			routeIds: {
+				"gemini-3-pro-image-preview": "mediago.gemini-3-pro-image",
+				"seedance-2": "dmx.seedance-2",
+			},
+			routeParams: { "dmx.seedance-2": { duration: 5 } },
+		});
+
+		expect(migrated.familyIds).toMatchObject({ image: "whereslow-image", video: "seedance" });
+		expect(migrated.versionIds).toMatchObject({
+			"whereslow-image": "nano-banana-2",
+			seedance: "seedance-2",
+		});
+		expect(migrated.routeIds).toMatchObject({
+			"nano-banana-2": "whereslow-image.nano-banana-2",
+			"seedance-2": "dmx.seedance-2",
+		});
+		expect(migrated.routeParams["dmx.seedance-2"]).toEqual({ duration: 5 });
+	});
+
+});
 
 const userMessage = (localId: string, content: string, offsetMs = 0): ChatMessage => ({
 	id: `${localId}:prompt`,

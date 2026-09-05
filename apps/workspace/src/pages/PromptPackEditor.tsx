@@ -1,7 +1,6 @@
 import {
 	Copy,
 	Download,
-	ExternalLink,
 	FolderOpen,
 	Loader2,
 	PackageOpen,
@@ -51,7 +50,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Textarea } from "@/shared/components/ui/textarea";
-import { openExternalUrl, revealNativePath } from "@/shared/desktop/actions";
+import { revealNativePath } from "@/shared/desktop/actions";
 
 export interface CreateLocalPromptPackInput {
 	description: string;
@@ -401,18 +400,6 @@ export const PromptPackEditor: React.FC = () => {
 		}
 	};
 
-	const openPublishPage = async () => {
-		const url = promptPackPublishURL();
-		if (!url) {
-			toast.error("未配置技能包发布地址", {
-				description: "请设置 VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL 后重试。",
-			});
-			return;
-		}
-		await openExternalUrl(url);
-		setExportCompletion(undefined);
-	};
-
 	const revealExportedPack = async () => {
 		if (!exportCompletion?.path) return;
 		try {
@@ -535,7 +522,6 @@ export const PromptPackEditor: React.FC = () => {
 				onOpenChange={(open) => {
 					if (!open) setExportCompletion(undefined);
 				}}
-				onOpenPublishPage={() => void openPublishPage()}
 				onReveal={() => void revealExportedPack()}
 			/>
 			<PromptPackSaveAsDialog
@@ -744,17 +730,16 @@ interface PromptPackExportCompletion {
 const PromptPackExportCompleteDialog: React.FC<{
 	completion?: PromptPackExportCompletion;
 	onOpenChange: (open: boolean) => void;
-	onOpenPublishPage: () => void;
 	onReveal: () => void;
-}> = ({ completion, onOpenChange, onOpenPublishPage, onReveal }) => (
+}> = ({ completion, onOpenChange, onReveal }) => (
 	<AlertDialog open={Boolean(completion)} onOpenChange={onOpenChange}>
 		<AlertDialogContent>
 			<AlertDialogHeader>
 				<AlertDialogTitle>技能包已导出</AlertDialogTitle>
 				<AlertDialogDescription>
 					{completion?.status === "download-started"
-						? `“${completion.fileName}”下载已开始。保存后前往 MediaGo「我的技能包」上传，设置公开售卖或席位分发并提交审核。`
-						: `“${completion?.fileName ?? "技能包"}”已保存。前往 MediaGo「我的技能包」上传，设置公开售卖或席位分发并提交审核。`}
+						? `“${completion.fileName}”下载已开始，可作为本地备份或在其他设备导入。`
+						: `“${completion?.fileName ?? "技能包"}”已保存，可作为本地备份或在其他设备导入。`}
 				</AlertDialogDescription>
 			</AlertDialogHeader>
 			<AlertDialogFooter className="sm:items-center">
@@ -764,11 +749,7 @@ const PromptPackExportCompleteDialog: React.FC<{
 						<span>在文件夹中显示</span>
 					</Button>
 				) : null}
-				<AlertDialogCancel>稍后处理</AlertDialogCancel>
-				<Button type="button" onClick={onOpenPublishPage}>
-					<ExternalLink />
-					<span>前往发布</span>
-				</Button>
+				<AlertDialogCancel>完成</AlertDialogCancel>
 			</AlertDialogFooter>
 		</AlertDialogContent>
 	</AlertDialog>
@@ -803,19 +784,6 @@ const savePromptPackBlob = async (blob: Blob, fileName: string): Promise<PromptP
 };
 
 const fileNameFromPath = (path?: string) => path?.split(/[\\/]/).at(-1)?.trim();
-
-const DEFAULT_PROMPT_PACK_PUBLISH_URL = "https://mediago.torchstellar.com/account#promptPacks";
-
-const promptPackPublishURL = () => {
-	const configured = import.meta.env.VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL?.trim();
-	const candidate = configured || DEFAULT_PROMPT_PACK_PUBLISH_URL;
-	try {
-		const url = new URL(candidate);
-		return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : undefined;
-	} catch {
-		return undefined;
-	}
-};
 
 const errorMessage = (error: unknown) =>
 	error instanceof Error && error.message.trim() ? error.message : "请稍后重试。";

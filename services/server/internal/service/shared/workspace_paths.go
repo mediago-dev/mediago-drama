@@ -64,7 +64,11 @@ type ProjectManifestFile struct {
 
 // ProjectManifestOverviewFile is the overview config stored in project.media.json.
 type ProjectManifestOverviewFile struct {
-	CategoryDefaults map[string]string `json:"categoryDefaults,omitempty"`
+	CategoryDefaults map[string]string                `json:"categoryDefaults,omitempty"`
+	Production       *mediamcp.ProjectProductionState `json:"production,omitempty"`
+	CoverAssetID     string                           `json:"coverAssetId,omitempty"`
+	SortOrder        *int                             `json:"sortOrder,omitempty"`
+	OutputDirectory  string                           `json:"outputDirectory,omitempty"`
 }
 
 // UnmarshalJSON accepts project files written with the legacy layerDefaults key.
@@ -136,6 +140,10 @@ func NormalizeProjectManifestFile(project mediamcp.Project, current ProjectManif
 		Description:   description,
 		Overview: ProjectManifestOverviewFile{
 			CategoryDefaults: normalizeProjectManifestCategoryDefaults(current.Overview.CategoryDefaults),
+			Production:       current.Overview.Production,
+			CoverAssetID:     current.Overview.CoverAssetID,
+			SortOrder:        current.Overview.SortOrder,
+			OutputDirectory:  strings.TrimSpace(current.Overview.OutputDirectory),
 		},
 		CreatedAt: createdAt,
 	}

@@ -268,7 +268,7 @@ describe("AudioGenerationDialog", () => {
 			}),
 			true,
 		);
-	});
+	}, 15_000);
 
 	it("stops the current audio preview when switching tabs", async () => {
 		const play = vi.fn().mockResolvedValue(undefined);

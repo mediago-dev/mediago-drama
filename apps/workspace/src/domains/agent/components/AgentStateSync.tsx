@@ -25,11 +25,7 @@ import {
 	useAgentPersistenceStore,
 } from "@/domains/agent/stores/persistence";
 import { selectAgentMessages, useAgentStore } from "@/domains/agent/stores";
-import {
-	agentProjectPath,
-	agentProjectRouteState,
-	isAgentRoute,
-} from "@/domains/workspace/lib/workbench-route";
+import { agentProjectRouteState, isAgentRoute } from "@/domains/workspace/lib/workbench-route";
 
 interface AgentStateSyncProps {
 	agentSurfaceActive?: boolean;
@@ -45,6 +41,7 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 	const location = useLocation();
 	const navigate = useNavigate();
 	const normalizedProjectId = projectId?.trim() || null;
+	const isAgentRunning = useAgentStore((state) => state.isRunning);
 	const routeVisitRef = useRef<{ projectId: string | null; key: string }>({
 		projectId: null,
 		key: "",
@@ -152,7 +149,13 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 			return;
 		}
 		if (!isAgentRoute(location.pathname)) return;
-		const nextUrl = agentProjectPath(projectId, { agentSessionId: latestSessionUrlTarget });
+		// Adding the latest agent session must not reset the production workspace.
+		// The route may already contain workspace/stageId/documentId/assetId and
+		// those parameters are part of the user's current working context.
+		const params = new URLSearchParams(location.search);
+		params.set("projectId", projectId);
+		params.set("agentSessionId", latestSessionUrlTarget);
+		const nextUrl = `${location.pathname}?${params.toString()}`;
 		if (nextUrl === `${location.pathname}${location.search}`) return;
 		navigate(nextUrl, { replace: true, state: agentProjectRouteState("agent") });
 	}, [
@@ -244,7 +247,13 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 				}
 
 				const store = useAgentStore.getState();
-				if (!status.running) {
+				if (status.running) {
+					if (!store.isRunning) {
+						store.setSessionId(sessionId);
+						useAgentStore.setState({ isRunning: true });
+						resumeAgentSessionEventStream(sessionId, projectId, store.lastEventId);
+					}
+				} else {
 					applyTerminalSessionStatus(status);
 					void refreshAgentChatTranscript(sessionId, projectId).catch(() => {});
 				}
@@ -282,6 +291,40 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 		projectId,
 		routeSessionId,
 	]);
+
+	useEffect(() => {
+		if (!projectId || !isAgentRunning) return;
+		const sessionId =
+			routeSessionId?.trim() ||
+			persistedSessionId?.trim() ||
+			useAgentStore.getState().sessionId?.trim() ||
+			getPersistedAgentSessionId(projectId);
+		if (!sessionId) return;
+
+		let cancelled = false;
+		let checking = false;
+		const reconcile = async () => {
+			if (cancelled || checking) return;
+			checking = true;
+			try {
+				const status = await getAgentSessionStatus(sessionId, projectId);
+				if (cancelled || status.running) return;
+				applyTerminalSessionStatus(status);
+				closeAllResumedAgentEventStreams();
+				void refreshAgentChatTranscript(sessionId, projectId).catch(() => {});
+			} catch {
+				// SSE 断线时状态接口也可能短暂不可用，下一轮继续核对。
+			} finally {
+				checking = false;
+			}
+		};
+		void reconcile();
+		const interval = window.setInterval(() => void reconcile(), 2500);
+		return () => {
+			cancelled = true;
+			window.clearInterval(interval);
+		};
+	}, [isAgentRunning, persistedSessionId, projectId, routeSessionId]);
 
 	return null;
 };

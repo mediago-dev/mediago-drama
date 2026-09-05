@@ -517,6 +517,9 @@ func (service *GenerationTaskService) hydrateProjectSelectedAssetModelFromTaskLo
 	if domain.StringValue(model.ResourceTitle) == "" {
 		model.ResourceTitle = domain.StringPtr(asset.Title)
 	}
+	if strings.TrimSpace(model.ShotIDsJSON) == "" || model.ShotIDsJSON == "[]" {
+		model.ShotIDsJSON = mustEncodeGenerationTaskJSON(task.ShotIDs)
+	}
 	return nil
 }
 
@@ -911,6 +914,7 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 		ProjectID:       domain.StringPtr(GenerationProjectIDForRequest(task.ProjectID, "")),
 		DocumentID:      domain.StringPtr(task.DocumentID),
 		SectionID:       domain.StringPtr(task.SectionID),
+		ShotIDsJSON:     mustEncodeGenerationTaskJSON(task.ShotIDs),
 		CapabilityID:    domain.StringPtr(task.CapabilityID),
 		ResourceType:    domain.StringPtr(task.ResourceType),
 		Kind:            task.Kind,
@@ -918,6 +922,9 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 		FamilyID:        task.FamilyID,
 		VersionID:       task.VersionID,
 		Provider:        task.Provider,
+		BaseURL:         task.BaseURL,
+		Protocol:        task.Protocol,
+		Endpoint:        task.Endpoint,
 		ModelID:         task.ModelID,
 		Model:           task.Model,
 		Prompt:          task.Prompt,
@@ -934,6 +941,10 @@ func (service *GenerationTaskService) upsertTask(task GenerationTaskRecord, requ
 		Error:           task.Error,
 		ErrorCode:       task.ErrorCode,
 		ErrorType:       task.ErrorType,
+		ErrorProvider:   task.ErrorProvider,
+		ErrorModel:      task.ErrorModel,
+		ErrorEndpoint:   task.ErrorEndpoint,
+		ErrorHTTPStatus: task.ErrorHTTPStatus,
 		Retryable:       task.Retryable,
 		CreatedAt:       domain.TimeFromString(task.CreatedAt),
 		UpdatedAt:       domain.TimeFromString(task.UpdatedAt),
@@ -1384,34 +1395,41 @@ func generationTaskRecordsFromModels(models []generationTaskModel) ([]Generation
 
 func generationTaskRecordFromModel(model generationTaskModel) (GenerationTaskRecord, error) {
 	task := GenerationTaskRecord{
-		ID:             model.ID,
-		BatchID:        model.BatchID,
-		BatchItemID:    model.BatchItemID,
-		BatchIndex:     model.BatchIndex,
-		ProviderTaskID: model.ProviderTaskID,
-		ConversationID: domain.StringValue(model.ConversationID),
-		ProjectID:      domain.StringValue(model.ProjectID),
-		DocumentID:     domain.StringValue(model.DocumentID),
-		SectionID:      domain.StringValue(model.SectionID),
-		CapabilityID:   domain.StringValue(model.CapabilityID),
-		ResourceType:   domain.StringValue(model.ResourceType),
-		Kind:           model.Kind,
-		RouteID:        model.RouteID,
-		FamilyID:       model.FamilyID,
-		VersionID:      model.VersionID,
-		Provider:       model.Provider,
-		ModelID:        model.ModelID,
-		Model:          model.Model,
-		Prompt:         model.Prompt,
-		Status:         model.Status,
-		Message:        model.Message,
-		Text:           model.Text,
-		Error:          model.Error,
-		ErrorCode:      model.ErrorCode,
-		ErrorType:      model.ErrorType,
-		Retryable:      model.Retryable,
-		CreatedAt:      domain.StringFromTime(model.CreatedAt),
-		UpdatedAt:      domain.StringFromTime(model.UpdatedAt),
+		ID:              model.ID,
+		BatchID:         model.BatchID,
+		BatchItemID:     model.BatchItemID,
+		BatchIndex:      model.BatchIndex,
+		ProviderTaskID:  model.ProviderTaskID,
+		ConversationID:  domain.StringValue(model.ConversationID),
+		ProjectID:       domain.StringValue(model.ProjectID),
+		DocumentID:      domain.StringValue(model.DocumentID),
+		SectionID:       domain.StringValue(model.SectionID),
+		CapabilityID:    domain.StringValue(model.CapabilityID),
+		ResourceType:    domain.StringValue(model.ResourceType),
+		Kind:            model.Kind,
+		RouteID:         model.RouteID,
+		FamilyID:        model.FamilyID,
+		VersionID:       model.VersionID,
+		Provider:        model.Provider,
+		BaseURL:         model.BaseURL,
+		Protocol:        model.Protocol,
+		Endpoint:        model.Endpoint,
+		ModelID:         model.ModelID,
+		Model:           model.Model,
+		Prompt:          model.Prompt,
+		Status:          model.Status,
+		Message:         model.Message,
+		Text:            model.Text,
+		Error:           model.Error,
+		ErrorCode:       model.ErrorCode,
+		ErrorType:       model.ErrorType,
+		ErrorProvider:   model.ErrorProvider,
+		ErrorModel:      model.ErrorModel,
+		ErrorEndpoint:   model.ErrorEndpoint,
+		ErrorHTTPStatus: model.ErrorHTTPStatus,
+		Retryable:       model.Retryable,
+		CreatedAt:       domain.StringFromTime(model.CreatedAt),
+		UpdatedAt:       domain.StringFromTime(model.UpdatedAt),
 		Usage: GenerationUsage{
 			InputTokens:     model.InputTokens,
 			OutputTokens:    model.OutputTokens,
@@ -1420,6 +1438,10 @@ func generationTaskRecordFromModel(model generationTaskModel) (GenerationTaskRec
 			CachedTokens:    model.CachedTokens,
 		},
 	}
+	if err := decodeGenerationTaskJSON(model.ShotIDsJSON, &task.ShotIDs); err != nil {
+		return GenerationTaskRecord{}, err
+	}
+	task.ShotIDs = uniqueCompactStrings(task.ShotIDs)
 
 	if err := decodeGenerationTaskJSON(model.ParamsJSON, &task.Params); err != nil {
 		return GenerationTaskRecord{}, err
@@ -1739,6 +1761,7 @@ func projectSelectedAssetModelFromRequest(projectID string, request UpdateSelect
 		SourceTaskID:     domain.StringPtr(sourceTaskID),
 		SourceSlotIndex:  selectedAssetRequestSourceIndex(request),
 		SourceDocumentID: domain.StringPtr(request.SourceDocumentID),
+		ShotIDsJSON:      mustEncodeGenerationTaskJSON(uniqueCompactStrings(request.ShotIDs)),
 		SortOrder:        request.SortOrder,
 	}
 }
@@ -1764,6 +1787,10 @@ func projectSelectedAssetModelHasDirectPayload(model domain.ProjectSelectedAsset
 
 func selectedGenerationAssetRecordFromModel(model domain.ProjectSelectedAssetModel) SelectedGenerationAssetRecord {
 	asset := model.Asset
+	var shotIDs []string
+	if err := decodeGenerationTaskJSON(model.ShotIDsJSON, &shotIDs); err != nil {
+		shotIDs = []string{}
+	}
 	return SelectedGenerationAssetRecord{
 		ID:               model.ID,
 		TaskID:           domain.StringValue(model.SourceTaskID),
@@ -1783,6 +1810,7 @@ func selectedGenerationAssetRecordFromModel(model domain.ProjectSelectedAssetMod
 		SourceAssetIndex: model.SourceSlotIndex,
 		SourceDocumentID: domain.StringValue(model.SourceDocumentID),
 		SortOrder:        model.SortOrder,
+		ShotIDs:          uniqueCompactStrings(shotIDs),
 		CreatedAt:        domain.StringFromTime(model.CreatedAt),
 		UpdatedAt:        domain.StringFromTime(model.UpdatedAt),
 	}
@@ -1800,6 +1828,11 @@ func generationAssetDownloadPath(asset domain.AssetModel) string {
 	relPath = filepath.ToSlash(relPath)
 	projectID := domain.CleanProjectID(domain.StringValue(asset.ProjectID))
 	if projectID != "" {
+		// Historical or externally imported assets can outlive their project row.
+		// Keep generation history readable instead of dereferencing a missing relation.
+		if asset.Project == nil {
+			return ""
+		}
 		projectDir := strings.TrimSpace(asset.Project.ProjectDir)
 		if projectDir == "" && strings.TrimSpace(asset.Project.RelativeDir) != "" {
 			projectDir = filepath.Join(
@@ -2073,4 +2106,12 @@ func decodeGenerationTaskJSON[T any](value string, target *T) error {
 	}
 
 	return nil
+}
+
+func mustEncodeGenerationTaskJSON[T any](value T) string {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "[]"
+	}
+	return string(encoded)
 }

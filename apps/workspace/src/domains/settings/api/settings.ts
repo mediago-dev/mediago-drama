@@ -18,6 +18,26 @@ export interface APIKeyListResponse {
 	providers: APIKeyProvider[];
 }
 
+export type CustomImageAPIProtocol = "gemini_generate_content";
+
+export interface CustomImageAPISettings {
+	baseURL: string;
+	model: string;
+	protocol: CustomImageAPIProtocol;
+	apiKey: {
+		configured: boolean;
+		source: "settings" | "none" | string;
+		masked?: string;
+	};
+}
+
+export interface CustomImageAPISettingsInput {
+	baseURL: string;
+	apiKey?: string;
+	model: string;
+	protocol: CustomImageAPIProtocol;
+}
+
 export interface ModelPlatform {
 	id: string;
 	label: string;
@@ -186,9 +206,20 @@ export const agentModelProfilesKey = "/settings/agent-model-profiles";
 export const codexRelaySettingsKey = "/settings/codex-relay";
 export const codexAccountKey = "/settings/codex-account";
 export const jianyingDraftSettingsKey = "/settings/jianying-draft";
+export const customImageAPISettingsKey = "/settings/image-generation-api";
 
 export const getAPIKeys = async () => {
 	const response = await httpClient.get<APIKeyListResponse>(apiKeysKey);
+	return response.data;
+};
+
+export const getCustomImageAPISettings = async () => {
+	const response = await httpClient.get<CustomImageAPISettings>(customImageAPISettingsKey);
+	return response.data;
+};
+
+export const saveCustomImageAPISettings = async (input: CustomImageAPISettingsInput) => {
+	const response = await httpClient.put<CustomImageAPISettings>(customImageAPISettingsKey, input);
 	return response.data;
 };
 

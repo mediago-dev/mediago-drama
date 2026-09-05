@@ -1,110 +1,45 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
-import { useLastDocumentStore } from "@/lib/stores/last-document";
 import { AgentWorkbenchHeaderActions } from "./AgentWorkbenchTopBar";
 
 const LocationProbe = () => {
 	const location = useLocation();
-	const state = location.state as { projectView?: string } | null;
-	return (
-		<div
-			data-testid="location"
-			data-path={`${location.pathname}${location.search}`}
-			data-project-view={state?.projectView ?? ""}
-		/>
-	);
+	return <div data-testid="location" data-path={`${location.pathname}${location.search}`} />;
 };
 
-const renderHeaderActions = (initialEntry: string) =>
+const renderHeaderActions = () =>
 	render(
-		<MemoryRouter initialEntries={[initialEntry]}>
-			<Routes>
-				<Route
-					path="/projects"
-					element={
-						<>
-							<AgentWorkbenchHeaderActions mode="agent" showTabs />
-							<LocationProbe />
-						</>
-					}
-				/>
-			</Routes>
+		<MemoryRouter initialEntries={["/projects?projectId=project-1&workspace=reference"]}>
+			<AgentWorkbenchHeaderActions mode="agent" showTabs />
+			<LocationProbe />
 		</MemoryRouter>,
 	);
 
 describe("AgentWorkbenchHeaderActions", () => {
 	afterEach(() => {
 		cleanup();
-		useAgentLayoutStore.getState().setTab("agent");
-		useLastDocumentStore.setState({ lastDocumentIdByProject: {} });
+		useAgentLayoutStore.getState().setTab("document");
 		localStorage.clear();
 	});
 
-	it("clears document targets when switching from an asset preview to agent", async () => {
+	it("opens the assistant without changing the current workspace", () => {
 		useAgentLayoutStore.getState().setTab("document");
+		renderHeaderActions();
+		fireEvent.click(screen.getByRole("button", { name: "打开制作助理" }));
 
-		renderHeaderActions("/projects?projectId=project-1&assetId=asset-1");
-		fireEvent.click(screen.getByRole("button", { name: "agent" }));
-
-		await waitFor(() =>
-			expect(screen.getByTestId("location").dataset.path).toBe("/projects?projectId=project-1"),
+		expect(useAgentLayoutStore.getState().tab).toBe("agent");
+		expect(screen.getByTestId("location").dataset.path).toBe(
+			"/projects?projectId=project-1&workspace=reference",
 		);
-		expect(screen.getByTestId("location").dataset.projectView).toBe("agent");
 	});
 
-	it("keeps the route agent session when switching back to agent", async () => {
-		useAgentLayoutStore.getState().setTab("document");
-
-		renderHeaderActions("/projects?projectId=project-1&assetId=asset-1&agentSessionId=session-1");
-		fireEvent.click(screen.getByRole("button", { name: "agent" }));
-
-		await waitFor(() =>
-			expect(screen.getByTestId("location").dataset.path).toBe(
-				"/projects?projectId=project-1&agentSessionId=session-1",
-			),
-		);
-		expect(screen.getByTestId("location").dataset.projectView).toBe("agent");
-	});
-
-	it("marks the clean project route as overview when switching to document", async () => {
+	it("closes the assistant without replacing project content", () => {
 		useAgentLayoutStore.getState().setTab("agent");
+		renderHeaderActions();
+		fireEvent.click(screen.getByRole("button", { name: "收起制作助理" }));
 
-		renderHeaderActions("/projects?projectId=project-1");
-		fireEvent.click(screen.getByRole("button", { name: "文档" }));
-
-		await waitFor(() =>
-			expect(screen.getByTestId("location").dataset.projectView).toBe("overview"),
-		);
-		expect(screen.getByTestId("location").dataset.path).toBe("/projects?projectId=project-1");
-	});
-
-	it("navigates to the last opened document when switching to document tab", async () => {
-		useAgentLayoutStore.getState().setTab("agent");
-		useLastDocumentStore.getState().setLastDocumentId("project-1", "doc-1");
-
-		renderHeaderActions("/projects?projectId=project-1");
-		fireEvent.click(screen.getByRole("button", { name: "文档" }));
-
-		await waitFor(() =>
-			expect(screen.getByTestId("location").dataset.path).toBe(
-				"/projects?projectId=project-1&documentId=doc-1",
-			),
-		);
-		expect(screen.getByTestId("location").dataset.projectView).toBe("document");
-	});
-
-	it("returns to overview when overview was the last document view", async () => {
-		useAgentLayoutStore.getState().setTab("agent");
-		useLastDocumentStore.getState().setLastDocumentId("project-1", null);
-
-		renderHeaderActions("/projects?projectId=project-1");
-		fireEvent.click(screen.getByRole("button", { name: "文档" }));
-
-		await waitFor(() =>
-			expect(screen.getByTestId("location").dataset.projectView).toBe("overview"),
-		);
-		expect(screen.getByTestId("location").dataset.path).toBe("/projects?projectId=project-1");
+		expect(useAgentLayoutStore.getState().tab).toBe("document");
 	});
 });

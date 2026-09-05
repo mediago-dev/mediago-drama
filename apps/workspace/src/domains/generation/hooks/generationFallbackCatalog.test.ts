@@ -147,9 +147,9 @@ describe("fallback generation catalog params", () => {
 		}
 
 		expect(param("libtv.gpt-image-2", "quality").options).toEqual([
-			{ label: "Low", value: "low" },
-			{ label: "Medium", value: "medium" },
-			{ label: "High", value: "high" },
+			{ label: "低", value: "low" },
+			{ label: "中", value: "medium" },
+			{ label: "高", value: "high" },
 		]);
 		expect(param("libtv.gemini-3.1-flash-image-preview", "aspectRatio").options?.[0]).toEqual({
 			label: "Adaptive",

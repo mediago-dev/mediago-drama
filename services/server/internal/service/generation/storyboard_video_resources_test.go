@@ -156,6 +156,73 @@ func TestGenerationServiceListStoryboardVideoResourcesUsesStoryboardGroups(t *te
 	}
 }
 
+func TestStoryboardVideoGroupsIgnoreProductionStageScaffold(t *testing.T) {
+	documents := []mediamcp.WorkspaceDocument{
+		{
+			ID: "stage-empty", Title: "动态制作", Category: "storyboard",
+			Content: joinStoryboardVideoTestLines(
+				"# 动态制作", "<!-- production-stage: {\"stageId\":\"stage-4\"} -->",
+				"## 本阶段目的", "测试动作。", "## 版本记录", "| V01 | |",
+			),
+		},
+		{
+			ID: "stage-with-shot", Title: "单镜制作", Category: "storyboard",
+			Content: joinStoryboardVideoTestLines(
+				"# 单镜制作", "<!-- production-stage: {\"stageId\":\"stage-3\"} -->",
+				"## 本阶段目的", "制作镜头。", "## P01 月下奔跑", "女主骑马从左向右。",
+			),
+		},
+	}
+
+	groups := storyboardVideoDocumentGroupsFromDocuments(documents)
+	if len(groups) != 1 || groups[0].DocumentID != "stage-with-shot" || len(groups[0].Reels) != 1 {
+		t.Fatalf("groups = %#v, want one group with one real shot", groups)
+	}
+	if groups[0].Reels[0].Title != "P01 月下奔跑" {
+		t.Fatalf("reel = %#v, want P01", groups[0].Reels[0])
+	}
+}
+
+func TestStoryboardVideoShotListTableExpandsIntoIndependentShots(t *testing.T) {
+	document := mediamcp.WorkspaceDocument{
+		ID:       "storyboard-shot-list",
+		Title:    "02 拆解制作",
+		Category: "storyboard",
+		Content: joinStoryboardVideoTestLines(
+			"# 02 拆解制作",
+			"<!-- production-stage: {\"stageId\":\"stage-2\"} -->",
+			"<!-- section-id: section_shot_list -->",
+			"## 测试 Shot List",
+			"| Shot | 时长 | 景别 / 机位 | 核心动作 | 必须绑定资产 | 状态 |",
+			"|---|---:|---|---|---|---|",
+			"| S01 | 3s | 中景 | 人物入画 | 角色、礼盒 | 待制作 |",
+			"| S02 | 2s | 特写 | 打开礼盒 | 手部、月饼 | 待制作 |",
+			"<!-- section-id: section_continuity -->",
+			"## 连续性规则",
+			"不得改变运动方向。",
+			"<!-- section-id: section_log -->",
+			"## 测试记录",
+		),
+	}
+
+	groups := storyboardVideoDocumentGroupsFromDocuments([]mediamcp.WorkspaceDocument{document})
+	if len(groups) != 1 {
+		t.Fatalf("groups = %#v, want one group", groups)
+	}
+	if len(groups[0].Reels) != 2 {
+		t.Fatalf("reels = %#v, want two independent shots", groups[0].Reels)
+	}
+	if groups[0].Reels[0].Title != "S01" || groups[0].Reels[1].Title != "S02" {
+		t.Fatalf("reels = %#v, want S01/S02", groups[0].Reels)
+	}
+	if groups[0].Reels[0].SectionID == groups[0].Reels[1].SectionID {
+		t.Fatalf("section IDs must be unique: %#v", groups[0].Reels)
+	}
+	if !strings.Contains(groups[0].Reels[0].Prompt, "核心动作：人物入画") {
+		t.Fatalf("prompt = %q, want row fields preserved", groups[0].Reels[0].Prompt)
+	}
+}
+
 func TestGenerationServiceListStoryboardVideoResourcesDeduplicatesGroupNumbers(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "settings.db")
 	projectID := "project-storyboard-video-duplicates"

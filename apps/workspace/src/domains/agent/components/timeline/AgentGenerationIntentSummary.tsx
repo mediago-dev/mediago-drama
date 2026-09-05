@@ -1,4 +1,12 @@
-import { ChevronRight, FileText, ImageIcon, Layers3, LockKeyhole, Video } from "lucide-react";
+import {
+	ChevronLeft,
+	ChevronRight,
+	FileText,
+	ImageIcon,
+	Layers3,
+	LockKeyhole,
+	Video,
+} from "lucide-react";
 import type React from "react";
 import { useState } from "react";
 import type { AgentGenerationPlanIntent, AgentGenerationPlanIntentItem } from "@/api/types/agent";
@@ -17,13 +25,15 @@ export const AgentGenerationIntentSummary: React.FC<AgentGenerationIntentSummary
 	className,
 }) => {
 	const [detailsExpanded, setDetailsExpanded] = useState(false);
+	const [selectedItemIndex, setSelectedItemIndex] = useState(0);
 	if (!isRenderableGenerationIntent(intent)) return null;
 
 	const isBatch = intent.operation === "create_batch" || intent.items.length > 1;
 	const kindLabel = generationKindLabel(intent.items);
 	const operationLabel = `${isBatch ? "批量" : "单项"}${kindLabel}`;
 	const OperationIcon = isBatch ? Layers3 : intent.items[0]?.kind === "video" ? Video : ImageIcon;
-	const items = isBatch && !detailsExpanded ? [] : intent.items;
+	const selectedItem = intent.items[Math.min(selectedItemIndex, intent.items.length - 1)];
+	const items = isBatch ? (detailsExpanded && selectedItem ? [selectedItem] : []) : intent.items;
 
 	return (
 		<section
@@ -70,21 +80,67 @@ export const AgentGenerationIntentSummary: React.FC<AgentGenerationIntentSummary
 			) : null}
 
 			{items.length > 0 ? (
-				<ol
-					className={cn(
-						"border-t border-info-border px-2.5 py-2",
-						isBatch && "max-h-80 space-y-2 overflow-y-auto",
-					)}
-				>
-					{items.map((item, index) => (
-						<GenerationIntentItem
-							key={`${item.id}-${index}`}
-							item={item}
-							index={index}
-							showIndex={isBatch}
-						/>
-					))}
-				</ol>
+				<div className="border-t border-info-border px-2.5 py-2">
+					{isBatch ? (
+						<>
+							<div className="mb-2 flex items-center justify-between gap-2">
+								<strong className="text-caption text-foreground">
+									正在查看第 {selectedItemIndex + 1} / {intent.items.length} 个镜头
+								</strong>
+								<div className="flex items-center gap-1">
+									<button
+										type="button"
+										className="inline-flex size-7 items-center justify-center rounded-sm border border-border bg-background disabled:opacity-40"
+										disabled={selectedItemIndex === 0}
+										onClick={() => setSelectedItemIndex((value) => Math.max(0, value - 1))}
+										aria-label="上一个镜头"
+									>
+										<ChevronLeft className="size-4" />
+									</button>
+									<button
+										type="button"
+										className="inline-flex size-7 items-center justify-center rounded-sm border border-border bg-background disabled:opacity-40"
+										disabled={selectedItemIndex === intent.items.length - 1}
+										onClick={() =>
+											setSelectedItemIndex((value) => Math.min(intent.items.length - 1, value + 1))
+										}
+										aria-label="下一个镜头"
+									>
+										<ChevronRight className="size-4" />
+									</button>
+								</div>
+							</div>
+							<div className="mb-2 grid grid-cols-7 gap-1" aria-label="镜头提示词目录">
+								{intent.items.map((item, index) => (
+									<button
+										key={`${item.id}-nav-${index}`}
+										type="button"
+										className={cn(
+											"h-7 rounded-sm border text-2xs font-medium",
+											index === selectedItemIndex
+												? "border-info-border bg-info-surface text-info-foreground"
+												: "border-border bg-background text-muted-foreground hover:text-foreground",
+										)}
+										onClick={() => setSelectedItemIndex(index)}
+										title={item.assetTitle || `镜头 ${index + 1}`}
+									>
+										{String(index + 1).padStart(2, "0")}
+									</button>
+								))}
+							</div>
+						</>
+					) : null}
+					<ol className="max-h-80 space-y-2 overflow-y-auto">
+						{items.map((item, index) => (
+							<GenerationIntentItem
+								key={`${item.id}-${selectedItemIndex}-${index}`}
+								item={item}
+								index={isBatch ? selectedItemIndex : index}
+								showIndex={isBatch}
+							/>
+						))}
+					</ol>
+				</div>
 			) : null}
 
 			<p className="border-t border-info-border px-2.5 py-1.5 text-2xs leading-4 text-muted-foreground">

@@ -109,6 +109,11 @@ export const AgentTimeline: React.FC<AgentTimelineProps> = ({
 	const timelineContentRef = useRef<HTMLDivElement>(null);
 	const shouldFollowTimelineRef = useRef(true);
 	const previousSessionIdRef = useRef(sessionId);
+	const latestUserMessageId = useMemo(
+		() => [...messages].reverse().find((message) => message.role === "user")?.id ?? null,
+		[messages],
+	);
+	const previousUserMessageIdRef = useRef(latestUserMessageId);
 	const updateDisclosureOverride = useCallback(
 		(
 			turnId: string,
@@ -140,9 +145,16 @@ export const AgentTimeline: React.FC<AgentTimelineProps> = ({
 			previousSessionIdRef.current = sessionId;
 			shouldFollowTimelineRef.current = true;
 		}
+		// Sending is an explicit navigation action. Even when the user was reading
+		// older output, their newly submitted bubble must become visible immediately;
+		// otherwise it looks as if the message vanished until the route is reopened.
+		if (previousUserMessageIdRef.current !== latestUserMessageId) {
+			previousUserMessageIdRef.current = latestUserMessageId;
+			shouldFollowTimelineRef.current = true;
+		}
 		const timeline = timelineRef.current;
 		if (timeline && shouldFollowTimelineRef.current) timeline.scrollTop = timeline.scrollHeight;
-	}, [items, sessionId]);
+	}, [items, latestUserMessageId, sessionId]);
 
 	useEffect(() => {
 		const timeline = timelineRef.current;

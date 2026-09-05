@@ -11,13 +11,13 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const agent = process.argv[2]?.trim() || "opencode";
+const agent = process.argv[2]?.trim() || "none";
 const platformArg = process.argv[3]?.trim() || "";
 const modelPlatform = process.argv[4]?.trim() || "mediago";
 const mediagoBaseURL =
 	process.argv[5]?.trim() || process.env.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL?.trim() || "";
 const generationClis =
-	process.argv[6]?.trim() || process.env.MEDIAGO_GENERATION_CLIS?.trim() || "dreamina";
+	process.argv[6]?.trim() || process.env.MEDIAGO_GENERATION_CLIS?.trim() || "none";
 const includeProtectedPackRuntime =
 	process.env.MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME?.trim() === "1";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -28,16 +28,13 @@ const vendorDistRoot = platformArg
 	? join(rootDir, "packages", "vendor", "dist", targetPlatform.key)
 	: join(rootDir, "packages", "vendor", "dist");
 const serverBinDir = platformArg ? join(rootDir, "bin", targetPlatform.key) : join(rootDir, "bin");
-const serviceBinaryNames = [
-	"mediago-server",
-	"mediago-document-mcp",
-	"mediago-generation-mcp",
-] as const;
+const serviceBinaryNames = ["mediago-server"] as const;
 const serviceBinaries = serviceBinaryNames.map((name) => ({
 	name: `${name}${targetPlatform.binaryExt}`,
 	path: join(serverBinDir, `${name}${targetPlatform.binaryExt}`),
 }));
-const agentDist = join(vendorDistRoot, agent);
+const includeAgent = agent.toLowerCase() !== "none";
+const agentDist = includeAgent ? join(vendorDistRoot, agent) : "";
 const toolsDist = join(vendorDistRoot, "tools");
 const electronResourcesDir = join(workspaceDir, "electron", "resources");
 const baseToolIDs = ["ffmpeg", "ffprobe"];
@@ -50,10 +47,12 @@ const selectedToolIDs = unique([
 
 function main(): void {
 	for (const binary of serviceBinaries) ensureExecutable(binary.path);
-	ensureFile(
-		join(agentDist, "agent.json"),
-		`missing prepared agent: ${join(agentDist, "agent.json")}`,
-	);
+	if (includeAgent) {
+		ensureFile(
+			join(agentDist, "agent.json"),
+			`missing prepared agent: ${join(agentDist, "agent.json")}`,
+		);
+	}
 	for (const toolID of selectedToolIDs) {
 		ensureFile(
 			join(toolsDist, toolID, "tool.json"),
@@ -66,7 +65,7 @@ function main(): void {
 	const stagedToolsDir = join(electronResourcesDir, "tools");
 	rmSync(electronResourcesDir, { recursive: true, force: true });
 	mkdirSync(binDir, { recursive: true });
-	mkdirSync(agentsDir, { recursive: true });
+	if (includeAgent) mkdirSync(agentsDir, { recursive: true });
 	mkdirSync(stagedToolsDir, { recursive: true });
 
 	for (const binary of serviceBinaries) {
@@ -74,13 +73,17 @@ function main(): void {
 		cpSync(binary.path, stagedBinary);
 		chmodSync(stagedBinary, 0o755);
 	}
-	cpSync(agentDist, join(agentsDir, agent), { recursive: true });
+	if (includeAgent) cpSync(agentDist, join(agentsDir, agent), { recursive: true });
 	for (const toolID of selectedToolIDs) {
 		cpSync(join(toolsDist, toolID), join(stagedToolsDir, toolID), { recursive: true });
 	}
 	writeFileSync(
 		join(electronResourcesDir, "model-platform.json"),
-		JSON.stringify({ agent, mediagoBaseURL, modelPlatform }, null, 2) + "\n",
+		JSON.stringify(
+			{ agent: includeAgent ? agent : "none", mediagoBaseURL, modelPlatform },
+			null,
+			2,
+		) + "\n",
 	);
 	writeFileSync(
 		join(electronResourcesDir, "local-cli.json"),

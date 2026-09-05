@@ -246,6 +246,11 @@ func (store *WorkspaceStateService) DeleteProject(projectID string) (workspacePr
 }
 
 func (store *WorkspaceStateService) deleteProject(projectID string) (workspaceProjectRecord, bool, error) {
+	if state := store.StateService(); state != nil && state.Chat != nil {
+		if err := state.Chat.CloseProject(projectID); err != nil {
+			return workspaceProjectRecord{}, false, err
+		}
+	}
 	return store.StateService().Documents.DeleteProject(projectID)
 }
 

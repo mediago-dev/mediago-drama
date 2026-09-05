@@ -14,6 +14,10 @@ export interface ChatMessage {
 	error?: string;
 	errorCode?: string;
 	errorType?: string;
+	errorProvider?: string;
+	errorModel?: string;
+	errorEndpoint?: string;
+	errorHTTPStatus?: number;
 	retryable?: boolean;
 	updatedAt?: string;
 }
@@ -40,6 +44,10 @@ export interface GenerationEntry {
 	error?: string;
 	errorCode?: string;
 	errorType?: string;
+	errorProvider?: string;
+	errorModel?: string;
+	errorEndpoint?: string;
+	errorHTTPStatus?: number;
 	retryable?: boolean;
 	updatedAt?: string;
 }

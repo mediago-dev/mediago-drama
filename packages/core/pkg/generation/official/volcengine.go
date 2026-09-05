@@ -8,33 +8,6 @@ import (
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 )
 
-func (provider *Provider) generateVolcengineImage(ctx context.Context, request generation.Request) (generation.Response, error) {
-	payload := volcengineImagesRequest{
-		Model:          request.Model,
-		Prompt:         request.Prompt,
-		Size:           firstNonEmpty(paramString(request.Params, "size"), "2K"),
-		OutputFormat:   firstNonEmpty(paramString(request.Params, "outputFormat"), request.OutputFormat, "png"),
-		ResponseFormat: firstNonEmpty(request.ResponseFormat, "url"),
-		Watermark:      boolParamPointer(request.Params, "watermark", request.Watermark, false),
-	}
-	if len(request.ReferenceURLs) == 1 {
-		payload.Image = request.ReferenceURLs[0]
-		payload.SequentialImageGeneration = "disabled"
-	}
-	if len(request.ReferenceURLs) > 1 {
-		payload.Image = request.ReferenceURLs
-		payload.SequentialImageGeneration = "disabled"
-	}
-
-	var payloadResponse openAIImagesResponse
-	endpoint := provider.volcengineBaseURL + "/images/generations"
-	if err := provider.postJSON(ctx, endpoint, provider.bearerAuthorization(), payload, &payloadResponse); err != nil {
-		return generation.Response{}, err
-	}
-
-	return payloadResponse.toGenerationResponse(request.Model, payload.OutputFormat), nil
-}
-
 func (provider *Provider) createVolcengineVideo(ctx context.Context, request generation.Request) (generation.Response, error) {
 	content := []map[string]any{
 		{

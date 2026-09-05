@@ -211,7 +211,7 @@ export const AgentComposer = forwardRef<AgentComposerHandle, AgentComposerProps>
 			disabled = false,
 			onChange,
 			onSubmit,
-			placeholder = "告诉智能体要在当前文档中插入或改写什么",
+			placeholder = "告诉制作助理你现在要处理什么",
 			skillItems = emptyAgentSkillSlashItems,
 			skillsErrorMessage,
 			skillsLoading = false,

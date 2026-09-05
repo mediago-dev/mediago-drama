@@ -8,6 +8,12 @@ type GenerationModelsResponse = dto.GenerationModelsResponse
 // GenerationMessageRequest creates or retries a generation request.
 type GenerationMessageRequest = dto.GenerationMessageRequest
 
+// CodexImageRequest creates and archives one image through the local Codex skill.
+type CodexImageRequest = dto.CodexImageRequest
+
+// CodexImageResponse is the archived result of a Codex image request.
+type CodexImageResponse = dto.CodexImageResponse
+
 // GenerationBatchRequest submits multiple normal generation requests as one batch.
 type GenerationBatchRequest = dto.GenerationBatchRequest
 

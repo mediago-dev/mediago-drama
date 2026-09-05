@@ -17,7 +17,7 @@ import {
 } from "@/domains/agent/components/chat/AgentAttachments";
 import type { DocumentComment } from "@/domains/documents/stores";
 
-const defaultComposerPlaceholder = "告诉智能体要在当前文档中插入或改写什么";
+const defaultComposerPlaceholder = "告诉制作助理你现在要处理什么";
 const referenceComposerPlaceholder =
 	"问我关于这份资料的任何问题：整理前 30 章、梳理人物与剧情、概括全文…";
 
@@ -35,6 +35,7 @@ export const AgentChatComposerForm: React.FC<{
 	isStopping: boolean;
 	openComments: DocumentComment[];
 	onAttachFiles: (event: React.ChangeEvent<HTMLInputElement>) => void;
+	onAddFiles: (files: File[]) => void;
 	onComposerChange: (nextState: AgentComposerState) => void;
 	onModelChange: (value: string) => void;
 	onOpenRuntimeSettings: () => void;
@@ -65,6 +66,7 @@ export const AgentChatComposerForm: React.FC<{
 	isStopping,
 	openComments,
 	onAttachFiles,
+	onAddFiles,
 	onComposerChange,
 	onModelChange,
 	onOpenRuntimeSettings,
@@ -84,9 +86,42 @@ export const AgentChatComposerForm: React.FC<{
 	skillItems,
 	skillsErrorMessage,
 }) => (
-	<form onSubmit={onSubmit} className="agent-composer-form">
+	<form
+		onSubmit={onSubmit}
+		className="agent-composer-form sticky bottom-0 z-20 shrink-0"
+		onPaste={(event) => {
+			if (disabled) return;
+			const imageFiles = Array.from(event.clipboardData.items)
+				.filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+				.flatMap((item, index) => {
+					const file = item.getAsFile();
+					if (!file) return [];
+					if (file.name && file.name !== "image.png") return [file];
+					const extension = file.type.split("/")[1] || "png";
+					return [
+						new File([file], `剪贴板图片-${Date.now()}-${index + 1}.${extension}`, {
+							type: file.type,
+						}),
+					];
+				});
+			if (imageFiles.length === 0) return;
+			event.preventDefault();
+			onAddFiles(imageFiles);
+		}}
+		onDragOver={(event) => {
+			if (disabled || !event.dataTransfer.types.includes("Files")) return;
+			event.preventDefault();
+		}}
+		onDrop={(event) => {
+			if (disabled) return;
+			const files = Array.from(event.dataTransfer.files);
+			if (files.length === 0) return;
+			event.preventDefault();
+			onAddFiles(files);
+		}}
+	>
 		{attachments.length > 0 || openComments.length > 0 ? (
-			<div className="agent-context-strip mb-2 flex min-w-0 flex-nowrap gap-1.5 overflow-hidden">
+			<div className="agent-context-strip mb-2 flex min-w-0 flex-nowrap items-end gap-2 overflow-x-auto pb-1">
 				{attachments.map((attachment) => (
 					<AttachmentChip
 						key={attachment.id}
@@ -148,7 +183,7 @@ export const AgentChatComposerForm: React.FC<{
 				onRetry={onRetryRuntimeConfig}
 			/>
 			<div className="agent-composer-actions">
-				<span className="agent-composer-hint">@ 引用文档 · Enter 发送</span>
+				<span className="agent-composer-hint">粘贴或拖入图片 · @ 引用文档 · Enter 发送</span>
 				<Button
 					type="button"
 					variant="outline"

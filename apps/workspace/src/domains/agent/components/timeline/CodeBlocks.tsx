@@ -147,9 +147,9 @@ export const TerminalBlock: React.FC<{ block: AgentACPContentBlock }> = ({ block
 					aria-expanded={expanded}
 				>
 					<ChevronRight className={cn("size-3 transition-transform", expanded && "rotate-90")} />
-					<span className="truncate">terminal</span>
+					<span className="truncate">终端</span>
 					<span className="shrink-0">
-						{countTextLines(text)} lines · {formatBytes(byteLength(text))}
+						{countTextLines(text)} 行 · {formatBytes(byteLength(text))}
 					</span>
 				</button>
 				<CopyButton text={text} />
@@ -161,7 +161,7 @@ export const TerminalBlock: React.FC<{ block: AgentACPContentBlock }> = ({ block
 					</div>
 					{block.exitCode !== undefined ? (
 						<div className="border-t border-border bg-ide-toolbar px-2 py-1 text-2xs text-muted-foreground">
-							exitCode {block.exitCode}
+							退出码 {block.exitCode}
 						</div>
 					) : null}
 				</>

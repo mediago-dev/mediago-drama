@@ -1915,7 +1915,7 @@ func TestBuildACPPromptUsesFileNativeProjectGuidance(t *testing.T) {
 		!strings.Contains(prompt, "二级标题分镜组为一批") ||
 		!strings.Contains(prompt, "这是一个创作工作区，不是软件开发工作区") ||
 		!strings.Contains(prompt, "不要编写、修改或生成程序代码、脚本、依赖配置或工程文件") ||
-		!strings.Contains(prompt, "优先使用运行时自带的文件/命令能力或 MediaGo Drama MCP 工具完成") {
+		!strings.Contains(prompt, "优先使用运行时自带的文件、命令和 AIGC Production OS 项目工具完成") {
 		t.Fatalf("prompt = %q, want file-native project guidance", prompt)
 	}
 	if strings.Contains(prompt, "ls work") || strings.Contains(prompt, "读取 `work/` 下") {
@@ -1980,7 +1980,7 @@ func TestBuildACPPromptDoesNotInlineInjectedSystemOrUserPrompt(t *testing.T) {
 		strings.Contains(prompt, "用户请求：") {
 		t.Fatalf("prompt = %q, should not inline injected system prompt or user prompt", prompt)
 	}
-	if !strings.Contains(prompt, "你是 MediaGo Drama 的项目 Agent。") {
+	if !strings.Contains(prompt, "你是 AIGC Production OS 的项目制作助手。") {
 		t.Fatalf("prompt = %q, want fixed agent instruction", prompt)
 	}
 	if !strings.Contains(prompt, "# 工具使用原则") ||

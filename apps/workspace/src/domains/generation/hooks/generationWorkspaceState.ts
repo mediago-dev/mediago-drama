@@ -75,6 +75,7 @@ export const emptyGenerationModelSelection = (): StoredGenerationModelSelection 
 });
 
 interface GenerationWorkspacePreferenceStoreState {
+	imageModelDefaultVersion: number;
 	modelSelection: StoredGenerationModelSelection;
 	promptOptimizeRouteId: string;
 	setModelSelection: (selection: StoredGenerationModelSelection) => void;
@@ -84,12 +85,32 @@ interface GenerationWorkspacePreferenceStoreState {
 }
 
 const generationWorkspacePreferenceStoreKey = "generation.workspace-preferences.v1";
+const whereslowImageRouteVersion = 8;
+
+export const whereslowImageDefaultSelection = (
+	selection: Partial<StoredGenerationModelSelection> | undefined,
+): StoredGenerationModelSelection => ({
+	familyIds: {
+		...normalizeGenerationFamilyIds(selection?.familyIds),
+		image: "whereslow-image",
+	},
+	routeIds: {
+		...normalizeStringRecord(selection?.routeIds),
+		"nano-banana-2": "whereslow-image.nano-banana-2",
+	},
+	routeParams: normalizeRouteParams(selection?.routeParams),
+	versionIds: {
+		...normalizeStringRecord(selection?.versionIds),
+		"whereslow-image": "nano-banana-2",
+	},
+});
 
 export const useGenerationWorkspacePreferenceStore =
 	create<GenerationWorkspacePreferenceStoreState>()(
 		persist(
 			immer((set) => ({
-				modelSelection: readLegacyGenerationModelSelection(),
+				imageModelDefaultVersion: whereslowImageRouteVersion,
+				modelSelection: whereslowImageDefaultSelection(readLegacyGenerationModelSelection()),
 				promptOptimizeRouteId: "",
 				stylePresetId: readLegacyGenerationStylePresetId(),
 				setModelSelection: (selection) =>
@@ -108,8 +129,18 @@ export const useGenerationWorkspacePreferenceStore =
 			{
 				name: generationWorkspacePreferenceStoreKey,
 				storage: createJSONStorage(() => localStorage),
-				version: 1,
+				version: whereslowImageRouteVersion,
+				migrate: (persisted) => {
+					const state =
+						(persisted as Partial<GenerationWorkspacePreferenceStoreState> | undefined) ?? {};
+					return {
+						...state,
+						imageModelDefaultVersion: whereslowImageRouteVersion,
+						modelSelection: whereslowImageDefaultSelection(state.modelSelection),
+					};
+				},
 				partialize: (state) => ({
+					imageModelDefaultVersion: state.imageModelDefaultVersion,
 					modelSelection: state.modelSelection,
 					promptOptimizeRouteId: state.promptOptimizeRouteId,
 					stylePresetId: state.stylePresetId,
@@ -120,13 +151,17 @@ export const useGenerationWorkspacePreferenceStore =
 							| Partial<
 									Pick<
 										GenerationWorkspacePreferenceStoreState,
-										"modelSelection" | "promptOptimizeRouteId" | "stylePresetId"
+										| "imageModelDefaultVersion"
+										| "modelSelection"
+										| "promptOptimizeRouteId"
+										| "stylePresetId"
 									>
 							  >
 							| undefined) ?? {};
 					return {
 						...current,
-						modelSelection: normalizeStoredGenerationModelSelection(state.modelSelection),
+						imageModelDefaultVersion: whereslowImageRouteVersion,
+						modelSelection: whereslowImageDefaultSelection(state.modelSelection),
 						promptOptimizeRouteId:
 							typeof state.promptOptimizeRouteId === "string"
 								? state.promptOptimizeRouteId.trim()
@@ -235,9 +270,9 @@ function readLegacyGenerationStylePresetId() {
 	return localStorage.getItem(generationStylePresetStorageKey) ?? "";
 }
 
-export const normalizeGenerationFamilyIds = (
+export function normalizeGenerationFamilyIds(
 	value: Partial<Record<GenerationKind, string>> | undefined,
-): Partial<Record<GenerationKind, string>> => {
+): Partial<Record<GenerationKind, string>> {
 	if (!value || typeof value !== "object") return {};
 
 	const familyIds: Partial<Record<GenerationKind, string>> = {};
@@ -246,11 +281,11 @@ export const normalizeGenerationFamilyIds = (
 	}
 
 	return familyIds;
-};
+}
 
-export const normalizeStringRecord = (
+export function normalizeStringRecord(
 	value: Record<string, string> | undefined,
-): Record<string, string> => {
+): Record<string, string> {
 	if (!value || typeof value !== "object") return {};
 
 	const record: Record<string, string> = {};
@@ -259,11 +294,11 @@ export const normalizeStringRecord = (
 	}
 
 	return record;
-};
+}
 
-export const normalizeRouteParams = (
+export function normalizeRouteParams(
 	value: Record<string, Record<string, unknown>> | undefined,
-): Record<string, Record<string, unknown>> => {
+): Record<string, Record<string, unknown>> {
 	if (!value || typeof value !== "object") return {};
 
 	const record: Record<string, Record<string, unknown>> = {};
@@ -273,7 +308,7 @@ export const normalizeRouteParams = (
 	}
 
 	return record;
-};
+}
 
 export const generationParamsWithRequestDetails = (
 	params: Record<string, unknown>,

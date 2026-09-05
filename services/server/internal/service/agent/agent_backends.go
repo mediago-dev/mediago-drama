@@ -13,6 +13,7 @@ import (
 const (
 	defaultAgentBackendID      = "codex"
 	defaultAgentBackendCommand = "codex-acp"
+	disabledAgentBackendID     = "none"
 	customAgentBackendID       = "custom"
 )
 
@@ -126,6 +127,9 @@ func (store *AgentBackendService) ActiveArgv() []string {
 	binDir := store.binDir
 	command := store.activeCommandLocked()
 	store.mu.RUnlock()
+	if activeID == disabledAgentBackendID {
+		return nil
+	}
 
 	if strings.TrimSpace(binDir) != "" && strings.TrimSpace(activeID) != "" {
 		if manifest, err := loadAgentManifest(binDir, activeID); err == nil {
@@ -192,6 +196,9 @@ func (store *AgentBackendService) CodexExecutable() (string, error) {
 }
 
 func (store *AgentBackendService) activeCommandLocked() string {
+	if store.activeID == disabledAgentBackendID {
+		return ""
+	}
 	for _, backend := range store.backends {
 		if backend.ID == store.activeID {
 			command := strings.TrimSpace(backend.Command)
@@ -206,6 +213,12 @@ func (store *AgentBackendService) activeCommandLocked() string {
 
 func builtinAgentBackends() []AgentBackend {
 	return []AgentBackend{
+		{
+			ID:          disabledAgentBackendID,
+			Name:        "未配置",
+			Description: "当前桌面版未内置本地 Agent，请使用 API 模型完成生成任务。",
+			IsBuiltin:   true,
+		},
 		{
 			ID:          defaultAgentBackendID,
 			Name:        "Codex",
@@ -237,8 +250,33 @@ func newAgentBackendService(backends []AgentBackend, activeID string, binDir str
 	return &AgentBackendService{
 		backends: backends,
 		activeID: activeID,
-		binDir:   strings.TrimSpace(binDir),
+		binDir:   resolveAgentBinDir(binDir),
 	}
+}
+
+// resolveAgentBinDir keeps direct server launches working even when the desktop
+// launcher did not provide MEDIAGO_AGENT_BIN_DIR. Development and local builds
+// keep the bundled agents under packages/vendor/dist.
+func resolveAgentBinDir(configured string) string {
+	if configured = strings.TrimSpace(configured); configured != "" {
+		return configured
+	}
+
+	candidates := make([]string, 0, 2)
+	if workingDir, err := os.Getwd(); err == nil {
+		candidates = append(candidates, filepath.Join(workingDir, "packages", "vendor", "dist"))
+	}
+	if executable, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Join(filepath.Dir(executable), "..", "packages", "vendor", "dist"))
+	}
+
+	for _, candidate := range candidates {
+		candidate = filepath.Clean(candidate)
+		if _, err := os.Stat(filepath.Join(candidate, defaultAgentBackendID, "agent.json")); err == nil {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func loadAgentManifest(binDir string, id string) (agentManifest, error) {

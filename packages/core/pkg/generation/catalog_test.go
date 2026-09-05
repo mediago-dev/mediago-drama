@@ -100,6 +100,7 @@ func TestTextCatalogIncludesExpandedRoutes(t *testing.T) {
 		{RouteOpenRouterDeepSeekV4FlashText, FamilyDeepSeekText, ProviderOpenRouter, "deepseek/deepseek-v4-flash"},
 		{RouteOpenRouterDeepSeekV4ProText, FamilyDeepSeekText, ProviderOpenRouter, "deepseek/deepseek-v4-pro"},
 		{RouteOfficialGPT55Text, FamilyGPTText, ProviderOpenAI, "gpt-5.5"},
+		{RouteOfficialGPT56SolText, FamilyGPTText, ProviderOpenAI, "gpt-5.6-sol"},
 		{RouteOfficialGPT54Text, FamilyGPTText, ProviderOpenAI, "gpt-5.4"},
 		{RouteOfficialGPT54MiniText, FamilyGPTText, ProviderOpenAI, "gpt-5.4-mini"},
 		{RouteOfficialGemini35FlashText, FamilyGeminiText, ProviderGoogle, "gemini-3.5-flash"},
@@ -918,24 +919,25 @@ func TestResolveRoute(t *testing.T) {
 }
 
 func TestValidateRequestForRouteRejectsUnsupportedReferenceURLs(t *testing.T) {
-	route := mustRoute(t, RouteOfficialGPTImage2)
+	route := mustRoute(t, RouteOfficialGPT41MiniText)
 	err := ValidateRequestForRoute(Request{
-		Kind:          KindImage,
+		Kind:          KindText,
 		ReferenceURLs: []string{"https://example.test/reference.png"},
 	}, route)
 	if err == nil {
 		t.Fatal("ValidateRequestForRoute() accepted reference URLs for a route that does not support them")
 	}
 
-	route = mustRoute(t, RouteDMXGPTImage2)
+	route = mustRoute(t, RouteOfficialGPTImage2)
 	err = ValidateRequestForRoute(Request{
 		Kind:          KindImage,
 		ReferenceURLs: []string{"https://example.test/reference.png"},
 	}, route)
 	if err != nil {
-		t.Fatalf("ValidateRequestForRoute() rejected supported references: %v", err)
+		t.Fatalf("ValidateRequestForRoute() rejected OpenAI image references: %v", err)
 	}
 
+	route = mustRoute(t, RouteDMXGPTImage2)
 	err = ValidateRequestForRoute(Request{
 		Kind: KindImage,
 		ReferenceURLs: []string{

@@ -1,7 +1,5 @@
 import {
-	ArrowRight,
 	Check,
-	ChevronDown,
 	Clapperboard,
 	ExternalLink,
 	Ellipsis,
@@ -23,31 +21,27 @@ import useSWR, { useSWRConfig } from "swr";
 import {
 	type APIKeyLoginChallenge,
 	type APIKeyProvider,
+	type CustomImageAPIProtocol,
 	type ModelPlatform,
 	type ModelPlatformModelGroup,
 	apiKeysKey,
+	customImageAPISettingsKey,
 	beginProviderLogin,
 	clearAPIKey,
 	completeProviderLogin,
 	getAPIKeys,
+	getCustomImageAPISettings,
 	getJianyingDraftSettings,
-	getModelPlatforms,
 	jianyingDraftSettingsKey,
-	modelPlatformsKey,
 	saveAPIKey,
+	saveCustomImageAPISettings,
 	saveJianyingDraftSettings,
 } from "@/domains/settings/api/settings";
-import {
-	agentBackendsKey,
-	getAgentBackends,
-	isAgentRuntimeConfigKey,
-} from "@/domains/agent/api/agent";
+import { isAgentRuntimeConfigKey } from "@/domains/agent/api/agent";
 import { generationModelsKey } from "@/domains/generation/api/generation";
-import { CodexAccessPanel } from "@/domains/settings/components/CodexAccessPanel";
-import { CodexSkillsPanel } from "@/domains/settings/components/CodexSkillsPanel";
 import { ShortcutKeysPanel } from "@/domains/settings/components/ShortcutKeysPanel";
-import { BillingPanel } from "@/domains/billing/components/BillingPanel";
 import { Button } from "@/shared/components/ui/button";
+import { Badge } from "@/shared/components/ui/badge";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
 import { Input } from "@/shared/components/ui/input";
@@ -61,6 +55,7 @@ import {
 	SelectValue,
 } from "@/shared/components/ui/select";
 import { SettingsPanelLayout } from "@/domains/settings/components/SettingsPanelLayout";
+import { CodexAccessPanel } from "@/domains/settings/components/CodexAccessPanel";
 import { useToast } from "@/hooks/useToast";
 import { settingsInsetRowClassName } from "@/lib/settings-layout";
 import { projectSettingsGeneralTab, useSettingsNavigationStore } from "@/lib/stores/settings";
@@ -72,15 +67,13 @@ import { getRouteProjectId } from "@/domains/workspace/lib/workbench-route";
 import { getProjects, projectsKey } from "@/domains/projects/api/projects";
 import { isDesktopRuntime, openProjectDirectory } from "@/domains/projects/lib/project-directory";
 import { openExternalUrl, pickDesktopDirectory } from "@/shared/desktop/actions";
-import { UpdatesPanel } from "@/domains/settings/components/UpdatesPanel";
 
 const jianyingDraftSettingsEnabled: boolean = false;
 const customProvidersEnabled = import.meta.env.VITE_ENABLE_CUSTOM_PROVIDERS !== "false";
 const mediagoProviderID = "mediago";
-const mediagoAPIKeyURL =
-	import.meta.env.VITE_MEDIAGO_APIKEY_URL || "http://localhost:4321/account#apiKeys";
 const fallbackCLIProviderIDs = new Set(["jimeng", "libtv", "xiaoyunque"]);
 const knownPlatformProviderIDs = new Set(["mediago", "openrouter", "dmx"]);
+const primaryOfficialProviderIDs = ["openai", "google"];
 const cliProviderHints: Record<string, string> = {
 	jimeng: "已开通即梦高级会员？可直接登录即梦账号接入，无需 API Key。",
 	libtv: "已开通 LibTV 会员？可直接登录 LibTV 账号接入本地 CLI。",
@@ -94,7 +87,6 @@ type SettingsTabValue =
 	| "codex-access"
 	| "codex-skills"
 	| "jianying-draft"
-	| "updates"
 	| "shortcuts"
 	| DebugTabValue;
 
@@ -104,7 +96,6 @@ const isSettingsTabValue = (value: string): value is SettingsTabValue =>
 	value === "billing" ||
 	value === "codex-access" ||
 	value === "codex-skills" ||
-	value === "updates" ||
 	(jianyingDraftSettingsEnabled && value === "jianying-draft") ||
 	value === "shortcuts" ||
 	debugTabs.some((tab) => tab.value === value);
@@ -127,10 +118,9 @@ export const Settings: React.FC = () => {
 	const setThemeMode = useThemeStore((state) => state.setMode);
 	const activeTab = useSettingsNavigationStore((state) => state.activeTab);
 	const normalizedTab = normalizeSettingsTab(activeTab);
-	const { data: agentBackends } = useSWR(agentBackendsKey, getAgentBackends);
-	const isCodexActive = (agentBackends?.activeId ?? "codex") === "codex";
 	const visibleTab =
-		isSettingsTabValue(normalizedTab) && (normalizedTab !== "codex-access" || isCodexActive)
+		isSettingsTabValue(normalizedTab) &&
+		!new Set(["billing", "codex-skills", "jianying-draft"]).has(normalizedTab)
 			? normalizedTab
 			: "appearance";
 
@@ -142,14 +132,8 @@ export const Settings: React.FC = () => {
 				<AppearancePanel mode={themeMode} onSelectMode={setThemeMode} />
 			) : null}
 
-			{jianyingDraftSettingsEnabled && visibleTab === "jianying-draft" ? (
-				<JianyingDraftPanel />
-			) : null}
 			{visibleTab === "api-keys" ? <APIKeysPanel /> : null}
-			{visibleTab === "billing" ? <BillingPanel /> : null}
 			{visibleTab === "codex-access" ? <CodexAccessPanel /> : null}
-			{visibleTab === "codex-skills" ? <CodexSkillsPanel /> : null}
-			{visibleTab === "updates" ? <UpdatesPanel /> : null}
 			{visibleTab === "shortcuts" ? <ShortcutKeysPanel /> : null}
 
 			{debugTabs.map((tab) =>
@@ -161,38 +145,29 @@ export const Settings: React.FC = () => {
 
 const APIKeysPanel: React.FC = () => {
 	const toast = useToast();
+	const setSettingsTab = useSettingsNavigationStore((state) => state.setActiveTab);
 	const { mutate: mutateGlobal } = useSWRConfig();
 	const { data, mutate, isLoading } = useSWR(apiKeysKey, getAPIKeys);
-	const { data: modelPlatformsData, isLoading: isModelPlatformsLoading } = useSWR(
-		modelPlatformsKey,
-		getModelPlatforms,
-	);
+	const {
+		data: customImageSettings,
+		mutate: mutateCustomImageSettings,
+		isLoading: isCustomImageSettingsLoading,
+	} = useSWR(customImageAPISettingsKey, getCustomImageAPISettings);
 	const providers = data?.providers ?? [];
-	const modelPlatforms = modelPlatformsData?.platforms ?? [];
-	const providersByID = new Map(providers.map((provider) => [provider.id, provider]));
-	const unifiedProviders = platformProviders(modelPlatforms, providersByID, "unified");
-	const mediagoProvider = platformProvider(modelPlatforms, providersByID, mediagoProviderID);
-	const mediagoModelGroups =
-		modelPlatforms.find((platform) => platform.id === mediagoProviderID)?.modelGroups ?? [];
-	const visibleUnifiedProviders = unifiedProviders.filter(
-		(provider) => provider.id !== mediagoProviderID,
-	);
-	const cliProviders =
-		modelPlatforms.length > 0
-			? platformProviders(modelPlatforms, providersByID, "cli")
-			: providers.filter((provider) => fallbackCLIProviderIDs.has(provider.id));
-	const customProviders = customProvidersEnabled
-		? platformProviders(modelPlatforms, providersByID, "custom")
-		: [];
-	const officialProviders = officialAPIKeyProviders(providers, modelPlatforms);
-	const [otherProvidersExpanded, setOtherProvidersExpanded] = useState(false);
-	const [mediagoDialogOpen, setMediagoDialogOpen] = useState(false);
 	const [apiKeys, setAPIKeys] = useState<Record<string, string>>({});
+	const [customImageDraft, setCustomImageDraft] = useState({
+		baseURL: "https://cn.whereslow.online",
+		apiKey: "",
+		model: "nano-banana-2",
+		protocol: "gemini_generate_content" as CustomImageAPIProtocol,
+	});
+	const [savingCustomImage, setSavingCustomImage] = useState(false);
 	const [savingID, setSavingID] = useState<string>();
 	const [clearingID, setClearingID] = useState<string>();
 	const [loggingInID, setLoggingInID] = useState<string>();
 	const [checkingLoginID, setCheckingLoginID] = useState<string>();
 	const [manualProviderID, setManualProviderID] = useState<string>();
+	void manualProviderID;
 	const [loginChallenges, setLoginChallenges] = useState<Record<string, APIKeyLoginChallenge>>({});
 	const hasPendingBrowserLogin = Object.values(loginChallenges).some(
 		(challenge) => challenge.status === "pending" && Boolean(challenge.verificationUri),
@@ -201,6 +176,40 @@ const APIKeysPanel: React.FC = () => {
 		void mutateGlobal(generationModelsKey, undefined, { revalidate: true });
 		void mutateGlobal(isAgentRuntimeConfigKey, undefined, { revalidate: true });
 	}, [mutateGlobal]);
+
+	useEffect(() => {
+		if (!customImageSettings) return;
+		setCustomImageDraft((current) => ({
+			baseURL: customImageSettings.baseURL,
+			apiKey: current.apiKey,
+			model: customImageSettings.model,
+			protocol: customImageSettings.protocol,
+		}));
+	}, [customImageSettings]);
+
+	const saveCustomImage = async () => {
+		setSavingCustomImage(true);
+		try {
+			const next = await saveCustomImageAPISettings({
+				baseURL: customImageDraft.baseURL.trim(),
+				model: customImageDraft.model.trim(),
+				protocol: customImageDraft.protocol,
+				...(customImageDraft.apiKey.trim() ? { apiKey: customImageDraft.apiKey.trim() } : {}),
+			});
+			await mutateCustomImageSettings(next, false);
+			setCustomImageDraft((current) => ({ ...current, apiKey: "" }));
+			revalidateModelDependentCaches();
+			toast.success("自定义图片 API 已保存", {
+				description: `${next.model} · ${next.protocol === "gemini_generate_content" ? "Gemini generateContent" : "OpenAI Compatible"}`,
+			});
+		} catch (err) {
+			toast.error("保存失败", {
+				description: err instanceof Error ? err.message : "保存自定义图片 API 失败。",
+			});
+		} finally {
+			setSavingCustomImage(false);
+		}
+	};
 
 	useEffect(() => {
 		if (!hasPendingBrowserLogin) return;
@@ -314,12 +323,6 @@ const APIKeysPanel: React.FC = () => {
 		});
 	};
 
-	const saveMediagoQuickSetup = async () => {
-		if (!mediagoProvider) return;
-		const saved = await save(mediagoProvider);
-		if (saved) setMediagoDialogOpen(false);
-	};
-
 	const login = async (provider: APIKeyProvider) => {
 		setLoggingInID(provider.id);
 		try {
@@ -382,6 +385,7 @@ const APIKeysPanel: React.FC = () => {
 		const saved = await save(provider);
 		if (saved) setManualProviderID(undefined);
 	};
+	void saveManualConfig;
 
 	const renderProvider = (provider: APIKeyProvider, hint?: string) => {
 		const apiKey = apiKeys[provider.id] ?? "";
@@ -389,7 +393,6 @@ const APIKeysPanel: React.FC = () => {
 		const isClearing = clearingID === provider.id;
 		const isLoggingIn = loggingInID === provider.id;
 		const isCheckingLogin = checkingLoginID === provider.id;
-		const isMediago = provider.id === mediagoProviderID;
 		return (
 			<APIKeyProviderRow
 				key={provider.id}
@@ -406,147 +409,228 @@ const APIKeysPanel: React.FC = () => {
 				onConfirmLogin={() => void completeLogin(provider)}
 				onLogin={() => void login(provider)}
 				onOpenLogin={() => void openLoginChallenge(provider)}
-				onRegister={isMediago ? () => void openMediagoAPIKeyPage() : undefined}
 				onSave={() => void save(provider)}
 			/>
 		);
 	};
-
-	const renderManualProvider = (
-		provider: APIKeyProvider,
-		variant: ManualProviderVariant,
-		hint?: string,
-	) => {
-		if (provider.credentialKind === "oauth") return renderProvider(provider);
-
-		const apiKey = apiKeys[provider.id] ?? "";
-		return (
-			<ManualAPIKeyProviderRow
-				key={provider.id}
-				apiKey={apiKey}
-				isClearing={clearingID === provider.id}
-				isSaving={savingID === provider.id}
-				onAPIKeyChange={(value) => updateAPIKey(provider.id, value)}
-				onClear={() => confirmClear(provider)}
-				onOpenChange={(open) => setManualProviderID(open ? provider.id : undefined)}
-				onSave={() => void saveManualConfig(provider)}
-				open={manualProviderID === provider.id}
-				provider={provider}
-				hint={hint}
-				variant={variant}
-			/>
-		);
-	};
-
-	const renderCustomProvider = (provider: APIKeyProvider) =>
-		renderManualProvider(provider, "custom");
-	const renderOfficialProvider = (provider: APIKeyProvider) =>
-		renderManualProvider(provider, "official");
-	const renderCLIProvider = (provider: APIKeyProvider) =>
-		provider.credentialKind === "oauth"
-			? renderProvider(provider, cliProviderHint(provider))
-			: renderManualProvider(provider, "cli", cliProviderHint(provider));
+	void renderProvider;
 
 	return (
 		<SettingsPanelLayout
-			title="API 密钥"
-			description="优先使用 MediaGo 聚合平台，也可通过会员 CLI 登录或供应商凭据接入。"
+			title="图片生成 API"
+			description="这里只管理图片生成。制作助理、分镜拆解与 Prompt 优化使用 Codex 订阅额度，不需要在这里填写文本 API Key。"
 			icon={<KeyRound className="size-4" />}
 		>
-			<div className="mx-auto w-full max-w-5xl divide-y divide-border">
-				{(isLoading || isModelPlatformsLoading) && providers.length === 0 ? (
+			<div className="mx-auto w-full max-w-3xl space-y-5">
+				<section className="grid gap-3 sm:grid-cols-2" aria-label="制作调用分工">
+					<div className="rounded-xl border border-primary/35 bg-primary/[0.05] p-4">
+						<div className="flex items-center justify-between gap-3">
+							<h3 className="text-sm font-semibold text-foreground">制作助理与推理</h3>
+							<Badge variant="secondary">Codex 额度</Badge>
+						</div>
+						<p className="mt-2 text-xs leading-5 text-muted-foreground">
+							对话、拆解和提示词优化走本机 Codex 登录，不使用图片 API Key。
+						</p>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							className="mt-3"
+							onClick={() => setSettingsTab("codex-access")}
+						>
+							查看 Codex 推理
+						</Button>
+					</div>
+					<div className="rounded-xl border border-border bg-card p-4">
+						<div className="flex items-center justify-between gap-3">
+							<h3 className="text-sm font-semibold text-foreground">静态图片生成</h3>
+							<ProviderStatusLabel active={Boolean(customImageSettings?.apiKey.configured)} />
+						</div>
+						<p className="mt-2 text-xs leading-5 text-muted-foreground">
+							使用 Nano Banana 2 图片接口；生成图会按资产与镜头关系归档。
+						</p>
+					</div>
+				</section>
+
+				{isLoading && providers.length === 0 ? (
 					<div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
 						<Loader2 className="size-4 animate-spin" />
 						<span>加载中</span>
 					</div>
 				) : null}
-				{!isLoading && !mediagoProvider ? (
-					<section className="rounded-lg bg-background px-5 py-6">
-						<h3 className="text-sm font-semibold text-foreground">当前版本未启用 MediaGo</h3>
-						<p className="mt-2 text-sm leading-6 text-muted-foreground">
-							没有找到 MediaGo 凭据槽。请确认后端已返回 MediaGo API Key provider。
+				<section className="rounded-xl border border-border bg-card p-4">
+					<div className="mb-3">
+						<div className="flex flex-wrap items-center justify-between gap-2">
+							<h3 className="text-sm font-semibold text-foreground">Nano Banana 2 图片接口</h3>
+							<ProviderStatusLabel active={Boolean(customImageSettings?.apiKey.configured)} />
+						</div>
+						<p className="mt-1 text-xs leading-5 text-muted-foreground">
+							自定义图片中转独立调用，不会读取或修改 Codex Responses 配置。
 						</p>
-					</section>
-				) : null}
-				{mediagoProvider ? (
-					<>
-						<MediagoCredentialPanel
-							modelGroups={mediagoModelGroups}
-							onConfigure={() => setMediagoDialogOpen(true)}
-							provider={mediagoProvider}
-						>
-							{visibleUnifiedProviders.length > 0 ? (
-								<div className="mt-4 space-y-3">
-									{visibleUnifiedProviders.map((provider) => renderProvider(provider))}
+					</div>
+					{isCustomImageSettingsLoading && !customImageSettings ? (
+						<div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+							<Loader2 className="size-4 animate-spin" />
+							加载中
+						</div>
+					) : (
+						<div className="grid gap-4">
+							<div className="grid gap-2">
+								<Label htmlFor="whereslow-image-base-url">API Base URL</Label>
+								<Input
+									id="whereslow-image-base-url"
+									aria-label="API Base URL"
+									value={customImageDraft.baseURL}
+									onChange={(event) =>
+										setCustomImageDraft((current) => ({ ...current, baseURL: event.target.value }))
+									}
+									placeholder="https://cn.whereslow.online"
+								/>
+							</div>
+							<div className="grid gap-2">
+								<Label htmlFor="whereslow-image-api-key">API Key</Label>
+								<Input
+									id="whereslow-image-api-key"
+									aria-label="自定义图片 API Key"
+									type="password"
+									value={customImageDraft.apiKey}
+									onChange={(event) =>
+										setCustomImageDraft((current) => ({ ...current, apiKey: event.target.value }))
+									}
+									placeholder={
+										customImageSettings?.apiKey.configured
+											? `已保存 ${customImageSettings.apiKey.masked ?? "••••"}；留空则保持不变`
+											: "输入 API Key"
+									}
+								/>
+							</div>
+							<div className="grid gap-4 sm:grid-cols-2">
+								<div className="grid gap-2">
+									<Label htmlFor="whereslow-image-model">Model</Label>
+									<Input
+										id="whereslow-image-model"
+										aria-label="Model"
+										value={customImageDraft.model}
+										onChange={(event) =>
+											setCustomImageDraft((current) => ({ ...current, model: event.target.value }))
+										}
+									placeholder="nano-banana-2"
+									/>
 								</div>
-							) : null}
-						</MediagoCredentialPanel>
-						<MediagoConfigDialog
-							apiKey={apiKeys[mediagoProvider.id] ?? ""}
-							isClearing={clearingID === mediagoProvider.id}
-							isSaving={savingID === mediagoProvider.id}
-							onAPIKeyChange={(value) => updateAPIKey(mediagoProvider.id, value)}
-							onClear={() => confirmClear(mediagoProvider)}
-							onOpenChange={setMediagoDialogOpen}
-							onRegister={() => void openMediagoAPIKeyPage()}
-							onSave={() => void saveMediagoQuickSetup()}
-							open={mediagoDialogOpen}
-							provider={mediagoProvider}
-						/>
-					</>
-				) : null}
-				{cliProviders.length > 0 ? (
-					<CredentialCategorySection
-						className="py-8"
-						title="会员 CLI 接入"
-						description="使用本地 CLI 登录或配置对应 Access Key 接入。"
-					>
-						{cliProviders.map(renderCLIProvider)}
-					</CredentialCategorySection>
-				) : null}
-				{customProviders.length > 0 || officialProviders.length > 0 ? (
-					<section className="pt-8">
-						<button
-							type="button"
-							aria-expanded={otherProvidersExpanded}
-							onClick={() => setOtherProvidersExpanded(!otherProvidersExpanded)}
-							className="flex w-full items-center justify-between gap-3 text-left"
-						>
-							<div className="min-w-0">
-								<h3 className="text-sm font-semibold text-foreground">其他接入方式</h3>
-								<p className="mt-1 text-xs leading-5 text-muted-foreground">
-									自定义接口与官方供应商凭据，适合已有对应平台账号或额度的场景。
-								</p>
+								<div className="grid gap-2">
+									<Label>API Protocol</Label>
+									<Select
+										value={customImageDraft.protocol}
+										onValueChange={(value) =>
+											setCustomImageDraft((current) => ({
+												...current,
+												protocol: value as CustomImageAPIProtocol,
+											}))
+										}
+									>
+										<SelectTrigger aria-label="API Protocol">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="gemini_generate_content">
+												Gemini generateContent
+											</SelectItem>
+										</SelectContent>
+									</Select>
+								</div>
 							</div>
-							<ChevronDown
-								className={cn(
-									"size-4 shrink-0 text-muted-foreground transition-transform",
-									otherProvidersExpanded && "rotate-180",
-								)}
-							/>
-						</button>
-						{otherProvidersExpanded ? (
-							<div className="space-y-6 pt-4">
-								{customProviders.length > 0 ? (
-									<section className="space-y-2.5">
-										<h4 className="text-xs font-medium text-muted-foreground">自定义接口</h4>
-										{customProviders.map(renderCustomProvider)}
-									</section>
-								) : null}
-								{officialProviders.length > 0 ? (
-									<section className="space-y-2.5">
-										<h4 className="text-xs font-medium text-muted-foreground">
-											{modelPlatforms.length > 0 ? "官方供应商" : "供应商"}
-										</h4>
-										{officialProviders.map(renderOfficialProvider)}
-									</section>
-								) : null}
+							<p className="rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs text-muted-foreground">
+								{`${customImageDraft.baseURL.replace(/\/$/u, "")}/v1beta/models/${customImageDraft.model || "{model}"}:generateContent`}
+							</p>
+							<div className="flex justify-end">
+								<Button
+									type="button"
+									onClick={() => void saveCustomImage()}
+									disabled={
+										savingCustomImage ||
+										!customImageDraft.baseURL.trim() ||
+										!customImageDraft.model.trim() ||
+										(!customImageSettings?.apiKey.configured && !customImageDraft.apiKey.trim())
+									}
+								>
+									{savingCustomImage ? <Loader2 className="animate-spin" /> : <Save />}
+									保存自定义图片 API
+								</Button>
 							</div>
-						) : null}
-					</section>
-				) : null}
+						</div>
+					)}
+				</section>
 			</div>
 		</SettingsPanelLayout>
+	);
+};
+
+const ModelReadinessPanel: React.FC<{
+	providers: APIKeyProvider[];
+	platforms: ModelPlatform[];
+}> = ({ providers, platforms }) => {
+	const configuredProviderIDs = new Set(
+		providers.filter((provider) => provider.configured).map((provider) => provider.id),
+	);
+	const modelNames = platforms.flatMap(
+		(platform) => platform.modelGroups?.flatMap((group) => group.models) ?? [],
+	);
+	const hasModel = (pattern: RegExp) => modelNames.some((model) => pattern.test(model));
+	const statuses = [
+		{
+			label: "文本推理",
+			detail: hasModel(/gpt|reason|text|claude|gemini/i),
+			provider: configuredProviderIDs.size > 0,
+		},
+		{
+			label: "图片生成",
+			detail: hasModel(/image|banana|gemini|imagen/i),
+			provider: configuredProviderIDs.size > 0,
+		},
+		{
+			label: "视频生成",
+			detail: hasModel(/video|veo|kling|runway/i),
+			provider: configuredProviderIDs.size > 0,
+		},
+	];
+
+	return (
+		<section
+			className="mb-6 rounded-xl border border-border bg-background p-4"
+			aria-label="模型配置状态"
+		>
+			<div className="flex flex-wrap items-center justify-between gap-2">
+				<div>
+					<h3 className="text-sm font-semibold text-foreground">本机模型配置状态</h3>
+					<p className="mt-1 text-xs text-muted-foreground">
+						这里只显示是否可用，不显示任何 API Key。具体模型以当前接口返回的目录为准。
+					</p>
+				</div>
+				<Badge variant={configuredProviderIDs.size > 0 ? "secondary" : "outline"}>
+					{configuredProviderIDs.size > 0 ? "已有接口配置" : "尚未配置"}
+				</Badge>
+			</div>
+			<div className="mt-3 grid gap-2 sm:grid-cols-3">
+				{statuses.map((status) => (
+					<div
+						key={status.label}
+						className="flex items-center justify-between rounded-lg border border-border px-3 py-2"
+					>
+						<span className="text-xs text-foreground">{status.label}</span>
+						<span
+							className={cn(
+								"text-xs",
+								status.detail && status.provider
+									? "text-success-foreground"
+									: "text-muted-foreground",
+							)}
+						>
+							{status.detail && status.provider ? "可调用" : "待配置 / 待确认"}
+						</span>
+					</div>
+				))}
+			</div>
+		</section>
 	);
 };
 
@@ -638,18 +722,12 @@ const MediagoCredentialPanel: React.FC<{
 	const savedCredential = provider.configured ? providerSavedCredentialLabel(provider) : "";
 
 	return (
-		<section className="pb-12 pt-4">
+		<section className="py-8">
 			<div className="flex flex-wrap items-center gap-2">
-				<h3 className="text-sm font-semibold text-foreground">统一接口</h3>
-				<span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">
-					推荐
-				</span>
+				<h3 className="text-sm font-semibold text-foreground">聚合接口（可选）</h3>
 			</div>
-			<p className="mt-5 text-2xl font-semibold leading-tight text-foreground">
-				一个 API Key，通用全部生成模型
-			</p>
-			<p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-				MediaGo 聚合平台统一接入图像、视频、音频与文本模型，免去多平台分别注册。
+			<p className="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">
+				保留对 MediaGo 聚合接口的兼容。已有 Key 可以继续使用，不影响上方官方模型配置。
 			</p>
 
 			<div className="mt-6 flex flex-wrap items-center gap-3">
@@ -671,9 +749,7 @@ const MediagoCredentialPanel: React.FC<{
 						) : null}
 					</span>
 				) : (
-					<span className="text-xs text-muted-foreground">
-						已有 Key 可直接粘贴保存，没有账号可先免费注册。
-					</span>
+					<span className="text-xs text-muted-foreground">未配置，可按需填写已有 Key。</span>
 				)}
 			</div>
 
@@ -692,7 +768,6 @@ const MediagoConfigDialog: React.FC<{
 	onAPIKeyChange: (value: string) => void;
 	onClear: () => void;
 	onOpenChange: (open: boolean) => void;
-	onRegister: () => void;
 	onSave: () => void;
 	open: boolean;
 	provider: APIKeyProvider;
@@ -703,7 +778,6 @@ const MediagoConfigDialog: React.FC<{
 	onAPIKeyChange,
 	onClear,
 	onOpenChange,
-	onRegister,
 	onSave,
 	open,
 	provider,
@@ -725,7 +799,7 @@ const MediagoConfigDialog: React.FC<{
 					配置 MediaGo API Key
 				</h3>
 				<p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-					粘贴已有的 API Key 完成接入；还没有账号可先去官网注册获取。
+					粘贴已有的 API Key 完成接入。该接口为可选项，不影响官方模型使用。
 				</p>
 
 				<div className="mt-6 grid gap-2">
@@ -743,15 +817,6 @@ const MediagoConfigDialog: React.FC<{
 					/>
 					<p className="text-xs leading-5 text-muted-foreground">{helperText}</p>
 				</div>
-
-				<button
-					type="button"
-					onClick={onRegister}
-					className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
-				>
-					<span>还没有账号？免费注册获取</span>
-					<ArrowRight className="size-3.5" />
-				</button>
 
 				<div className="mt-6 flex flex-wrap items-center justify-between gap-2">
 					{provider.configured ? (
@@ -926,7 +991,7 @@ const CredentialMoreMenu: React.FC<{
 	);
 };
 
-type ManualProviderVariant = "cli" | "custom" | "official";
+type ManualProviderVariant = "cli" | "custom" | "official" | "image";
 
 const ManualAPIKeyProviderRow: React.FC<{
 	apiKey: string;
@@ -1001,6 +1066,8 @@ const ManualAPIKeyProviderRow: React.FC<{
 	);
 };
 
+void ManualAPIKeyProviderRow;
+
 const ManualProviderConfigDialog: React.FC<{
 	apiKey: string;
 	isSaving: boolean;
@@ -1044,11 +1111,13 @@ const ManualProviderConfigDialog: React.FC<{
 							配置 {provider.label}
 						</h3>
 						<p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-							{variant === "custom"
-								? "这里仅保存该接口的 API Key。供应商标识、端点和模型路由由系统预设，不需要在这里填写。"
-								: variant === "cli"
-									? "这里仅保存本地 CLI 使用的 Access Key。端点和模型能力由系统预设。"
-									: "这里仅保存官方账号凭据。端点和模型能力由系统内置配置决定。"}
+							{variant === "image"
+								? "这里仅保存 Nano Banana 2 的图片生成 API Key。它不会用于 Codex 推理、制作助理或 Prompt 优化。"
+								: variant === "custom"
+									? "这里仅保存该接口的 API Key。供应商标识、端点和模型路由由系统预设，不需要在这里填写。"
+									: variant === "cli"
+										? "这里仅保存本地 CLI 使用的 Access Key。端点和模型能力由系统预设。"
+										: "这里仅保存官方账号凭据。端点和模型能力由系统内置配置决定。"}
 						</p>
 					</div>
 					<span className="rounded-full bg-ide-list-hover px-2 py-1 text-xs font-medium text-muted-foreground">
@@ -1147,11 +1216,7 @@ const openExternalURL = async (url: string) => {
 	await openExternalUrl(url);
 };
 
-const openMediagoAPIKeyPage = async () => {
-	await openExternalURL(mediagoAPIKeyURL);
-};
-
-const JianyingDraftPanel: React.FC = () => {
+const _JianyingDraftPanel: React.FC = () => {
 	const toast = useToast();
 	const { data, mutate, isLoading } = useSWR(jianyingDraftSettingsKey, getJianyingDraftSettings);
 	const [draftsRoot, setDraftsRoot] = useState("");
@@ -1293,6 +1358,22 @@ const JianyingDraftPanel: React.FC = () => {
 	);
 };
 
+void _JianyingDraftPanel;
+
+// Keep the compatibility-only provider catalog available for existing local settings,
+// while the active UI intentionally exposes only Codex and the image-generation key.
+void customProvidersEnabled;
+void mediagoProviderID;
+void primaryOfficialProviderIDs;
+void ModelReadinessPanel;
+void platformProvider;
+void platformProviders;
+void cliProviderHint;
+void officialAPIKeyProviders;
+void CredentialCategorySection;
+void MediagoCredentialPanel;
+void MediagoConfigDialog;
+
 const AppearancePanel: React.FC<{
 	mode: ThemeMode;
 	onSelectMode: (mode: ThemeMode) => void;
@@ -1400,7 +1481,6 @@ const APIKeyProviderRow: React.FC<{
 	onConfirmLogin: () => void;
 	onLogin: () => void;
 	onOpenLogin: () => void;
-	onRegister?: () => void;
 	onSave: () => void;
 	provider: APIKeyProvider;
 }> = ({
@@ -1416,7 +1496,6 @@ const APIKeyProviderRow: React.FC<{
 	onConfirmLogin,
 	onLogin,
 	onOpenLogin,
-	onRegister,
 	onSave,
 	provider,
 }) => {
@@ -1424,7 +1503,6 @@ const APIKeyProviderRow: React.FC<{
 	const isOAuthProvider = provider.credentialKind === "oauth";
 	const isLoginPending = loginChallenge?.status === "pending";
 	const canConfirmLogin = isLoginPending && Boolean(loginChallenge?.deviceCode);
-	const isMediago = provider.id === mediagoProviderID;
 
 	return (
 		<section
@@ -1484,15 +1562,6 @@ const APIKeyProviderRow: React.FC<{
 							</div>
 						) : null}
 					</div>
-				) : null}
-				{isMediago && onRegister ? (
-					<button
-						type="button"
-						onClick={onRegister}
-						className="mt-1 inline-flex text-xs font-medium leading-4 text-primary transition-colors hover:text-primary/80"
-					>
-						还没有账号？立即注册
-					</button>
 				) : null}
 			</div>
 
@@ -1585,6 +1654,8 @@ function manualProviderVariantLabel(variant: ManualProviderVariant) {
 			return "本地 CLI";
 		case "custom":
 			return "自定义";
+		case "image":
+			return "图片专用";
 		default:
 			return "官方";
 	}

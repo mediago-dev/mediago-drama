@@ -211,6 +211,7 @@ const AgentFormCardInner: React.FC<{ payload: AgentFormPayload }> = ({ payload }
 						disabled={submitting}
 						projectId={effectiveProjectId}
 						selectionId={payload.selectionId}
+						storyboardDraft={isStoryboardDraftIntent(payload.intent)}
 						onChange={setValue}
 						onBusyChange={setFieldBusy}
 						onValidityChange={setFieldValidity}
@@ -253,6 +254,7 @@ const FormFieldControl: React.FC<{
 	disabled: boolean;
 	projectId?: string;
 	selectionId: string;
+	storyboardDraft?: boolean;
 	onChange: (fieldId: string, value: unknown) => void;
 	onBusyChange: (fieldId: string, busy: boolean) => void;
 	onValidityChange: (fieldId: string, valid: boolean) => void;
@@ -262,6 +264,7 @@ const FormFieldControl: React.FC<{
 	disabled,
 	projectId,
 	selectionId,
+	storyboardDraft = false,
 	onChange,
 	onBusyChange,
 	onValidityChange,
@@ -286,6 +289,7 @@ const FormFieldControl: React.FC<{
 				disabled={disabled}
 				fieldId={field.id}
 				kind={field.kind === "video" ? "video" : "image"}
+				mode={storyboardDraft && field.kind !== "video" ? "storyboard-draft" : "standard"}
 				onBusyChange={changeBusy}
 				onChange={change}
 				onValidityChange={changeValidity}
@@ -402,6 +406,14 @@ const FormFieldControl: React.FC<{
 		</div>
 	);
 };
+
+const isStoryboardDraftIntent = (intent?: AgentGenerationPlanIntent) =>
+	Boolean(
+		intent?.items.length &&
+		intent.items.every(
+			(item) => item.kind === "image" && item.resourceType?.toLowerCase() === "storyboard",
+		),
+	);
 
 // normalizeFormValues fixes up agent-prefilled defaults the user never
 // touched before they go to the server — e.g. a bare-boolean

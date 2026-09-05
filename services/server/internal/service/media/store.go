@@ -395,6 +395,21 @@ func (store *MediaAssets) SaveReader(ctx context.Context, reader io.Reader, file
 	return store.saveBytesForProject(data, filename, contentType, sourceURL, "", MediaSourceUpload)
 }
 
+// SaveReaderWithOptions stores a trusted local producer result with explicit
+// project placement. It is used by local generation bridges instead of routing
+// a generated file back through the browser upload endpoint.
+func (store *MediaAssets) SaveReaderWithOptions(ctx context.Context, reader io.Reader, kind string, filename string, contentType string, sourceURL string, options MediaAssetSaveOptions) (MediaAsset, error) {
+	_ = ctx
+	data, err := shared.ReadLimited(reader, MaxMediaAssetUploadSize)
+	if err != nil {
+		return MediaAsset{}, err
+	}
+	if strings.TrimSpace(kind) == "" {
+		kind = shared.KindFromMIMEType(contentType)
+	}
+	return store.saveBytesWithKind(data, kind, filename, contentType, sourceURL, options)
+}
+
 func (store *MediaAssets) SaveBase64(kind string, mimeType string, value string, sourceURL string, projectID string) (MediaAsset, error) {
 	return store.SaveBase64WithOptions(kind, mimeType, value, sourceURL, MediaAssetSaveOptions{
 		ProjectID: projectID,

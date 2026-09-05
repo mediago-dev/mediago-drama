@@ -1,14 +1,4 @@
-import {
-	AudioLines,
-	ChevronDown,
-	FileText,
-	Film,
-	History,
-	Image as ImageIcon,
-	Loader2,
-	Plus,
-	X,
-} from "lucide-react";
+import { ChevronDown, Film, History, Image as ImageIcon, Loader2, Plus, X } from "lucide-react";
 import type React from "react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
@@ -57,8 +47,6 @@ const toolboxConversationGroups: Array<{
 }> = [
 	{ icon: <Film />, kind: "video", label: "视频生成" },
 	{ icon: <ImageIcon />, kind: "image", label: "图片生成" },
-	{ icon: <FileText />, kind: "text", label: "文本生成" },
-	{ icon: <AudioLines />, kind: "audio", label: "音频生成" },
 ];
 
 interface GlobalToolboxButtonProps {
@@ -159,31 +147,19 @@ const GlobalToolboxDrawer: React.FC<{
 
 	const videoConversations = useToolboxConversations("video", open && isKindVisible("video"));
 	const imageConversations = useToolboxConversations("image", open && isKindVisible("image"));
-	const textConversations = useToolboxConversations("text", open && isKindVisible("text"));
-	const audioConversations = useToolboxConversations("audio", open && isKindVisible("audio"));
 	const conversationStateByKind = useMemo(
 		() => ({
 			video: videoConversations,
 			image: imageConversations,
-			text: textConversations,
-			audio: audioConversations,
 		}),
-		[audioConversations, imageConversations, textConversations, videoConversations],
+		[imageConversations, videoConversations],
 	);
 	const allConversations = useMemo(
 		() =>
-			[
-				...videoConversations.conversations,
-				...imageConversations.conversations,
-				...textConversations.conversations,
-				...audioConversations.conversations,
-			].sort(compareGenerationConversationsByUpdatedAt),
-		[
-			audioConversations.conversations,
-			imageConversations.conversations,
-			textConversations.conversations,
-			videoConversations.conversations,
-		],
+			[...videoConversations.conversations, ...imageConversations.conversations].sort(
+				compareGenerationConversationsByUpdatedAt,
+			),
+		[imageConversations.conversations, videoConversations.conversations],
 	);
 	const selectedConversation = useMemo(() => {
 		if (!activeConversation) return null;
@@ -195,11 +171,7 @@ const GlobalToolboxDrawer: React.FC<{
 			) ?? activeConversation
 		);
 	}, [activeConversation, allConversations]);
-	const isLoadingConversations =
-		videoConversations.isLoading ||
-		imageConversations.isLoading ||
-		textConversations.isLoading ||
-		audioConversations.isLoading;
+	const isLoadingConversations = videoConversations.isLoading || imageConversations.isLoading;
 	const preferredConversation = useMemo(() => {
 		if (projectConversation) {
 			return (
@@ -357,7 +329,7 @@ const GlobalToolboxDrawer: React.FC<{
 													key={group.kind}
 													group={group}
 													selectedConversation={selectedConversation}
-													state={conversationStateByKind[group.kind]}
+													state={conversationStateByKind[group.kind as "video" | "image"]}
 													onSelectConversation={(conversation) => {
 														setSelectionMode("manual");
 														setActiveConversation(conversation);

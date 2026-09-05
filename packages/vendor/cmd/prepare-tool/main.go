@@ -349,7 +349,25 @@ func downloadToolAsset(url string, out string) error {
 		return fmt.Errorf("creating download directory: %w", err)
 	}
 
-	client := &http.Client{Timeout: 10 * time.Minute}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSHandshakeTimeout = time.Minute
+	client := &http.Client{Timeout: 10 * time.Minute, Transport: transport}
+	var lastErr error
+	for attempt := 1; attempt <= 4; attempt++ {
+		if attempt > 1 {
+			fmt.Printf("Retrying download (%d/4): %s\n", attempt, url)
+			time.Sleep(time.Duration(attempt-1) * 2 * time.Second)
+		}
+		if err := downloadToolAssetOnce(client, url, out); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+func downloadToolAssetOnce(client *http.Client, url string, out string) error {
 	request, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("creating download request: %w", err)
@@ -370,9 +388,12 @@ func downloadToolAsset(url string, out string) error {
 	if err != nil {
 		return fmt.Errorf("creating %s: %w", out, err)
 	}
-	defer file.Close()
 	if _, err := io.Copy(file, response.Body); err != nil {
+		file.Close()
 		return fmt.Errorf("writing %s: %w", out, err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("closing %s: %w", out, err)
 	}
 	return nil
 }

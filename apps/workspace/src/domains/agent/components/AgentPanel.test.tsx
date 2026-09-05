@@ -131,7 +131,7 @@ describe("AgentPanel", () => {
 
 		await waitFor(() =>
 			expect(screen.getByTestId("location").dataset.path).toBe(
-				"/projects?projectId=project-1&agentSessionId=session-history-1",
+				"/projects?projectId=project-1&documentId=doc-1&agentSessionId=session-history-1",
 			),
 		);
 		expect(useAgentStore.getState().sessionId).toBe("session-history-1");

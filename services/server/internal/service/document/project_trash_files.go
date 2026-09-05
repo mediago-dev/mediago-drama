@@ -1,12 +1,16 @@
 package document
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 	"unicode"
 
@@ -14,6 +18,10 @@ import (
 )
 
 var renameDirectory = os.Rename
+var removeDirectoryAll = os.RemoveAll
+var moveDirectoryMu sync.Mutex
+
+const windowsFileOperationAttempts = 8
 
 // projectTrashRoot returns the directory that holds trashed project directories.
 // Permanent deletion only removes paths strictly inside this root.
@@ -117,6 +125,15 @@ func restoreProjectDirFromTrash(trashProjectDir string, originalProjectDir strin
 }
 
 func moveDirectory(source string, target string) error {
+	// Windows directory rename/copy/remove operations on sibling project trees
+	// must not overlap. Concurrent RemoveAll calls can fail with misleading
+	// openfdat/symlink errors even when neither tree contains a symlink.
+	moveDirectoryMu.Lock()
+	defer moveDirectoryMu.Unlock()
+	return moveDirectoryUnlocked(source, target)
+}
+
+func moveDirectoryUnlocked(source string, target string) error {
 	if strings.TrimSpace(source) == "" || strings.TrimSpace(target) == "" {
 		return fmt.Errorf("source and target are required")
 	}
@@ -127,16 +144,52 @@ func moveDirectory(source string, target string) error {
 	if isPathWithin(target, source) || isPathWithin(source, target) {
 		return fmt.Errorf("cannot move directory %s into %s", source, target)
 	}
-	if err := renameDirectory(source, target); err == nil {
+	renameErr := retryWindowsFileOperation(func() error {
+		return renameDirectory(source, target)
+	})
+	if renameErr == nil {
 		return nil
 	}
 	if err := copyDirectory(source, target); err != nil {
-		return fmt.Errorf("copying directory to %s: %w", target, err)
+		return fmt.Errorf("renaming directory: %v; copying directory to %s: %w", renameErr, target, err)
 	}
-	if err := os.RemoveAll(source); err != nil {
-		return fmt.Errorf("removing original directory %s: %w", source, err)
+	if err := retryWindowsFileOperation(func() error {
+		return removeDirectoryAll(source)
+	}); err != nil {
+		// Do not leave an untracked duplicate in trash when the source could not
+		// be removed. The source remains authoritative and the caller can retry.
+		_ = removeDirectoryAll(target)
+		return fmt.Errorf("renaming directory: %v; removing original directory %s: %w", renameErr, source, err)
 	}
 	return nil
+}
+
+// Windows keeps files opened by an in-flight thumbnail response locked for a
+// short time. Project cards can therefore race with moving the same project to
+// trash. Retry only sharing/access violations; all other filesystem failures
+// are returned immediately.
+func retryWindowsFileOperation(operation func() error) error {
+	var err error
+	for attempt := 0; attempt < windowsFileOperationAttempts; attempt++ {
+		err = operation()
+		if err == nil || !isTransientWindowsFileError(err) {
+			return err
+		}
+		time.Sleep(time.Duration(attempt+1) * 50 * time.Millisecond)
+	}
+	return err
+}
+
+func isTransientWindowsFileError(err error) bool {
+	if runtime.GOOS != "windows" || err == nil {
+		return false
+	}
+	var errno syscall.Errno
+	if !errors.As(err, &errno) {
+		return false
+	}
+	// ERROR_ACCESS_DENIED, ERROR_SHARING_VIOLATION and ERROR_LOCK_VIOLATION.
+	return errno == 5 || errno == 32 || errno == 33
 }
 
 func copyDirectory(source string, target string) error {

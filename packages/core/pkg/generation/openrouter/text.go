@@ -10,6 +10,20 @@ import (
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/internal/openaichat"
 )
 
+type chatCompletionRequest struct {
+	Model         string         `json:"model"`
+	Messages      []chatMessage  `json:"messages"`
+	Stream        bool           `json:"stream,omitempty"`
+	StreamOptions map[string]any `json:"stream_options,omitempty"`
+	Temperature   *float64       `json:"temperature,omitempty"`
+	MaxTokens     *int           `json:"max_tokens,omitempty"`
+}
+
+type chatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 // GenerateTextStream streams an OpenRouter chat-completions text response.
 func (provider *Provider) GenerateTextStream(ctx context.Context, request generation.Request) (generation.TextStream, error) {
 	if strings.TrimSpace(request.Prompt) == "" {

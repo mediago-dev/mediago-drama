@@ -21,6 +21,7 @@ const (
 	ParamOutputCompression     ParamID = "outputCompression"
 	ParamTemperature           ParamID = "temperature"
 	ParamMaxTokens             ParamID = "maxTokens"
+	ParamReasoningEffort       ParamID = "reasoningEffort"
 	ParamVoiceID               ParamID = "voiceId"
 	ParamSpeed                 ParamID = "speed"
 	ParamVolume                ParamID = "volume"

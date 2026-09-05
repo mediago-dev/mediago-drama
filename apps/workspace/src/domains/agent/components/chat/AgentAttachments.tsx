@@ -116,6 +116,33 @@ export const AttachmentChip: React.FC<{
 	const isUploading = attachment.status === "uploading";
 	const isError = attachment.status === "error";
 	const Icon = attachment.kind === "image" ? ImageIcon : FileText;
+	if (attachment.kind === "image" && attachment.url && !isError) {
+		return (
+			<div
+				className="group relative size-20 shrink-0 overflow-hidden rounded-lg border border-border bg-muted shadow-sm"
+				title={`${attachment.name} · ${formatBytes(attachment.size)}`}
+			>
+				<img src={attachment.url} alt={attachment.name} className="size-full object-cover" />
+				{isUploading ? (
+					<div className="absolute inset-0 grid place-items-center bg-background/65">
+						<Loader2 className="size-4 animate-spin text-primary" />
+					</div>
+				) : null}
+				<button
+					type="button"
+					className="absolute right-1 top-1 inline-flex size-6 items-center justify-center rounded-full bg-black/75 text-white shadow-sm transition hover:bg-black disabled:opacity-50"
+					disabled={disabled}
+					onClick={onRemove}
+					aria-label={`移除 ${attachment.name}`}
+				>
+					<X className="size-3.5" />
+				</button>
+				<div className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1.5 py-1 text-[9px] text-white opacity-0 transition group-hover:opacity-100">
+					{attachment.name}
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<div

@@ -96,14 +96,10 @@ func (provider *Provider) Generate(ctx context.Context, request generation.Reque
 		adapter = route.Adapter
 	}
 	switch adapter {
-	case generation.AdapterJimengCLIImage:
-		return provider.generateImage(ctx, request)
 	case generation.AdapterJimengCLIVideo:
 		return provider.generateVideo(ctx, request)
 	default:
 		switch request.Kind {
-		case generation.KindImage:
-			return provider.generateImage(ctx, request)
 		case generation.KindVideo:
 			return provider.generateVideo(ctx, request)
 		default:

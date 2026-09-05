@@ -83,10 +83,14 @@ func storyboardVideoDocumentGroupsFromDocuments(documents []mediamcp.WorkspaceDo
 		if model.NormalizeDocumentCategoryValue(document.Category) != "storyboard" {
 			continue
 		}
+		reels := storyboardVideoReelsFromDocument(document)
+		if len(reels) == 0 {
+			continue
+		}
 		group := StoryboardVideoDocumentGroup{
 			DocumentID:    document.ID,
 			DocumentTitle: document.Title,
-			Reels:         storyboardVideoReelsFromDocument(document),
+			Reels:         reels,
 		}
 		groups = append(groups, group)
 	}
@@ -97,31 +101,206 @@ func storyboardVideoReelsFromDocument(document mediamcp.WorkspaceDocument) []Sto
 	sections := storyboardVideoLaneSections(document)
 	reels := make([]StoryboardVideoReel, 0, len(sections))
 	for _, section := range sections {
-		plainText := storyboardVideoPlainText(section.markdown)
-		prompt := storyboardVideoPrompt(section.markdown, section.title)
-		reels = append(reels, StoryboardVideoReel{
-			ID:                fmt.Sprintf("%s:%s", document.ID, section.blockID),
-			BlockID:           section.blockID,
-			SectionID:         section.blockID,
-			Title:             section.title,
-			HeadingLevel:      section.headingLevel,
-			HeadingOccurrence: section.headingOccurrence,
-			Markdown:          section.markdown,
-			PlainText:         plainText,
-			Prompt:            prompt,
-			CanGenerate:       strings.TrimSpace(prompt) != "",
-			Videos:            []StoryboardVideoAsset{},
-		})
+		// 分镜拆解阶段通常会把多个 Shot 写在一张 Markdown 表格里。
+		// 这里必须把每一行拆成独立的 Reel，否则 UI 会把整张 Shot List
+		// 当成一个镜头，生成任务、资产绑定和进度统计都会失真。
+		if rows := storyboardVideoShotTableRows(section.markdown); len(rows) > 0 {
+			for _, row := range rows {
+				blockID := storyboardVideoShotBlockID(section.blockID, row.shotID)
+				markdown := storyboardVideoShotMarkdown(row)
+				reels = append(reels, storyboardVideoReelFromSection(
+					document.ID,
+					blockID,
+					row.shotID,
+					markdown,
+				))
+			}
+			continue
+		}
+
+		reels = append(reels, storyboardVideoReelFromSection(
+			document.ID,
+			section.blockID,
+			section.title,
+			section.markdown,
+		))
 	}
 	return reels
+}
+
+func storyboardVideoReelFromSection(
+	documentID string,
+	blockID string,
+	title string,
+	markdown string,
+) StoryboardVideoReel {
+	plainText := storyboardVideoPlainText(markdown)
+	prompt := storyboardVideoPrompt(markdown, title)
+	return StoryboardVideoReel{
+		ID:                fmt.Sprintf("%s:%s", documentID, blockID),
+		BlockID:           blockID,
+		SectionID:         blockID,
+		Title:             title,
+		HeadingLevel:      2,
+		HeadingOccurrence: 1,
+		Markdown:          markdown,
+		PlainText:         plainText,
+		Prompt:            prompt,
+		CanGenerate:       strings.TrimSpace(prompt) != "",
+		Videos:            []StoryboardVideoAsset{},
+	}
 }
 
 func storyboardVideoLaneSections(document mediamcp.WorkspaceDocument) []storyboardVideoSection {
 	lines := strings.Split(stripStoryboardVideoFrontmatter(document.Content), "\n")
 	headings := storyboardVideoHeadings(lines)
+	isProductionStage := strings.Contains(document.Content, "<!-- production-stage:")
 	return collectStoryboardVideoSections(lines, headings, document.ID, func(heading storyboardVideoHeading) bool {
-		return heading.level == 2
+		return heading.level == 2 && (!isProductionStage || !isProductionStageScaffoldVideoHeading(heading.text))
 	})
+}
+
+func isProductionStageScaffoldVideoHeading(title string) bool {
+	title = strings.TrimSpace(title)
+	switch title {
+	case "本阶段目的", "应交付内容", "输入与已锁定内容", "制作过程", "版本记录", "测试记录", "连续性规则", "问题 / Blocker", "下一步行动":
+		return true
+	default:
+		return strings.HasPrefix(title, "Gate｜进入下一阶段前确认")
+	}
+}
+
+type storyboardVideoShotTableRow struct {
+	shotID   string
+	duration string
+	framing  string
+	action   string
+	assets   string
+	status   string
+}
+
+// storyboardVideoShotTableRows extracts rows from the canonical Shot List table.
+// It deliberately requires a Shot/镜头-like first column so unrelated tables in
+// production-stage documents are not surfaced as generatable shots.
+func storyboardVideoShotTableRows(markdown string) []storyboardVideoShotTableRow {
+	lines := strings.Split(stripStoryboardVideoSectionIDCommentLines(markdown), "\n")
+	for index := 0; index+1 < len(lines); index++ {
+		cells := storyboardVideoMarkdownTableCells(lines[index])
+		if len(cells) < 2 || !storyboardVideoShotHeader(cells[0]) {
+			continue
+		}
+		if !storyboardVideoMarkdownTableSeparator(lines[index+1]) {
+			continue
+		}
+
+		rows := make([]storyboardVideoShotTableRow, 0)
+		for rowIndex := index + 2; rowIndex < len(lines); rowIndex++ {
+			rowCells := storyboardVideoMarkdownTableCells(lines[rowIndex])
+			if len(rowCells) < 2 {
+				break
+			}
+			shotID := strings.TrimSpace(rowCells[0])
+			if shotID == "" || storyboardVideoMarkdownTableSeparator(lines[rowIndex]) {
+				continue
+			}
+			// A shot row must have a recognizable ID (S01/P01/镜头01) and
+			// at least one meaningful production field.
+			if !storyboardVideoShotID(shotID) || strings.TrimSpace(strings.Join(rowCells[1:], "")) == "" {
+				continue
+			}
+			row := storyboardVideoShotTableRow{shotID: shotID}
+			if len(rowCells) > 1 {
+				row.duration = rowCells[1]
+			}
+			if len(rowCells) > 2 {
+				row.framing = rowCells[2]
+			}
+			if len(rowCells) > 3 {
+				row.action = rowCells[3]
+			}
+			if len(rowCells) > 4 {
+				row.assets = rowCells[4]
+			}
+			if len(rowCells) > 5 {
+				row.status = rowCells[5]
+			}
+			rows = append(rows, row)
+		}
+		if len(rows) > 0 {
+			return rows
+		}
+	}
+	return nil
+}
+
+func storyboardVideoMarkdownTableCells(line string) []string {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "|") || !strings.HasSuffix(trimmed, "|") {
+		return nil
+	}
+	parts := strings.Split(trimmed[1:len(trimmed)-1], "|")
+	cells := make([]string, 0, len(parts))
+	for _, part := range parts {
+		cells = append(cells, storyboardVideoCleanInlineMarkdown(strings.TrimSpace(part)))
+	}
+	return cells
+}
+
+func storyboardVideoMarkdownTableSeparator(line string) bool {
+	cells := storyboardVideoMarkdownTableCells(line)
+	if len(cells) < 2 {
+		return false
+	}
+	for _, cell := range cells {
+		if strings.Trim(cell, "-: ") != "" {
+			return false
+		}
+	}
+	return true
+}
+
+func storyboardVideoShotHeader(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return value == "shot" || value == "镜头" || strings.Contains(value, "shot")
+}
+
+func storyboardVideoShotID(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	for _, prefix := range []string{"S", "P", "镜头"} {
+		if strings.HasPrefix(strings.ToUpper(value), prefix) {
+			_, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(strings.ToUpper(value), prefix), "镜头")))
+			return err == nil
+		}
+	}
+	return false
+}
+
+func storyboardVideoShotBlockID(sectionID string, shotID string) string {
+	clean := strings.NewReplacer(" ", "_", "｜", "_", "/", "_", "\\", "_").Replace(strings.TrimSpace(shotID))
+	return strings.TrimSpace(sectionID) + "__" + clean
+}
+
+func storyboardVideoShotMarkdown(row storyboardVideoShotTableRow) string {
+	lines := []string{"## " + row.shotID}
+	if row.duration != "" {
+		lines = append(lines, "时长："+row.duration)
+	}
+	if row.framing != "" {
+		lines = append(lines, "景别 / 机位："+row.framing)
+	}
+	if row.action != "" {
+		lines = append(lines, "核心动作："+row.action)
+	}
+	if row.assets != "" {
+		lines = append(lines, "必须绑定资产："+row.assets)
+	}
+	if row.status != "" {
+		lines = append(lines, "状态："+row.status)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func collectStoryboardVideoSections(

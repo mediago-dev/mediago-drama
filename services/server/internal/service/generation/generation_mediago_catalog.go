@@ -57,13 +57,14 @@ func (workflow *GenerationService) mediagoAvailableModels(ctx context.Context) (
 	if apiKey == "" {
 		return nil, fmt.Errorf("mediago API key is not configured")
 	}
+	cacheKey := apiKey
 
 	cache := &workflow.mediagoModelCatalog
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
-	if cache.baseURL != baseURL || cache.apiKey != apiKey {
+	if cache.baseURL != baseURL || cache.apiKey != cacheKey {
 		cache.baseURL = baseURL
-		cache.apiKey = apiKey
+		cache.apiKey = cacheKey
 		cache.models = nil
 		cache.fetchedAt = time.Time{}
 		cache.lastErr = nil
@@ -79,8 +80,26 @@ func (workflow *GenerationService) mediagoAvailableModels(ctx context.Context) (
 		return nil, cache.lastErr
 	}
 
-	models, err := fetchMediagoAvailableModels(ctx, http.DefaultClient, baseURL, apiKey)
-	if err != nil {
+	models := map[string]struct{}{}
+	var lastErr error
+	for _, key := range []string{apiKey} {
+		if key == "" {
+			continue
+		}
+		fetched, fetchErr := fetchMediagoAvailableModels(ctx, http.DefaultClient, baseURL, key)
+		if fetchErr != nil {
+			lastErr = fetchErr
+			continue
+		}
+		for model := range fetched {
+			models[model] = struct{}{}
+		}
+	}
+	if len(models) == 0 {
+		err = lastErr
+		if err == nil {
+			err = fmt.Errorf("mediago model catalog returned no models")
+		}
 		cache.lastErr = err
 		cache.failedAt = time.Now()
 		if cache.models != nil {
@@ -103,8 +122,8 @@ func (workflow *GenerationService) mediagoAvailableModels(ctx context.Context) (
 
 // mediagoAvailableModelsForCatalog resolves the MediaGo user catalog for model
 // listings. The boolean reports whether the result should be used to filter
-// MediaGo routes; a nil set with true hides them all (no key or catalog
-// unavailable with nothing cached).
+// MediaGo routes. A missing or incompatible gateway catalog is treated as
+// unknown and must not hide otherwise configured routes.
 func (workflow *GenerationService) mediagoAvailableModelsForCatalog(ctx context.Context) (map[string]struct{}, bool) {
 	if workflow == nil || workflow.settings == nil {
 		return nil, false
@@ -114,7 +133,10 @@ func (workflow *GenerationService) mediagoAvailableModelsForCatalog(ctx context.
 	}
 	models, err := workflow.mediagoAvailableModels(ctx)
 	if err != nil {
-		return nil, true
+		// NewAPI-compatible gateways commonly do not expose the private
+		// /models/user catalog. In that case the configured /v1 endpoint is
+		// authoritative and route availability is checked by the generation call.
+		return nil, !strings.HasSuffix(strings.TrimRight(workflow.mediagoBaseURL, "/"), "/v1")
 	}
 	return models, true
 }
@@ -126,35 +148,55 @@ func fetchMediagoAvailableModels(ctx context.Context, client *http.Client, baseU
 	requestCtx, cancel := context.WithTimeout(ctx, mediagoModelCatalogTimeout)
 	defer cancel()
 
-	request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, baseURL+mediagoModelCatalogPath, nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating mediago model catalog request: %w", err)
+	endpoints := []string{baseURL + mediagoModelCatalogPath}
+	if strings.HasSuffix(baseURL, "/v1") {
+		// NewAPI deployments expose the key-scoped catalog through the standard
+		// OpenAI /v1/models endpoint. Their /v1/models/user path may return a
+		// successful HTTP response containing an error envelope, while the root
+		// /models/user path is the dashboard HTML shell. Try the standard catalog
+		// before the legacy root endpoint and only accept a response that parses
+		// into at least one available model.
+		endpoints = append(endpoints, baseURL+"/models", strings.TrimSuffix(baseURL, "/v1")+mediagoModelCatalogPath)
 	}
-	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Authorization", mediagoModelCatalogAuthScheme+apiKey)
-	request.Header.Set("User-Agent", mediagoModelCatalogUserAgent)
-
-	response, err := client.Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("fetching mediago model catalog: %w", err)
+	var lastErr error
+	for _, endpoint := range endpoints {
+		request, requestErr := http.NewRequestWithContext(requestCtx, http.MethodGet, endpoint, nil)
+		if requestErr != nil {
+			return nil, fmt.Errorf("creating mediago model catalog request: %w", requestErr)
+		}
+		request.Header.Set("Accept", "application/json")
+		request.Header.Set("Authorization", mediagoModelCatalogAuthScheme+apiKey)
+		request.Header.Set("User-Agent", mediagoModelCatalogUserAgent)
+		response, err := client.Do(request)
+		if err != nil {
+			lastErr = fmt.Errorf("fetching mediago model catalog: %w", err)
+			continue
+		}
+		body, readErr := io.ReadAll(io.LimitReader(response.Body, mediagoModelCatalogMaxBytes))
+		response.Body.Close()
+		if readErr != nil {
+			lastErr = fmt.Errorf("reading mediago model catalog: %w", readErr)
+			continue
+		}
+		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+			lastErr = fmt.Errorf("mediago model catalog failed with status %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
+			continue
+		}
+		models, parseErr := parseMediagoAvailableModels(body)
+		if parseErr != nil {
+			lastErr = parseErr
+			continue
+		}
+		if len(models) == 0 {
+			lastErr = fmt.Errorf("mediago model catalog returned no models")
+			continue
+		}
+		return models, nil
 	}
-	defer response.Body.Close()
-
-	body, err := io.ReadAll(io.LimitReader(response.Body, mediagoModelCatalogMaxBytes))
-	if err != nil {
-		return nil, fmt.Errorf("reading mediago model catalog: %w", err)
+	if lastErr == nil {
+		lastErr = fmt.Errorf("mediago model catalog request failed")
 	}
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("mediago model catalog failed with status %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
-	}
-	models, err := parseMediagoAvailableModels(body)
-	if err != nil {
-		return nil, err
-	}
-	if len(models) == 0 {
-		return nil, fmt.Errorf("mediago model catalog returned no models")
-	}
-	return models, nil
+	return nil, lastErr
 }
 
 type mediagoModelCatalogResponse struct {

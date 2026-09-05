@@ -29,6 +29,7 @@ import {
 	MediaGenerationWorkspace,
 	type MediaGenerationWorkspaceViewMode,
 } from "@/domains/generation/components/MediaGenerationWorkspace";
+import type { SelectedGenerationResourceType } from "@/domains/generation/api/generation";
 import { selectedGenerationAssetKeysForSection } from "@/domains/generation/lib/selected-asset-keys";
 import { PromptEditor, type PromptEditorProps } from "@/domains/generation/components/PromptEditor";
 import { parseMentionsFromMarkdown } from "@/domains/documents/lib/mention-resolver";
@@ -36,9 +37,11 @@ import { useDocumentSectionGenerationContext } from "@/domains/documents/compone
 import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/stores";
 
 export interface DocumentSectionGeneratorProps {
+	forceSingleOutput?: boolean;
 	kind?: GenerationKind;
 	section: MarkdownSectionContext;
 	selectedAssetKeys?: string[];
+	selectedAssetResourceType?: SelectedGenerationResourceType | null;
 	materialLibraryImportOpen?: boolean;
 	projectId?: string;
 	resolveLatestSection?: boolean;
@@ -47,7 +50,7 @@ export interface DocumentSectionGeneratorProps {
 		assets: GenerationAsset[],
 		sourceTaskId: string,
 	) => void;
-	onGenerationError: (pendingId: string) => void;
+	onGenerationError: (pendingId: string, message?: string) => void;
 	onGenerationResponse?: (pendingId: string, response: GenerationMessageResponse) => void;
 	onGenerationStart: (pendingId: string, prompt: string) => void;
 	onHistoryCountChange?: (count: number) => void;
@@ -57,6 +60,7 @@ export interface DocumentSectionGeneratorProps {
 	onToggleAsset?: (asset: GenerationAsset, selected: boolean) => void;
 	onViewModeChange?: (viewMode: MediaGenerationWorkspaceViewMode) => void;
 	selectedGenerationAssets?: SelectedGenerationAsset[];
+	shotIds?: string[];
 	viewMode?: MediaGenerationWorkspaceViewMode;
 }
 
@@ -66,6 +70,7 @@ const mentionSearchMarkdown = (sourceMarkdown: string, promptMarkdown: string) =
 	promptMarkdown.trim() ? `${sourceMarkdown}\n\n${promptMarkdown}` : "";
 
 export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> = ({
+	forceSingleOutput,
 	kind = "image",
 	materialLibraryImportOpen,
 	onGenerationComplete,
@@ -82,7 +87,9 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 	resolveLatestSection = true,
 	section,
 	selectedAssetKeys,
+	selectedAssetResourceType,
 	selectedGenerationAssets,
+	shotIds,
 	viewMode,
 }) => {
 	const generationKind = kind;
@@ -201,6 +208,7 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 	return (
 		<>
 			<MediaGenerationWorkspace
+				forceSingleOutput={forceSingleOutput}
 				kind={generationKind}
 				defaultHistorySourceLabel={
 					sectionGenerationWorkspaceCopy[generationKind].historySourceLabel
@@ -242,8 +250,13 @@ export const DocumentSectionGenerator: React.FC<DocumentSectionGeneratorProps> =
 				)}
 				selectedAssetKeys={resolvedSelectedAssetKeys}
 				selectedAssetResourceId={activeSection.blockId}
+				selectedAssetResourceType={
+					selectedAssetResourceType ??
+					(generationKind === "image" && taskType === "storyboard" ? "storyboard" : undefined)
+				}
 				selectedAssetSourceDocumentId={activeSection.documentId}
 				selectedAssetTitle={activeSection.headingText}
+				shotIds={shotIds}
 				submitLabel={sectionGenerationWorkspaceCopy[generationKind].submitLabel}
 				uploadIdPrefix="section-generation"
 				onAssetSelectionPersisted={onAssetSelectionPersisted}

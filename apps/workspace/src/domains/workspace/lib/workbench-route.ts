@@ -3,6 +3,7 @@ import type { WorkMode } from "@/lib/stores/work-mode";
 export type AgentProjectView = "agent" | "document" | "overview";
 export type AgentDocumentWorkbench = "canvas" | "timeline";
 export type AgentResourceType = "character" | "scene" | "storyboard" | "prop";
+export type ProjectWorkspaceView = "dashboard" | "workflow" | "reference" | "assets" | "shots";
 
 export const getRouteProjectId = (search: string) => getSearchParam(search, "projectId");
 
@@ -16,6 +17,16 @@ export const getRouteResourceType = (search: string): AgentResourceType | null =
 export const getRouteDocumentId = (search: string) => getSearchParam(search, "documentId");
 
 export const getRouteAssetId = (search: string) => getSearchParam(search, "assetId");
+
+export const getRouteProjectWorkspace = (search: string): ProjectWorkspaceView => {
+	const value = getSearchParam(search, "workspace");
+	return value === "workflow" || value === "reference" || value === "assets" || value === "shots"
+		? value
+		: "dashboard";
+};
+
+/** 当前制作工作台要打开的阶段。阶段只影响工作区选中项，不改变项目数据。 */
+export const getRouteStageId = (search: string) => getSearchParam(search, "stageId");
 
 export const getRouteAgentSessionId = (search: string) =>
 	getSearchParam(search, "agentSessionId") ?? getSearchParam(search, "agentSession");
@@ -60,6 +71,8 @@ export const agentProjectPath = (
 		agentSessionId?: string | null;
 		documentId?: string | null;
 		resourceType?: AgentResourceType | null;
+		workspace?: ProjectWorkspaceView | null;
+		stageId?: string | null;
 		workbench?: AgentDocumentWorkbench | null;
 	} = {},
 ) => {
@@ -71,6 +84,10 @@ export const agentProjectPath = (
 		params.set("resourceType", options.resourceType);
 	}
 	if (options.agentSessionId) params.set("agentSessionId", options.agentSessionId);
+	if (options.workspace && options.workspace !== "dashboard") {
+		params.set("workspace", options.workspace);
+	}
+	if (options.stageId) params.set("stageId", options.stageId);
 	return `/projects?${params.toString()}`;
 };
 

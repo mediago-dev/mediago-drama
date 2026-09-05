@@ -385,6 +385,32 @@ func TestGenerateChatImageOmitsDefaultImageCount(t *testing.T) {
 	}
 }
 
+func TestAssetsFromImageMarkdownParsesBase64DataURL(t *testing.T) {
+	choices := []chatImageChoice{{}}
+	choices[0].Message.Content = "![image](data:image/png;base64,YWJjMTIz)"
+
+	assets := assetsFromImageMarkdown(choices)
+	if len(assets) != 1 {
+		t.Fatalf("assets = %#v, want one image", assets)
+	}
+	if assets[0].MIMEType != "image/png" || assets[0].Base64 != "YWJjMTIz" {
+		t.Fatalf("asset = %#v", assets[0])
+	}
+}
+
+func TestAssetsFromImageMarkdownUsesActualImageMIMEType(t *testing.T) {
+	choices := []chatImageChoice{{}}
+	choices[0].Message.Content = "![image](data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD)"
+
+	assets := assetsFromImageMarkdown(choices)
+	if len(assets) != 1 {
+		t.Fatalf("assets = %#v, want one image", assets)
+	}
+	if assets[0].MIMEType != "image/jpeg" {
+		t.Fatalf("MIMEType = %q, want image/jpeg", assets[0].MIMEType)
+	}
+}
+
 func TestGenerateImagesAPIUsesMediaGoPayload(t *testing.T) {
 	var payload map[string]any
 	var idempotencyKey string

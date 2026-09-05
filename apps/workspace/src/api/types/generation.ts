@@ -164,6 +164,8 @@ export interface GenerationMessageRequest {
 	projectId?: string;
 	documentId?: string;
 	sectionId?: string;
+	/** Optional production shot IDs this generation is intended to serve. */
+	shotIds?: string[];
 	documentContext?: GenerationDocumentContext;
 	capabilityId?: string;
 	resourceType?: string;
@@ -319,6 +321,10 @@ export interface GenerationMessageResponse {
 	error?: string;
 	errorCode?: string;
 	errorType?: string;
+	errorProvider?: string;
+	errorModel?: string;
+	errorEndpoint?: string;
+	errorHTTPStatus?: number;
 	retryable?: boolean;
 }
 
@@ -411,12 +417,19 @@ export interface GenerationTaskRecord {
 	projectId?: string;
 	documentId?: string;
 	sectionId?: string;
+	/** 生成任务所属的项目资产类型，用于完成后自动归档到角色/场景/分镜/道具库。 */
+	resourceType?: SelectedGenerationResourceType;
+	/** Optional production shot IDs copied from the generation request. */
+	shotIds?: string[];
 	capabilityId?: string;
 	kind: Kind;
 	routeId: string;
 	familyId: string;
 	versionId: string;
 	provider: string;
+	baseUrl?: string;
+	protocol?: string;
+	endpoint?: string;
 	modelId: string;
 	model: string;
 	prompt: string;
@@ -434,6 +447,10 @@ export interface GenerationTaskRecord {
 	error?: string;
 	errorCode?: string;
 	errorType?: string;
+	errorProvider?: string;
+	errorModel?: string;
+	errorEndpoint?: string;
+	errorHTTPStatus?: number;
 	retryable?: boolean;
 	createdAt: string;
 	updatedAt: string;
@@ -474,6 +491,8 @@ export interface UpdateSelectedGenerationAssetRequest {
 	resourceId?: string;
 	resourceTitle?: string;
 	resourceType?: SelectedGenerationResourceType;
+	/** Production shots that should automatically reference this asset. */
+	shotIds?: string[];
 	selected?: boolean;
 	sortOrder?: number;
 	sourceAssetIndex?: number;
@@ -506,6 +525,7 @@ export interface SelectedGenerationAssetRecord {
 	resourceId?: string;
 	resourceTitle?: string;
 	resourceType: SelectedGenerationResourceType;
+	shotIds?: string[];
 	sortOrder?: number;
 	sourceAssetIndex?: number;
 	sourceDocumentId?: string;

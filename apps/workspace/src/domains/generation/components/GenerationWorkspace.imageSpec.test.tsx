@@ -151,6 +151,7 @@ const workspaceDefaults = {
 	fullPrompt: "",
 	generationEntries: [],
 	hasConfiguredRoutesForKind: true,
+	hasAvailableRoutesForKind: true,
 	hasLiveCatalog: true,
 	isSubmitting: false,
 	isUploadingAsset: false,
@@ -223,7 +224,23 @@ const workspaceDefaults = {
 		},
 	],
 	visibleFamilies: [{ id: "image-family", label: "图像" }],
-	visibleRoutes: [],
+	visibleRoutes: [
+		{
+			adapter: "test",
+			configured: true,
+			docUrl: "https://example.com",
+			familyId: "image-family",
+			id: "route-image",
+			kind: "image",
+			label: "Image Route",
+			model: "image-model",
+			params: imageParams,
+			provider: "openai",
+			supportsReferenceUrls: true,
+			status: "available",
+			versionId: "version-image",
+		},
+	],
 	visibleVersions: [{ id: "version-image", label: "Image 1" }],
 };
 

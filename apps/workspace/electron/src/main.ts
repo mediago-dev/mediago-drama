@@ -34,7 +34,6 @@ import {
 	resolveRendererAssetPath,
 } from "./renderer-protocol.js";
 import { type SidecarConnection, startServerSidecar, stopServerSidecar } from "./sidecar.js";
-import { registerDesktopUpdater } from "./updater.js";
 
 protocol.registerSchemesAsPrivileged([
 	{
@@ -262,13 +261,15 @@ const openPromptPackEditorWindow = async (options: PromptPackEditorOpenOptions =
 
 const createWindow = async () => {
 	mainWindow = new BrowserWindow({
-		title: "MediaGo Drama",
+		title: "心悦制作台",
+		icon: join(rendererDistDir(), "heart-logo.png"),
 		width: 1280,
 		height: 905,
 		minWidth: 960,
 		minHeight: 680,
 		center: true,
 		show: true,
+		autoHideMenuBar: true,
 		titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
 		trafficLightPosition: { x: 16, y: 25 },
 		webPreferences: {
@@ -497,7 +498,6 @@ const pathIsAvailable = async (path: string) => {
 
 const startApp = async () => {
 	registerRendererProtocol();
-	registerDesktopUpdater({ authorizeIpcSender: authorizeDesktopIpc, getWindow: () => mainWindow });
 	const sidecar = startServerSidecar();
 	if (sidecar) authenticateSidecarRequests(sidecar);
 	await createWindow();
@@ -516,7 +516,7 @@ if (!app.requestSingleInstanceLock()) {
 		.catch((error: unknown) => {
 			console.error("[mediago-electron] failed to start", error);
 			dialog.showErrorBox(
-				"MediaGo Drama 无法安全启动",
+				"心悦制作台无法安全启动",
 				error instanceof Error ? error.message : "本地数据或服务状态无法安全恢复。",
 			);
 			app.quit();

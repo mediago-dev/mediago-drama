@@ -477,12 +477,12 @@ describe("PromptPackEditor", () => {
 		expect(navigator).not.toContainElement(title);
 		expect(title.closest("header")).toHaveClass("bg-ide-editor");
 		fireEvent.keyDown(resizeHandle, { key: "Home" });
-		expect(resizeHandle).toHaveAttribute("aria-valuenow", "220");
+		expect(resizeHandle).toHaveAttribute("aria-valuenow", "300");
 		fireEvent.keyDown(resizeHandle, { key: "ArrowRight" });
-		expect(resizeHandle).toHaveAttribute("aria-valuenow", "232");
+		expect(resizeHandle).toHaveAttribute("aria-valuenow", "312");
 		fireEvent.pointerDown(resizeHandle, { clientX: 232 });
 		fireEvent.pointerMove(window, { clientX: 300 });
-		expect(resizeHandle).toHaveAttribute("aria-valuenow", "300");
+		expect(resizeHandle).toHaveAttribute("aria-valuenow", "380");
 		fireEvent.pointerUp(window);
 	});
 
@@ -1030,17 +1030,14 @@ describe("PromptPackEditor", () => {
 		const completionDialog = await screen.findByRole("alertdialog");
 		expect(screen.getByRole("heading", { name: "技能包已导出" })).toBeInTheDocument();
 		expect(completionDialog).toHaveTextContent(
-			"“draft.mgpack”已保存。前往 MediaGo「我的技能包」上传，设置公开售卖或席位分发并提交审核。",
+			"“draft.mgpack”已保存，可作为本地备份或在其他设备导入。",
 		);
 		expect(openExternal).not.toHaveBeenCalled();
 		expect(toastSuccess).not.toHaveBeenCalledWith("技能包已导出", expect.anything());
 
 		fireEvent.click(screen.getByRole("button", { name: "在文件夹中显示" }));
 		await waitFor(() => expect(revealPath).toHaveBeenCalledWith("/tmp/draft.mgpack"));
-		fireEvent.click(screen.getByRole("button", { name: "前往发布" }));
-		await waitFor(() =>
-			expect(openExternal).toHaveBeenCalledWith("http://localhost:4321/account#promptPacks"),
-		);
+		fireEvent.click(screen.getByRole("button", { name: "完成" }));
 		await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
 		expect(screen.queryByRole("radio", { name: "公开售卖" })).not.toBeInTheDocument();
 		expect(screen.queryByRole("radio", { name: "席位分发" })).not.toBeInTheDocument();
@@ -1061,58 +1058,6 @@ describe("PromptPackEditor", () => {
 		expect(toastSuccess).not.toHaveBeenCalledWith("技能包已导出", expect.anything());
 		expect(toastInfo).not.toHaveBeenCalled();
 		expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-	});
-
-	it("keeps the publish page closed when export follow-up is deferred", async () => {
-		vi.mocked(exportPromptPack).mockResolvedValue({
-			blob: new Blob(["MGPK"]),
-			fileName: "draft.mgpack",
-		});
-		renderEditor("/prompt-pack-editor?packId=local.test-pack");
-
-		fireEvent.click(await screen.findByRole("button", { name: "导出" }));
-		fireEvent.click(await screen.findByRole("button", { name: "稍后处理" }));
-
-		await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
-		expect(openExternal).not.toHaveBeenCalled();
-	});
-
-	it("uses the production publish page when no override is configured", async () => {
-		vi.stubEnv("VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL", "");
-		vi.mocked(exportPromptPack).mockResolvedValue({
-			blob: new Blob(["MGPK"]),
-			fileName: "draft.mgpack",
-		});
-		renderEditor("/prompt-pack-editor?packId=local.test-pack");
-
-		fireEvent.click(await screen.findByRole("button", { name: "导出" }));
-		fireEvent.click(await screen.findByRole("button", { name: "前往发布" }));
-
-		await waitFor(() =>
-			expect(openExternal).toHaveBeenCalledWith(
-				"https://mediago.torchstellar.com/account#promptPacks",
-			),
-		);
-	});
-
-	it("rejects a non-http publish URL instead of handing it to Electron", async () => {
-		vi.stubEnv("VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL", "javascript:alert(1)");
-		vi.mocked(exportPromptPack).mockResolvedValue({
-			blob: new Blob(["MGPK"]),
-			fileName: "draft.mgpack",
-		});
-		renderEditor("/prompt-pack-editor?packId=local.test-pack");
-
-		fireEvent.click(await screen.findByRole("button", { name: "导出" }));
-		fireEvent.click(await screen.findByRole("button", { name: "前往发布" }));
-
-		await waitFor(() =>
-			expect(toastError).toHaveBeenCalledWith("未配置技能包发布地址", {
-				description: "请设置 VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL 后重试。",
-			}),
-		);
-		expect(openExternal).not.toHaveBeenCalled();
-		expect(screen.getByRole("alertdialog")).toBeInTheDocument();
 	});
 
 	it("opens an incomplete entry and explains which fields block export", async () => {
