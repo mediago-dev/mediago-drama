@@ -9,6 +9,9 @@ import (
 
 func TestGenerationNotificationRepositoryLifecycle(t *testing.T) {
 	repo, err := NewGenerationNotificationRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err == nil {
+		cleanupTestDatabase(t, repo.db)
+	}
 	if err != nil {
 		t.Fatalf("NewGenerationNotificationRepository() error = %v", err)
 	}

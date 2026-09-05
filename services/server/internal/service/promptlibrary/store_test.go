@@ -176,6 +176,11 @@ func TestStoreBrowsableIndexOmitsBodiesAndRejectsImportedDetails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenSettingsRepositories() error = %v", err)
 	}
+	t.Cleanup(func() {
+		if err := repository.CloseDatabase(repos.DB); err != nil {
+			t.Errorf("closing settings db: %v", err)
+		}
+	})
 	packStore := promptpack.NewServiceFromRepository(repos.Packs, repos.PromptLibrary, nil)
 	store := NewServiceFromPromptPack(packStore, nil)
 	if _, err := store.List(ctx, Filter{}); err != nil {
@@ -225,6 +230,11 @@ func newTestStore(t *testing.T) *Service {
 	if err != nil {
 		t.Fatalf("OpenSettingsRepositories() error = %v", err)
 	}
+	t.Cleanup(func() {
+		if err := repository.CloseDatabase(repos.DB); err != nil {
+			t.Errorf("closing settings db: %v", err)
+		}
+	})
 	packStore := promptpack.NewServiceFromRepository(repos.Packs, repos.PromptLibrary, nil)
 	return NewServiceFromPromptPack(packStore, nil)
 }

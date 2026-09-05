@@ -8,7 +8,7 @@ import (
 )
 
 func TestMCPAdapterGetProjectConfigReadsCurrentProject(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.InitErr() != nil {
 		t.Fatalf("workspace init error: %v", store.InitErr())
 	}

@@ -76,6 +76,49 @@ func OpenGormSQLite(dbPath string) (*gorm.DB, error) {
 	return db, nil
 }
 
+// CloseDatabase closes a database opened by this package and removes any
+// cached reference to it. Callers that own a database lifetime should invoke
+// this before releasing its workspace directory.
+func CloseDatabase(db *gorm.DB) error {
+	if db == nil {
+		return nil
+	}
+	var cacheKeys []string
+	sqliteDBCache.Range(func(key, value any) bool {
+		if value == db {
+			if cacheKey, ok := key.(string); ok {
+				cacheKeys = append(cacheKeys, cacheKey)
+			}
+		}
+		return true
+	})
+	for _, cacheKey := range cacheKeys {
+		sqliteDBCache.Delete(cacheKey)
+		workspaceSchemaMigrated.Delete(cacheKey)
+		settingsSchemaMigrated.Delete(cacheKey)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
+}
+
+// CloseDatabasePath closes a cached database by filesystem path. It is useful
+// for owners that construct several repositories from the same path without
+// retaining the shared GORM handle.
+func CloseDatabasePath(dbPath string) error {
+	cacheKey, cacheable := sqliteCacheKey(dbPath)
+	if !cacheable {
+		return nil
+	}
+	value, ok := sqliteDBCache.Load(cacheKey)
+	if !ok {
+		return nil
+	}
+	return CloseDatabase(value.(*gorm.DB))
+}
+
 func tightenSQLiteDirectoryPermissions(dbPath string) error {
 	path, ok := sqliteFilesystemPath(dbPath)
 	if !ok {

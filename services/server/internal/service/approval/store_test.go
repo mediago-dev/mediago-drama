@@ -13,6 +13,11 @@ func TestStorePersistsDocumentToolApprovalPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("opening workspace db: %v", err)
 	}
+	t.Cleanup(func() {
+		if err := repository.CloseDatabase(db); err != nil {
+			t.Errorf("closing workspace db: %v", err)
+		}
+	})
 	store := NewService(repository.NewDocumentToolApprovalRepository(db), nil)
 	projectID := "project-approval"
 	now := domain.TimeFromString("2026-06-01T00:00:00Z")

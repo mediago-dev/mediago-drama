@@ -116,12 +116,12 @@ func TestSummaryGroupsByCapability(t *testing.T) {
 	insertBillingTask(t, repos.DB, domain.GenerationTaskModel{
 		ID:          "task-1",
 		Kind:        "image",
-		RouteID:     "dmx.gpt-image-2",
-		FamilyID:    "gpt-image",
-		VersionID:   "gpt-image-2",
-		Provider:    "dmx",
-		ModelID:     "gpt-image-2",
-		Model:       "gpt-image-2",
+		RouteID:     "whereslow-image.nano-banana-2",
+		FamilyID:    "whereslow-image",
+		VersionID:   "nano-banana-2",
+		Provider:    "whereslow-image",
+		ModelID:     "nano-banana-2",
+		Model:       "nano-banana-2",
 		Status:      "completed",
 		InputTokens: 1,
 		TotalTokens: 1,
@@ -130,8 +130,8 @@ func TestSummaryGroupsByCapability(t *testing.T) {
 	})
 
 	service := NewService(repos.Billing, priceTable{
-		"dmx.gpt-image-2": {
-			RouteID:      "dmx.gpt-image-2",
+		"whereslow-image.nano-banana-2": {
+			RouteID:      "whereslow-image.nano-banana-2",
 			Currency:     "CNY",
 			Unit:         corepricing.UnitPerCall,
 			PerCallPrice: 0.5,
@@ -251,6 +251,11 @@ func billingTestRepos(t *testing.T) repository.WorkspaceRepositories {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	t.Cleanup(func() {
+		if err := repository.CloseDatabase(repos.DB); err != nil {
+			t.Errorf("closing billing test database: %v", err)
+		}
+	})
 	return repos
 }
 

@@ -9,7 +9,7 @@ import (
 )
 
 func TestWorkspaceRepositoryProjectAndOperationLogLifecycle(t *testing.T) {
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.db"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
@@ -99,7 +99,7 @@ func TestWorkspaceRepositoryProjectAndOperationLogLifecycle(t *testing.T) {
 }
 
 func TestWorkspaceRepositoryProjectLifecycleFieldsMigrate(t *testing.T) {
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.db"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
@@ -129,7 +129,7 @@ func TestWorkspaceRepositoryProjectLifecycleFieldsMigrate(t *testing.T) {
 }
 
 func TestWorkspaceRepositoryProjectStatusLifecycle(t *testing.T) {
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.db"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
@@ -239,7 +239,7 @@ func TestWorkspaceRepositoryProjectStatusLifecycle(t *testing.T) {
 }
 
 func TestWorkspaceRepositoryDeletesDeprecatedStudioCapabilityProjects(t *testing.T) {
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.db"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
@@ -325,7 +325,7 @@ func TestWorkspaceRepositoryDeletesDeprecatedStudioCapabilityProjects(t *testing
 }
 
 func TestWorkspaceRepositoryUpdatesProjectStorageLocation(t *testing.T) {
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.db"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}

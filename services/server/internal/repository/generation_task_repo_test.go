@@ -11,6 +11,9 @@ import (
 
 func TestGenerationTaskRepositoryLifecycle(t *testing.T) {
 	repo, err := NewGenerationTaskRepository(filepath.Join(t.TempDir(), "workspace.db"))
+	if err == nil {
+		cleanupTestDatabase(t, repo.db)
+	}
 	if err != nil {
 		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
 	}
@@ -212,6 +215,9 @@ func TestGenerationTaskRepositoryLifecycle(t *testing.T) {
 
 func TestGenerationTaskRepositoryListDefaultLimitAndOffset(t *testing.T) {
 	repo, err := NewGenerationTaskRepository(filepath.Join(t.TempDir(), "workspace.db"))
+	if err == nil {
+		cleanupTestDatabase(t, repo.db)
+	}
 	if err != nil {
 		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
 	}
@@ -308,6 +314,9 @@ func generationTaskModelIDs(tasks []domain.GenerationTaskModel) []string {
 
 func TestGenerationTaskRepositoryListsBatchInItemOrder(t *testing.T) {
 	repo, err := NewGenerationTaskRepository(filepath.Join(t.TempDir(), "workspace.db"))
+	if err == nil {
+		cleanupTestDatabase(t, repo.db)
+	}
 	if err != nil {
 		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
 	}

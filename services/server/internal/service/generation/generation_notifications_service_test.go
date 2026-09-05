@@ -1,7 +1,6 @@
 package generation
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -9,7 +8,7 @@ import (
 )
 
 func TestGenerationNotificationServicePublishesCompletedTask(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "workspace.db")
+	dbPath := generationTestWorkspaceDBPath(t)
 	seedGenerationTaskProject(t, dbPath, "project-a")
 	seedGenerationTaskAsset(t, dbPath, "image-1", "image", "project-a")
 	task := GenerationTaskRecord{
@@ -84,7 +83,7 @@ func TestGenerationNotificationServicePublishesCompletedTask(t *testing.T) {
 }
 
 func TestGenerationNotificationServicePublishesCompletedVideoTask(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "workspace.db")
+	dbPath := generationTestWorkspaceDBPath(t)
 	seedGenerationTaskProject(t, dbPath, "project-a")
 	seedGenerationTaskAsset(t, dbPath, "video-1", "video", "project-a")
 	task := GenerationTaskRecord{
@@ -146,7 +145,7 @@ func TestGenerationNotificationServicePublishesCompletedVideoTask(t *testing.T) 
 }
 
 func TestGenerationTaskStartedTransitionAnnouncesActiveCycles(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "workspace.db")
+	dbPath := generationTestWorkspaceDBPath(t)
 	seedGenerationTaskProject(t, dbPath, "project-a")
 	repos, err := repository.OpenWorkspaceRepositories(dbPath)
 	if err != nil {
@@ -215,7 +214,7 @@ func TestGenerationTaskStartedTransitionAnnouncesActiveCycles(t *testing.T) {
 }
 
 func TestGenerationTaskCompletionTransitionAnnouncesUntrackedTasks(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "workspace.db")
+	dbPath := generationTestWorkspaceDBPath(t)
 	repos, err := repository.OpenWorkspaceRepositories(dbPath)
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
@@ -279,7 +278,7 @@ func TestGenerationTaskCompletionTransitionAnnouncesUntrackedTasks(t *testing.T)
 }
 
 func TestAnnounceTaskCompletionSkipsTrackedTasks(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "workspace.db")
+	dbPath := generationTestWorkspaceDBPath(t)
 	repos, err := repository.OpenWorkspaceRepositories(dbPath)
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
@@ -311,7 +310,7 @@ func TestAnnounceTaskCompletionSkipsTrackedTasks(t *testing.T) {
 }
 
 func TestTrackedSynchronousCompletionPublishesOnlyRichNotification(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "workspace.db")
+	dbPath := generationTestWorkspaceDBPath(t)
 	seedGenerationTaskProject(t, dbPath, "project-a")
 	seedGenerationTaskAsset(t, dbPath, "image-1", "image", "project-a")
 	repos, err := repository.OpenWorkspaceRepositories(dbPath)

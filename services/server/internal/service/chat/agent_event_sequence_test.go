@@ -212,6 +212,11 @@ func TestAppendAgentEventResumesSequenceFromExistingHistory(t *testing.T) {
 	// A fresh service (server restart) must seed its cache from the history
 	// file instead of restarting sequences.
 	reopened := NewService(store.dir, store.agentSessions, store.projects, nil)
+	t.Cleanup(func() {
+		if err := reopened.Close(); err != nil {
+			t.Errorf("closing reopened chat store: %v", err)
+		}
+	})
 	event := appendSequenceTestEvent(t, reopened, projectID, sessionID, "event-3")
 	if event.Sequence != 3 {
 		t.Fatalf("sequence after reopen = %d, want 3", event.Sequence)

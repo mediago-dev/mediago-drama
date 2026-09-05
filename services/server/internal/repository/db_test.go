@@ -13,7 +13,7 @@ import (
 )
 
 func TestOpenWorkspaceDBMigratesWorkspaceSchema(t *testing.T) {
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.sqlite"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.sqlite"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB returned error: %v", err)
 	}
@@ -69,11 +69,11 @@ func TestOpenWorkspaceDBMigratesWorkspaceSchema(t *testing.T) {
 
 func TestOpenGormSQLiteCachesByPath(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "cached.sqlite")
-	first, err := OpenGormSQLite(dbPath)
+	first, err := openTestGormSQLite(t, dbPath)
 	if err != nil {
 		t.Fatalf("OpenGormSQLite first call returned error: %v", err)
 	}
-	second, err := OpenGormSQLite(dbPath)
+	second, err := openTestGormSQLite(t, dbPath)
 	if err != nil {
 		t.Fatalf("OpenGormSQLite second call returned error: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestOpenGormSQLiteCachesByPath(t *testing.T) {
 }
 
 func TestOpenGormSQLiteConfiguresLocalPragmas(t *testing.T) {
-	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "local.sqlite"))
+	db, err := openTestGormSQLite(t, filepath.Join(t.TempDir(), "local.sqlite"))
 	if err != nil {
 		t.Fatalf("OpenGormSQLite returned error: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestOpenGormSQLiteRestrictsDatabaseFilePermissions(t *testing.T) {
 		t.Fatalf("creating database directory: %v", err)
 	}
 	dbPath := filepath.Join(dir, "settings.sqlite")
-	db, err := OpenGormSQLite(dbPath)
+	db, err := openTestGormSQLite(t, dbPath)
 	if err != nil {
 		t.Fatalf("OpenGormSQLite returned error: %v", err)
 	}
@@ -159,6 +159,7 @@ func TestOpenWorkspaceRepositoriesBuildsAllWorkspaceRepositories(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories returned error: %v", err)
 	}
+	cleanupTestDatabase(t, repos.DB)
 	if repos.DB == nil ||
 		repos.Workspace == nil ||
 		repos.EditStreams == nil ||
@@ -182,6 +183,7 @@ func TestOpenSettingsRepositoriesMigratesOnlyGlobalSettingsSchemas(t *testing.T)
 	if err != nil {
 		t.Fatalf("OpenSettingsRepositories returned error: %v", err)
 	}
+	cleanupTestDatabase(t, repos.DB)
 	if repos.DB == nil ||
 		repos.APIKeys == nil ||
 		repos.AgentModelProfiles == nil ||
@@ -240,7 +242,7 @@ func TestOpenSettingsRepositoriesMigratesOnlyGlobalSettingsSchemas(t *testing.T)
 }
 
 func TestWorkspaceSchemaCascadesProjectOwnedRows(t *testing.T) {
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.sqlite"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.sqlite"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB returned error: %v", err)
 	}
@@ -414,7 +416,7 @@ func assertModelCount(t *testing.T, db *gorm.DB, name string, model any, want in
 }
 
 func TestEnsureWorkspaceSchemaUsesNormalizedGenerationTaskColumns(t *testing.T) {
-	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "workspace.sqlite"))
+	db, err := openTestGormSQLite(t, filepath.Join(t.TempDir(), "workspace.sqlite"))
 	if err != nil {
 		t.Fatalf("OpenGormSQLite returned error: %v", err)
 	}
@@ -457,7 +459,7 @@ func TestEnsureWorkspaceSchemaUsesNormalizedGenerationTaskColumns(t *testing.T) 
 }
 
 func TestEnsureWorkspaceSchemaCreatesAssetsWithoutBase64(t *testing.T) {
-	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "workspace.sqlite"))
+	db, err := openTestGormSQLite(t, filepath.Join(t.TempDir(), "workspace.sqlite"))
 	if err != nil {
 		t.Fatalf("OpenGormSQLite returned error: %v", err)
 	}

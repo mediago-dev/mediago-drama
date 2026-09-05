@@ -11,7 +11,7 @@ import (
 )
 
 func TestAgentSessionRepositoryLifecycle(t *testing.T) {
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.db"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
@@ -72,7 +72,7 @@ func TestAgentSessionRepositoryLifecycle(t *testing.T) {
 }
 
 func TestAgentExecutionSessionUpsertPreservesWorkflowPointersAndRootLease(t *testing.T) {
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.db"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
@@ -118,7 +118,7 @@ func TestAgentExecutionSessionUpsertPreservesWorkflowPointersAndRootLease(t *tes
 }
 
 func TestAgentExecutionSessionUpsertRejectsCrossProjectMove(t *testing.T) {
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.db"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}

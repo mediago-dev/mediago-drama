@@ -20,6 +20,11 @@ func TestHandleInternalPublishEvent(t *testing.T) {
 		AgentBridgeToken:        "test-token",
 		DisableGenerationWorker: true,
 	})
+	t.Cleanup(func() {
+		if err := api.Close(); err != nil {
+			t.Errorf("closing api handler: %v", err)
+		}
+	})
 	router := gin.New()
 	internalHandler := httphandlers.NewInternalEvents(api.agentBridgeToken, api)
 	router.POST(internalEventsPublishPath, internalHandler.HandleInternalPublishEvent)

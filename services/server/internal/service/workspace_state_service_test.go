@@ -22,6 +22,7 @@ func TestWorkspaceStateServiceRecoversFilesystemProjectManifest(t *testing.T) {
 	}
 
 	store := NewWorkspaceStateServiceFromRepositories(workspaceDir, repos, nil)
+	t.Cleanup(func() { _ = store.Close() })
 	if err := store.InitErr(); err != nil {
 		t.Fatalf("InitErr() = %v", err)
 	}
@@ -62,6 +63,7 @@ func TestWorkspaceStateServiceBackfillsBlankProjectDirFromCanonicalManifest(t *t
 	}
 
 	store := NewWorkspaceStateServiceFromRepositories(workspaceDir, repos, nil)
+	t.Cleanup(func() { _ = store.Close() })
 	if err := store.InitErr(); err != nil {
 		t.Fatalf("InitErr() = %v", err)
 	}
@@ -96,6 +98,7 @@ func TestWorkspaceStateServiceKeepsBlankProjectDirWhenDirectoryMissing(t *testin
 	}
 
 	store := NewWorkspaceStateServiceFromRepositories(workspaceDir, repos, nil)
+	t.Cleanup(func() { _ = store.Close() })
 	if err := store.InitErr(); err != nil {
 		t.Fatalf("InitErr() = %v", err)
 	}
@@ -145,6 +148,7 @@ func TestWorkspaceStateServiceCleansDeprecatedStudioProjectDirs(t *testing.T) {
 	}
 
 	store := NewWorkspaceStateServiceFromRepositories(workspaceDir, repos, nil)
+	t.Cleanup(func() { _ = store.Close() })
 	if err := store.InitErr(); err != nil {
 		t.Fatalf("InitErr() = %v", err)
 	}
@@ -246,6 +250,7 @@ func TestWorkspaceStateServiceMigratesDeprecatedLocalProjectDirs(t *testing.T) {
 	}
 
 	store := NewWorkspaceStateServiceFromRepositories(workspaceDir, repos, nil)
+	t.Cleanup(func() { _ = store.Close() })
 	if err := store.InitErr(); err != nil {
 		t.Fatalf("InitErr() = %v", err)
 	}

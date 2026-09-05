@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -53,6 +54,7 @@ func TestAPIHandler(t *testing.T) {
 	t.Run("Codex skill inventory is read only and separate from prompt pack skills", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
+		t.Setenv("USERPROFILE", home)
 		t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 		skillDir := filepath.Join(home, ".agents", "skills", "route-check")
 		if err := os.MkdirAll(skillDir, 0o755); err != nil {
@@ -444,7 +446,7 @@ func TestAPIHandler(t *testing.T) {
 	t.Run("episode preview serves generated timeline video", func(t *testing.T) {
 		dbPath := filepath.Join(t.TempDir(), "settings.db")
 		ffmpegPath := filepath.Join(t.TempDir(), "ffmpeg")
-		writeFakeFFmpegForTest(t, ffmpegPath)
+		ffmpegPath = writeFakeFFmpegForTest(t, ffmpegPath)
 		previewHandler := NewHandlerWithConfig(
 			fstest.MapFS{"index.html": {Data: []byte("<html>workspace</html>")}},
 			Config{
@@ -494,7 +496,7 @@ func TestAPIHandler(t *testing.T) {
 		if contentType := stream.Header.Get("Content-Type"); contentType != "video/mp4" {
 			t.Fatalf("Content-Type = %q, want video/mp4", contentType)
 		}
-		if body := readBody(t, stream.Body); body != "rendered-mp4" {
+		if body := strings.TrimSpace(readBody(t, stream.Body)); body != "rendered-mp4" {
 			t.Fatalf("body = %q, want fake rendered preview file", body)
 		}
 
@@ -1275,7 +1277,7 @@ func TestAPIHandler(t *testing.T) {
 		}
 
 		body := readBody(t, response.Body)
-		if !strings.Contains(body, `"id":"seedream-5-lite"`) || !strings.Contains(body, `"id":"jimeng-seedance-2-fast"`) {
+		if !strings.Contains(body, `"id":"nano-banana-2"`) || !strings.Contains(body, `"id":"dmx.seedance-2.0-fast"`) {
 			t.Fatalf("body = %s, want generation model catalog", body)
 		}
 	})
@@ -1785,10 +1787,10 @@ func TestAPIHandler(t *testing.T) {
 		}
 
 		save := requestJSON(t, handler, http.MethodPut, "/api/v1/generation/sessions/"+url.PathEscape(sessionID)+"/preferences", `{
-			"familyIds":{"image":"seedream"},
-			"routeIds":{"seedream-5-lite":"official.seedream-5-lite"},
-			"versionIds":{"seedream":"seedream-5-lite"},
-			"routeParams":{"official.seedream-5-lite":{"size":"2K"}},
+			"familyIds":{"image":"whereslow-image"},
+			"routeIds":{"image":"whereslow-image.nano-banana-2"},
+			"versionIds":{"image":"nano-banana-2"},
+			"routeParams":{"whereslow-image.nano-banana-2":{"aspectRatio":"9:16","resolution":"2K"}},
 			"stylePresetId":"preset-cinematic"
 		}`)
 		defer save.Body.Close()
@@ -1803,7 +1805,7 @@ func TestAPIHandler(t *testing.T) {
 		}
 		getBody := readBody(t, get.Body)
 		if !strings.Contains(getBody, `"stylePresetId":"preset-cinematic"`) ||
-			!strings.Contains(getBody, `"official.seedream-5-lite":{"aspectRatio":"adaptive","resolution":"2K"}`) {
+			!strings.Contains(getBody, `"whereslow-image.nano-banana-2":{"aspectRatio":"9:16","resolution":"2K"}`) {
 			t.Fatalf("body = %s, want saved preferences", getBody)
 		}
 	})
@@ -1824,7 +1826,7 @@ func TestAPIHandler(t *testing.T) {
 		defer models.Body.Close()
 
 		modelsBody := readBody(t, models.Body)
-		if !strings.Contains(modelsBody, `"id":"dmx.seedream-5-lite"`) || !strings.Contains(modelsBody, `"configured":true`) {
+		if !strings.Contains(modelsBody, `"id":"dmx.seedance-2.0-fast"`) || !strings.Contains(modelsBody, `"configured":true`) {
 			t.Fatalf("body = %s, want configured dmx generation route", modelsBody)
 		}
 	})
@@ -2114,8 +2116,24 @@ func uploadImageAssetForTest(t *testing.T, handler http.Handler, projectID strin
 	return envelope.Data
 }
 
-func writeFakeFFmpegForTest(t *testing.T, path string) {
+func writeFakeFFmpegForTest(t *testing.T, path string) string {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		path += ".cmd"
+		script := "@echo off\r\n" +
+			"set \"last=\"\r\n" +
+			":loop\r\n" +
+			"if \"%~1\"==\"\" goto done\r\n" +
+			"set \"last=%~1\"\r\n" +
+			"shift\r\n" +
+			"goto loop\r\n" +
+			":done\r\n" +
+			"if \"%last%\"==\"pipe:1\" ( <nul set /p =fragmented-mp4 ) else ( <nul set /p =rendered-mp4 > \"%last%\" )\r\n"
+		if err := os.WriteFile(path, []byte(script), 0o600); err != nil {
+			t.Fatalf("writing fake ffmpeg: %v", err)
+		}
+		return path
+	}
 	script := `#!/bin/sh
 last=""
 for arg in "$@"; do
@@ -2130,6 +2148,7 @@ fi
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatalf("writing fake ffmpeg: %v", err)
 	}
+	return path
 }
 
 func listProjectCountForTest(t *testing.T, handler http.Handler) int {

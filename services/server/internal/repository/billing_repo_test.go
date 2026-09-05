@@ -13,6 +13,7 @@ func TestBillingRepositoryListUsageBucketsAggregatesTokenColumns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
+	cleanupTestDatabase(t, repos.DB)
 	ensureBillingProjectFixture(t, repos.DB, "project-a")
 	ensureBillingProjectFixture(t, repos.DB, "project-b")
 

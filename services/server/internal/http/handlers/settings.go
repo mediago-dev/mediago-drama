@@ -79,7 +79,14 @@ func (handler Settings) HandleAPIKeys(context *gin.Context) {
 	httpresponse.OK(context, list)
 }
 
-// HandleCustomImageAPISettings returns the custom image API configuration without its secret.
+// HandleCustomImageAPISettings godoc
+// @Summary 获取自定义图片 API 配置
+// @Description 返回当前自定义 Gemini 图片路线的配置和脱敏状态。
+// @Tags Settings
+// @Produce json
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 500 {object} SwaggerEnvelope
+// @Router /api/v1/settings/image-generation-api [get]
 func (handler Settings) HandleCustomImageAPISettings(context *gin.Context) {
 	result, err := handler.service.GetCustomImageAPISettings(context.Request.Context())
 	if err != nil {
@@ -89,7 +96,15 @@ func (handler Settings) HandleCustomImageAPISettings(context *gin.Context) {
 	httpresponse.OK(context, result)
 }
 
-// HandlePutCustomImageAPISettings stores the custom image API configuration.
+// HandlePutCustomImageAPISettings godoc
+// @Summary 保存自定义图片 API 配置
+// @Tags Settings
+// @Accept json
+// @Produce json
+// @Param request body CustomImageAPISettingsRequest true "图片 API 配置"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Router /api/v1/settings/image-generation-api [put]
 func (handler Settings) HandlePutCustomImageAPISettings(context *gin.Context) {
 	request, err := decodeJSON[CustomImageAPISettingsRequest](context)
 	if err != nil {

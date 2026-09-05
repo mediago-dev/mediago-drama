@@ -11,7 +11,7 @@ import (
 )
 
 func TestApplyGenerationDocumentContextResolvesMentionReferencesFromDocuments(t *testing.T) {
-	mediaAssets := media.NewMediaAssets(t.TempDir()+"/settings.db", t.TempDir())
+	mediaAssets := media.NewMediaAssets(generationTestDBPath(t), t.TempDir())
 	asset := savePNGReferenceAsset(t, mediaAssets, 320, 180)
 	workflow := NewGenerationService(nil, nil, mediaAssets)
 	storySectionID := createGenerationDocumentSectionBlockID("story-doc", 2, 1, "第 01 组")
@@ -337,7 +337,7 @@ func (resolver fakeGenerationDocumentResolver) RequireWorkspaceDocument(projectI
 }
 
 func TestApplyGenerationDocumentContextInfersResourceTypeFromDocumentCategory(t *testing.T) {
-	mediaAssets := media.NewMediaAssets(t.TempDir()+"/settings.db", t.TempDir())
+	mediaAssets := media.NewMediaAssets(generationTestDBPath(t), t.TempDir())
 	workflow := NewGenerationService(nil, nil, mediaAssets)
 	workflow.SetDocumentResolver(fakeGenerationDocumentResolver{
 		documents: map[string]mediamcp.WorkspaceDocument{

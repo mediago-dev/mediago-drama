@@ -1,6 +1,11 @@
 {
   "prices": [
     {
+      "routeId": "whereslow-image.nano-banana-2",
+      "currency": "CNY",
+      "unit": "external"
+    },
+    {
       "routeId": "dmx.seedream-5-lite",
       "currency": "CNY",
       "unit": "per_call",

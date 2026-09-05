@@ -50,8 +50,18 @@ type GenerationTaskService interface {
 	GenerationNotificationConnectedEvent(projectID string) dto.GenerationNotificationEvent
 }
 
-// HandleProjectCodexImage generates one image with the local Codex image skill
-// and immediately archives it to the target production resource.
+// HandleProjectCodexImage godoc
+// @Summary 使用 Codex 生成项目图片
+// @Description 使用本地 Codex 图片技能生成一张图片，并归档到目标项目资源。
+// @Tags Generation
+// @Accept json
+// @Produce json
+// @Param projectId path string true "Project ID"
+// @Param payload body SwaggerObject true "Codex image request"
+// @Success 200 {object} SwaggerEnvelope
+// @Failure 400 {object} SwaggerEnvelope
+// @Failure 503 {object} SwaggerEnvelope
+// @Router /api/v1/projects/{projectId}/codex-image [post]
 func (handler GenerationTasks) HandleProjectCodexImage(context *gin.Context) {
 	payload, err := decodeJSON[dto.CodexImageRequest](context)
 	if err != nil {

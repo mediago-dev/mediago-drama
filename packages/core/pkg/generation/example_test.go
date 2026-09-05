@@ -9,7 +9,7 @@ import (
 func ExampleResolveRoute() {
 	route, err := generation.ResolveRoute(generation.RouteQuery{
 		Kind:    generation.KindImage,
-		RouteID: generation.RouteDMXSeedream5Lite,
+		RouteID: generation.RouteWhereslowNanoBanana2,
 	})
 	if err != nil {
 		panic(err)
@@ -18,5 +18,5 @@ func ExampleResolveRoute() {
 	fmt.Println(route.ID, route.Provider, route.SupportsReferenceURLs)
 
 	// Output:
-	// dmx.seedream-5-lite dmx true
+	// whereslow-image.nano-banana-2 whereslow-image true
 }

@@ -35,7 +35,7 @@ func (legacyAgentSelectionModel) TableName() string {
 
 func newAgentSelectionRepositoryTest(t *testing.T) (*AgentSelectionRepository, string) {
 	t.Helper()
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.sqlite"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.sqlite"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
@@ -209,7 +209,7 @@ func TestAgentSelectionGenerationClaimRestrictsKindStatusAndIntent(t *testing.T)
 }
 
 func TestEnsureWorkspaceSchemaAddsGenerationClaimColumnsWithoutLosingSelections(t *testing.T) {
-	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "legacy-workspace.sqlite"))
+	db, err := openTestGormSQLite(t, filepath.Join(t.TempDir(), "legacy-workspace.sqlite"))
 	if err != nil {
 		t.Fatalf("OpenGormSQLite() error = %v", err)
 	}
@@ -255,7 +255,7 @@ func TestEnsureWorkspaceSchemaAddsGenerationClaimColumnsWithoutLosingSelections(
 }
 
 func TestEnsureWorkspaceSchemaBackfillsLegacyAgentSelectionOwnership(t *testing.T) {
-	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "legacy-selection-ownership.sqlite"))
+	db, err := openTestGormSQLite(t, filepath.Join(t.TempDir(), "legacy-selection-ownership.sqlite"))
 	if err != nil {
 		t.Fatalf("OpenGormSQLite() error = %v", err)
 	}
@@ -317,7 +317,7 @@ func TestEnsureWorkspaceSchemaBackfillsLegacyAgentSelectionOwnership(t *testing.
 }
 
 func TestEnsureWorkspaceSchemaBackfillsAgentSelectionWhenOwnershipColumnsAreAbsent(t *testing.T) {
-	db, err := OpenGormSQLite(filepath.Join(t.TempDir(), "legacy-selection-no-ownership.sqlite"))
+	db, err := openTestGormSQLite(t, filepath.Join(t.TempDir(), "legacy-selection-no-ownership.sqlite"))
 	if err != nil {
 		t.Fatalf("OpenGormSQLite() error = %v", err)
 	}

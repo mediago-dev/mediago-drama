@@ -13,7 +13,7 @@ import (
 )
 
 func TestAgentExecutionWorkflowEnvelopeCASAllowsOneActiveWorkflow(t *testing.T) {
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.sqlite"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.sqlite"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
@@ -95,7 +95,7 @@ func TestAgentExecutionWorkflowEnvelopeCASAllowsOneActiveWorkflow(t *testing.T) 
 }
 
 func TestAgentExecutionWorkflowEnvelopeReplayReturnsFirstResultAfterTermination(t *testing.T) {
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.sqlite"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.sqlite"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
@@ -131,7 +131,7 @@ func TestAgentExecutionWorkflowEnvelopeReplayReturnsFirstResultAfterTermination(
 }
 
 func TestAgentExecutionWorkflowReplaceIsAtomicAndIdempotent(t *testing.T) {
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.sqlite"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.sqlite"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
@@ -229,7 +229,7 @@ func TestAgentExecutionWorkflowReplaceIsAtomicAndIdempotent(t *testing.T) {
 }
 
 func TestAgentExecutionWorkflowTerminateIsAtomicAndIdempotent(t *testing.T) {
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.sqlite"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.sqlite"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}

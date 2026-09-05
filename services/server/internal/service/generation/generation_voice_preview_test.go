@@ -3,7 +3,6 @@ package generation
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"testing/fstest"
 
@@ -11,8 +10,8 @@ import (
 )
 
 func TestPreviewGenerationVoiceUsesLocalBundledSample(t *testing.T) {
-	store := NewGenerationTaskService(filepath.Join(t.TempDir(), "settings.db"), nil)
-	workflow := NewGenerationService(nil, store, nil)
+	store := NewGenerationTaskService(generationTestDBPath(t), nil)
+	workflow := NewGenerationService(newGenerationTestSettings(&generationTestAPIKeyStore{values: map[string]string{}}), store, nil)
 	workflow.voicePreviews = testVoicePreviewStore(t)
 	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
 		t.Fatalf("provider should not be called for local voice previews; route=%s", route.ID)

@@ -311,6 +311,7 @@ func newAPIHandler(config Config) *apiHandler {
 			protectedPackImporterErr,
 		),
 		workspaceState:    workspaceState,
+		settingsDBPath:    settingsDBPath,
 		events:            events,
 		workspaceEvents:   workspaceEvents,
 		agentSessions:     agentSessions,

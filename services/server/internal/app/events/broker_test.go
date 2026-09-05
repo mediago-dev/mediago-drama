@@ -11,6 +11,11 @@ import (
 
 func TestLoadAgentEventsReplaysExternalProjectEvents(t *testing.T) {
 	store := appworkspace.NewStateService(t.TempDir())
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Errorf("closing workspace store: %v", err)
+		}
+	})
 	if store.InitErr() != nil {
 		t.Fatalf("initializing workspace store: %v", store.InitErr())
 	}
@@ -55,6 +60,11 @@ func TestLoadAgentEventsReplaysExternalProjectEvents(t *testing.T) {
 
 func TestBrokerPersistsSequencedDeltaForReplay(t *testing.T) {
 	store := appworkspace.NewStateService(t.TempDir())
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Errorf("closing workspace store: %v", err)
+		}
+	})
 	if store.InitErr() != nil {
 		t.Fatalf("initializing workspace store: %v", store.InitErr())
 	}

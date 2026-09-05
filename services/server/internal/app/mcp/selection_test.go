@@ -39,7 +39,7 @@ func (publisher *capturePublisher) a2uiEvents() []agentEvent {
 
 func newSelectionAdapter(t *testing.T) (*Adapter, *capturePublisher, string) {
 	t.Helper()
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	projectID := "project-selection-mcp"
 	requireMCPTestProject(t, store, projectID)
 	publisher := &capturePublisher{}

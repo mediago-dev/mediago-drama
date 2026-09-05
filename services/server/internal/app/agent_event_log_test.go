@@ -121,6 +121,7 @@ func TestAgentMessageUsesFixedPromptWithoutSpawnRules(t *testing.T) {
 			documentOperationRunner: fakeDocumentOperationRunner{},
 		},
 	)
+	closeTestHandler(t, handler)
 	project, _ := createExternalProjectForTest(t, handler, "Auto Agents")
 	projectID := project.ID
 	create := requestJSON(t, handler, http.MethodPost, "/api/v1/workspace/documents?projectId="+url.QueryEscape(projectID), `{"title":"第一集","content":"# 第一集\n\n素材","category":"screenplay"}`)

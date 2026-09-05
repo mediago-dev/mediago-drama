@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -12,7 +11,6 @@ import (
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 )
 
 func TestCreateGenerationBatchPersistsOrderedChildTasks(t *testing.T) {
@@ -157,7 +155,7 @@ func TestCreateGenerationBatchValidatesStructureBeforeSubmission(t *testing.T) {
 
 func newGenerationBatchTestWorkflow(t *testing.T) (*GenerationService, *GenerationTaskService) {
 	t.Helper()
-	db, err := repository.OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))
+	db, err := repository.OpenWorkspaceDB(generationTestWorkspaceDBPath(t))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
@@ -178,8 +176,8 @@ func newGenerationBatchTestWorkflow(t *testing.T) (*GenerationService, *Generati
 	store := NewGenerationTaskServiceFromRepository(repo, nil, func(prefix string) (string, error) {
 		return fmt.Sprintf("%s-%d", prefix, idCounter.Add(1)), nil
 	})
-	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
-		values: map[string]string{coregeneration.ProviderDMX: "sk-image"},
+	settingsSvc := newGenerationTestSettings(&generationTestAPIKeyStore{
+		values: map[string]string{coregeneration.ProviderWhereslowImage: "sk-image"},
 	})
 	workflow := NewGenerationService(settingsSvc, store, nil)
 	workflow.generationProviderFactory = func(coregeneration.ModelRoute) (coregeneration.Provider, error) {
@@ -191,9 +189,9 @@ func newGenerationBatchTestWorkflow(t *testing.T) (*GenerationService, *Generati
 func generationBatchImageRequest(prompt string) GenerationMessageRequest {
 	return GenerationMessageRequest{
 		Kind:    string(coregeneration.KindImage),
-		RouteID: coregeneration.RouteDMXGPTImage2,
-		ModelID: coregeneration.ModelGPTImage2,
-		Model:   "gpt-image-2-ssvip",
+		RouteID: coregeneration.RouteWhereslowNanoBanana2,
+		ModelID: coregeneration.VersionWhereslowNanoBanana2,
+		Model:   "nano-banana-2",
 		Prompt:  prompt,
 		Params: map[string]any{
 			"aspectRatio": "1:1",

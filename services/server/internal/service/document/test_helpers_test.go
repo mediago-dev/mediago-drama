@@ -14,12 +14,10 @@ func newWorkspaceStateService(t *testing.T, workspaceDir string) *Service {
 	if err != nil {
 		return NewService(workspaceDir, nil, nil, err)
 	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		return NewService(workspaceDir, nil, nil, err)
-	}
 	t.Cleanup(func() {
-		_ = sqlDB.Close()
+		if err := repository.CloseDatabase(db); err != nil {
+			t.Errorf("closing workspace database: %v", err)
+		}
 	})
 	store := NewService(workspaceDir, repository.NewWorkspaceRepository(db), nil, nil, repository.NewDocumentSectionRepositoryFromDB(db))
 	store.SetProjectAssetRepository(repository.NewProjectAssetRepositoryFromDB(db))

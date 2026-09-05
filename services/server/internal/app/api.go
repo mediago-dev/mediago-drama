@@ -9,6 +9,7 @@ import (
 	appevents "github.com/mediago-dev/mediago-drama/services/server/internal/app/events"
 	appworkspace "github.com/mediago-dev/mediago-drama/services/server/internal/app/workspace"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
+	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
 	servicebilling "github.com/mediago-dev/mediago-drama/services/server/internal/service/billing"
 	servicecapability "github.com/mediago-dev/mediago-drama/services/server/internal/service/capability"
@@ -31,6 +32,7 @@ import (
 type apiHandler struct {
 	initErr           error
 	workspaceState    *appworkspace.WorkspaceStateService
+	settingsDBPath    string
 	events            *appevents.Broker
 	workspaceEvents   *serviceworkspaceevent.Broker
 	agentSessions     *agentSessionService
@@ -181,6 +183,9 @@ func (handler *apiHandler) Close() error {
 	}
 	if handler.workspaceState != nil {
 		closeErr = errors.Join(closeErr, handler.workspaceState.Close())
+	}
+	if handler.settingsDBPath != "" {
+		closeErr = errors.Join(closeErr, repository.CloseDatabasePath(handler.settingsDBPath))
 	}
 	return closeErr
 }

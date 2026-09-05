@@ -10,6 +10,9 @@ import (
 
 func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 	repo, err := NewMediaAssetRepository(filepath.Join(t.TempDir(), "workspace.db"))
+	if err == nil {
+		cleanupTestDatabase(t, repo.db)
+	}
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
 	}
@@ -160,6 +163,9 @@ func TestMediaAssetRepositoryLifecycle(t *testing.T) {
 
 func TestMediaAssetRepositoryListMediaAssetsFiltersByProject(t *testing.T) {
 	repo, err := NewMediaAssetRepository(filepath.Join(t.TempDir(), "workspace.db"))
+	if err == nil {
+		cleanupTestDatabase(t, repo.db)
+	}
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
 	}

@@ -26,9 +26,10 @@ type WorkspaceStateService struct {
 	Chat        *chat.Service
 	EditStreams *document.EditStreamService
 
-	dir           string
-	agentSessions *repository.AgentSessionRepository
-	initErr       error
+	dir              string
+	databaseFilePath string
+	agentSessions    *repository.AgentSessionRepository
+	initErr          error
 }
 
 // WorkspaceStateRepositories groups repositories used by WorkspaceStateService.
@@ -39,6 +40,7 @@ func NewWorkspaceStateService(workspaceDir string) *WorkspaceStateService {
 	store := &WorkspaceStateService{
 		dir: shared.ResolveWorkspaceDir(workspaceDir),
 	}
+	store.databaseFilePath = shared.WorkspacePathsFor(store.dir).DatabasePath()
 	if err := store.initialize(); err != nil {
 		store.initErr = err
 	}
@@ -53,6 +55,7 @@ func NewWorkspaceStateServiceFromRepositories(workspaceDir string, repos Workspa
 		agentSessions: repos.AgentSessions,
 		initErr:       initErr,
 	}
+	store.databaseFilePath = shared.WorkspacePathsFor(store.dir).DatabasePath()
 	if store.initErr == nil {
 		store.initErr = validateWorkspaceStateRepositories(repos)
 	}
@@ -89,10 +92,17 @@ func (store *WorkspaceStateService) AgentSessionRepository() *repository.AgentSe
 
 // Close releases buffered workspace resources.
 func (store *WorkspaceStateService) Close() error {
-	if store == nil || store.Chat == nil {
+	if store == nil {
 		return nil
 	}
-	return store.Chat.Close()
+	var closeErr error
+	if store.Chat != nil {
+		closeErr = errors.Join(closeErr, store.Chat.Close())
+	}
+	if store.databaseFilePath != "" {
+		closeErr = errors.Join(closeErr, repository.CloseDatabasePath(store.databaseFilePath))
+	}
+	return closeErr
 }
 
 func validateWorkspaceStateRepositories(repos WorkspaceStateRepositories) error {

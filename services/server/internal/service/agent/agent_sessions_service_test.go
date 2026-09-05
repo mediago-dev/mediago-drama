@@ -259,6 +259,11 @@ func newTestAgentSessionRepository(t *testing.T) *repository.AgentSessionReposit
 	if err != nil {
 		t.Fatalf("opening workspace database: %v", err)
 	}
+	t.Cleanup(func() {
+		if err := repository.CloseDatabase(db); err != nil {
+			t.Errorf("closing workspace database: %v", err)
+		}
+	})
 	now := domain.TimeFromString("2026-06-01T00:00:00Z")
 	if err := db.Create(&domain.WorkspaceProjectModel{
 		ID:          "project-1",

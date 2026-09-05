@@ -2,7 +2,6 @@ package generation
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -31,7 +30,7 @@ func (resolver fakeStoryboardVideoDocumentResolver) ListWorkspaceDocuments(proje
 }
 
 func TestGenerationServiceListStoryboardVideoResourcesUsesStoryboardGroups(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	projectID := "project-storyboard-video-resources"
 	seedGenerationTaskProject(t, dbPath, projectID)
 	seedGenerationTaskAsset(t, dbPath, "video-task", "video", projectID)
@@ -224,7 +223,7 @@ func TestStoryboardVideoShotListTableExpandsIntoIndependentShots(t *testing.T) {
 }
 
 func TestGenerationServiceListStoryboardVideoResourcesDeduplicatesGroupNumbers(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	projectID := "project-storyboard-video-duplicates"
 	seedGenerationTaskProject(t, dbPath, projectID)
 	taskStore := NewGenerationTaskService(dbPath, nil)
@@ -328,7 +327,7 @@ func TestStoryboardVideoReelsFromDocumentEndsSecondLevelSectionAtFirstLevelHeadi
 }
 
 func TestGenerationServiceListStoryboardVideoResourcesGeneratedVideoCount(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	projectID := "project-storyboard-generated-count"
 	seedGenerationTaskProject(t, dbPath, projectID)
 	for _, id := range []string{"gen-v1", "gen-v2"} {

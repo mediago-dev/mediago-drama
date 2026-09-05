@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 )
 
@@ -31,7 +32,7 @@ func TestGenerationPreferenceServiceRequiresExplicitDBPath(t *testing.T) {
 }
 
 func TestGenerationPreferenceServicePersistToSQLite(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	service := NewGenerationPreferenceService(dbPath)
 
 	empty, err := service.GetPreference("project-alpha")
@@ -44,10 +45,10 @@ func TestGenerationPreferenceServicePersistToSQLite(t *testing.T) {
 
 	saved, err := service.UpsertPreference(UpdateGenerationPreferenceRequest{
 		ScopeID:       "project-alpha",
-		FamilyIDs:     map[string]string{"image": "seedream", "": "ignored"},
-		RouteIDs:      map[string]string{"seedream-5-lite": "official.seedream-5-lite"},
-		VersionIDs:    map[string]string{"seedream": "seedream-5-lite"},
-		RouteParams:   map[string]map[string]any{"official.seedream-5-lite": {"size": "1600x2848"}},
+		FamilyIDs:     map[string]string{"image": coregeneration.FamilyWhereslowImage, "": "ignored"},
+		RouteIDs:      map[string]string{"image": coregeneration.RouteWhereslowNanoBanana2},
+		VersionIDs:    map[string]string{"image": coregeneration.VersionWhereslowNanoBanana2},
+		RouteParams:   map[string]map[string]any{coregeneration.RouteWhereslowNanoBanana2: {"aspectRatio": "9:16", "resolution": "2K"}},
 		StylePresetID: "preset-cinematic",
 	})
 	if err != nil {
@@ -62,11 +63,11 @@ func TestGenerationPreferenceServicePersistToSQLite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getting persisted preference: %v", err)
 	}
-	if got.FamilyIDs["image"] != "seedream" ||
-		got.RouteIDs["seedream-5-lite"] != "official.seedream-5-lite" ||
-		got.VersionIDs["seedream"] != "seedream-5-lite" ||
-		got.RouteParams["official.seedream-5-lite"]["aspectRatio"] != "9:16" ||
-		got.RouteParams["official.seedream-5-lite"]["resolution"] != "2K" ||
+	if got.FamilyIDs["image"] != coregeneration.FamilyWhereslowImage ||
+		got.RouteIDs["image"] != coregeneration.RouteWhereslowNanoBanana2 ||
+		got.VersionIDs["image"] != coregeneration.VersionWhereslowNanoBanana2 ||
+		got.RouteParams[coregeneration.RouteWhereslowNanoBanana2]["aspectRatio"] != "9:16" ||
+		got.RouteParams[coregeneration.RouteWhereslowNanoBanana2]["resolution"] != "2K" ||
 		got.StylePresetID != "preset-cinematic" {
 		t.Fatalf("preference = %+v, want persisted fields", got)
 	}
@@ -91,7 +92,7 @@ func TestGenerationPreferenceServicePersistToSQLite(t *testing.T) {
 }
 
 func TestGenerationPreferenceForProjectMergesScopes(t *testing.T) {
-	repos, err := repository.OpenSettingsRepositories(filepath.Join(t.TempDir(), "settings.db"))
+	repos, err := repository.OpenSettingsRepositories(generationTestDBPath(t))
 	if err != nil {
 		t.Fatalf("opening settings repositories: %v", err)
 	}
@@ -101,22 +102,22 @@ func TestGenerationPreferenceForProjectMergesScopes(t *testing.T) {
 	studioScope := NormalizeGenerationConversationScopeID("")
 	if _, err := preferences.UpsertPreference(UpdateGenerationPreferenceRequest{
 		ScopeID:     studioScope,
-		RouteIDs:    map[string]string{"image": "jimeng.seedream-5.0", "video": "jimeng.seedance-2.0"},
-		RouteParams: map[string]map[string]any{"jimeng.seedream-5.0": {"aspectRatio": "1:1"}},
+		RouteIDs:    map[string]string{"image": coregeneration.RouteWhereslowNanoBanana2, "video": "jimeng.seedance-2.0"},
+		RouteParams: map[string]map[string]any{coregeneration.RouteWhereslowNanoBanana2: {"aspectRatio": "1:1"}},
 	}); err != nil {
 		t.Fatalf("upserting studio preference: %v", err)
 	}
 	if _, err := preferences.UpsertPreference(UpdateGenerationPreferenceRequest{
 		ScopeID:     "project-merge-test",
-		RouteIDs:    map[string]string{"image": "openrouter.seedream-4.5"},
-		RouteParams: map[string]map[string]any{"openrouter.seedream-4.5": {"aspectRatio": "3:4"}},
+		RouteIDs:    map[string]string{"image": coregeneration.RouteWhereslowNanoBanana2},
+		RouteParams: map[string]map[string]any{coregeneration.RouteWhereslowNanoBanana2: {"aspectRatio": "3:4"}},
 	}); err != nil {
 		t.Fatalf("upserting project preference: %v", err)
 	}
 
 	if _, err := preferences.UpsertPreference(UpdateGenerationPreferenceRequest{
 		ScopeID:     "agent",
-		RouteParams: map[string]map[string]any{"jimeng.seedream-5.0": {"resolution": "4K"}},
+		RouteParams: map[string]map[string]any{coregeneration.RouteWhereslowNanoBanana2: {"resolution": "4K"}},
 	}); err != nil {
 		t.Fatalf("upserting agent preference: %v", err)
 	}
@@ -125,17 +126,17 @@ func TestGenerationPreferenceForProjectMergesScopes(t *testing.T) {
 	if !ok {
 		t.Fatal("GenerationPreferenceForProject ok = false")
 	}
-	if merged.RouteParams["jimeng.seedream-5.0"]["resolution"] != "4K" {
-		t.Fatalf("agent scope params = %#v, want seedream 4K habit", merged.RouteParams)
-	}
-	if merged.RouteIDs["image"] != "openrouter.seedream-4.5" {
+	if merged.RouteIDs["image"] != coregeneration.RouteWhereslowNanoBanana2 {
 		t.Fatalf("image route = %q, want project override", merged.RouteIDs["image"])
 	}
 	if merged.RouteIDs["video"] != "jimeng.seedance-2.0" {
 		t.Fatalf("video route = %q, want studio fallback", merged.RouteIDs["video"])
 	}
-	if merged.RouteParams["openrouter.seedream-4.5"]["aspectRatio"] != "3:4" {
+	if merged.RouteParams[coregeneration.RouteWhereslowNanoBanana2]["aspectRatio"] != "3:4" {
 		t.Fatalf("route params = %#v, want project params", merged.RouteParams)
+	}
+	if _, ok := merged.RouteParams[coregeneration.RouteWhereslowNanoBanana2]["resolution"]; ok {
+		t.Fatalf("route params = %#v, want project scope to replace agent params", merged.RouteParams)
 	}
 
 	if _, ok := (&GenerationService{}).GenerationPreferenceForProject("project-merge-test"); ok {

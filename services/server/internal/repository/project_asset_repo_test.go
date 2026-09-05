@@ -10,6 +10,9 @@ import (
 
 func TestProjectAssetRepositoryLifecycle(t *testing.T) {
 	repo, err := NewProjectAssetRepository(filepath.Join(t.TempDir(), "workspace.db"))
+	if err == nil {
+		cleanupTestDatabase(t, repo.db)
+	}
 	if err != nil {
 		t.Fatalf("NewProjectAssetRepository() error = %v", err)
 	}

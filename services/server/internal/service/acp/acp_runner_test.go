@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -366,12 +367,20 @@ func TestMergedProcessEnvBypassesProxiesForLoopback(t *testing.T) {
 
 	env := mergedProcessEnv(ProcessConfig{})
 
+	noProxyWant := []string{"internal.example", "127.0.0.1", "localhost", "::1"}
+	lowerProxyWant := []string{"localhost", "legacy.example", "127.0.0.1", "::1"}
+	if runtime.GOOS == "windows" {
+		// Windows treats environment variable names case-insensitively, so the
+		// second t.Setenv replaces the first value for both spellings.
+		noProxyWant = lowerProxyWant
+		lowerProxyWant = []string{"127.0.0.1", "localhost", "::1"}
+	}
 	for _, test := range []struct {
 		name string
 		want []string
 	}{
-		{name: "NO_PROXY", want: []string{"internal.example", "127.0.0.1", "localhost", "::1"}},
-		{name: "no_proxy", want: []string{"localhost", "legacy.example", "127.0.0.1", "::1"}},
+		{name: "NO_PROXY", want: noProxyWant},
+		{name: "no_proxy", want: lowerProxyWant},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got := strings.Split(envValue(env, test.name), ",")

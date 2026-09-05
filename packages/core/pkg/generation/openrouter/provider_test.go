@@ -11,64 +11,6 @@ import (
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 )
 
-func TestGenerateImage(t *testing.T) {
-	var authHeader string
-	var payload map[string]any
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		authHeader = request.Header.Get("Authorization")
-		if request.URL.Path != "/chat/completions" {
-			t.Fatalf("path = %q, want /chat/completions", request.URL.Path)
-		}
-		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
-			t.Fatalf("Decode() error = %v", err)
-		}
-
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{
-			"id":"chat_1",
-			"model":"google/gemini-3.1-flash-image-preview",
-			"choices":[{"message":{"images":[{"type":"image_url","image_url":{"url":"data:image/png;base64,abc"}}]}}],
-			"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}
-		}`))
-	}))
-	defer server.Close()
-
-	provider, err := NewProvider(Config{BaseURL: server.URL, APIKey: "sk-test"})
-	if err != nil {
-		t.Fatalf("NewProvider() error = %v", err)
-	}
-
-	response, err := provider.Generate(context.Background(), generation.Request{
-		Kind:    generation.KindImage,
-		RouteID: generation.RouteOpenRouterNanoBanana31,
-		Prompt:  "make an image",
-		Params: map[string]any{
-			"aspectRatio": "16:9",
-			"resolution":  "2K",
-		},
-	})
-	if err != nil {
-		t.Fatalf("Generate() error = %v", err)
-	}
-
-	if authHeader != "Bearer sk-test" {
-		t.Fatalf("Authorization = %q, want Bearer sk-test", authHeader)
-	}
-	if payload["model"] != "google/gemini-3.1-flash-image-preview" {
-		t.Fatalf("model = %v", payload["model"])
-	}
-	imageConfig, ok := payload["image_config"].(map[string]any)
-	if !ok || imageConfig["aspect_ratio"] != "16:9" || imageConfig["image_size"] != "2K" {
-		t.Fatalf("image_config = %#v", payload["image_config"])
-	}
-	if got := response.Assets[0].URL; got != "data:image/png;base64,abc" {
-		t.Fatalf("asset url = %q, want image URL", got)
-	}
-	if response.Usage.TotalTokens != 3 {
-		t.Fatalf("usage total = %d, want 3", response.Usage.TotalTokens)
-	}
-}
-
 func TestGenerateTextStream(t *testing.T) {
 	var authHeader string
 	var payload map[string]any

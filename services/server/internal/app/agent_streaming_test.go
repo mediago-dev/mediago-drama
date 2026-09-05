@@ -28,6 +28,7 @@ func TestAgentEventStreamReceivesChatAndDocumentEditEvents(t *testing.T) {
 			documentOperationRunner: fakeDocumentOperationRunner{},
 		},
 	)
+	closeTestHandler(t, handler)
 	project, _ := createExternalProjectForTest(t, handler, "Agent Stream")
 	projectID := project.ID
 	create := requestJSON(

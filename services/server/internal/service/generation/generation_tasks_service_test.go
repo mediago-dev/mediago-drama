@@ -15,7 +15,7 @@ import (
 )
 
 func TestGenerationTaskServicePersistToSQLite(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	taskID := "official.seedance-2.0-fast:task-persisted"
 	seedGenerationTaskAsset(t, dbPath, "asset-test", "image", "")
 	seedGenerationTaskAsset(t, dbPath, "video-test", "video", "")
@@ -178,6 +178,12 @@ func TestGenerationTaskServiceDefaultDBPathUsesWorkspaceAppDB(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(homeDir, ".config"))
 	t.Setenv("APPDATA", filepath.Join(homeDir, "AppData", "Roaming"))
+	workspaceDBPath := serviceshared.WorkspacePathsFor("").DatabasePath()
+	t.Cleanup(func() {
+		if err := repository.CloseDatabasePath(workspaceDBPath); err != nil {
+			t.Errorf("closing default workspace database: %v", err)
+		}
+	})
 
 	service := NewGenerationTaskService("", nil)
 	if err := service.Upsert(GenerationTaskRecord{
@@ -200,7 +206,7 @@ func TestGenerationTaskServiceDefaultDBPathUsesWorkspaceAppDB(t *testing.T) {
 }
 
 func TestGenerationTaskServiceHydratesVideoPosterURL(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	taskID := "task-video-poster"
 	assetID := "video-with-poster"
 	posterURL := "/api/v1/media-assets/video-with-poster/poster"
@@ -245,7 +251,7 @@ func TestGenerationTaskServiceHydratesVideoPosterURL(t *testing.T) {
 }
 
 func TestGenerationTaskServiceDeleteAssetIncludesAttemptsWithoutDeadlock(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	taskID := "task-delete-asset"
 	seedGenerationTaskAsset(t, dbPath, "image-a", "image", "")
 	seedGenerationTaskAsset(t, dbPath, "image-b", "image", "")
@@ -307,7 +313,7 @@ func TestGenerationTaskServiceDeleteAssetIncludesAttemptsWithoutDeadlock(t *test
 }
 
 func TestGenerationTaskServiceDeleteFailedPlaceholderPersistsWithoutAssetRow(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	taskID := "task-delete-failed-placeholder"
 
 	service := NewGenerationTaskService(dbPath, nil)
@@ -360,7 +366,7 @@ func TestGenerationTaskServiceDeleteFailedPlaceholderPersistsWithoutAssetRow(t *
 }
 
 func TestGenerationTaskServiceUpdateAssetSelectionPersists(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	taskID := "task-update-selected-asset"
 	seedGenerationTaskAsset(t, dbPath, "image-a", "image", "")
 	seedGenerationTaskAsset(t, dbPath, "image-b", "image", "")
@@ -415,7 +421,7 @@ func TestGenerationTaskServiceUpdateAssetSelectionPersists(t *testing.T) {
 }
 
 func TestGenerationTaskServiceAutoSelectsFirstCompletedProjectResourceImage(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	projectID := "project-auto-select-first"
 	taskID := "task-auto-select-first"
 	seedGenerationTaskProject(t, dbPath, projectID)
@@ -464,7 +470,7 @@ func TestGenerationTaskServiceAutoSelectsFirstCompletedProjectResourceImage(t *t
 }
 
 func TestGenerationTaskServiceSwitchesSelectionToNewGenerationOverExistingSelection(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	projectID := "project-auto-select-existing"
 	taskID := "task-auto-select-existing"
 	seedGenerationTaskProject(t, dbPath, projectID)
@@ -524,7 +530,7 @@ func TestGenerationTaskServiceSwitchesSelectionToNewGenerationOverExistingSelect
 }
 
 func TestGenerationTaskServiceSwitchesSelectionToLatestGeneration(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	projectID := "project-auto-select-latest"
 	seedGenerationTaskProject(t, dbPath, projectID)
 	for _, id := range []string{"gen1-a", "gen1-b", "gen2-a", "gen2-b"} {
@@ -568,7 +574,7 @@ func TestGenerationTaskServiceSwitchesSelectionToLatestGeneration(t *testing.T) 
 }
 
 func TestGenerationServiceListSelectedGenerationAssets(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	projectID := "project-selected-assets"
 	seedGenerationTaskProject(t, dbPath, projectID)
 	seedGenerationTaskAsset(t, dbPath, "character", "image", projectID)
@@ -675,7 +681,7 @@ func TestGenerationServiceListSelectedGenerationAssets(t *testing.T) {
 }
 
 func TestGenerationServiceSelectedGenerationAssetReplacesSameResourceKind(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	projectID := "project-selected-single-video"
 	firstTaskID := "task-select-video-a"
 	secondTaskID := "task-select-video-b"
@@ -769,7 +775,7 @@ func TestGenerationServiceSelectedGenerationAssetReplacesSameResourceKind(t *tes
 }
 
 func TestGenerationServiceUpdateSelectedGenerationAssetFromTask(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	projectID := "project-selected-from-task"
 	taskID := "task-select-source"
 	seedGenerationTaskProject(t, dbPath, projectID)
@@ -857,7 +863,7 @@ func TestGenerationServiceUpdateSelectedGenerationAssetFromTask(t *testing.T) {
 }
 
 func TestGenerationServiceUpdateSelectedGenerationAssetWithMissingTaskSource(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	projectID := "project-selected-missing-task"
 	taskID := "task-select-missing"
 	seedGenerationTaskProject(t, dbPath, projectID)
@@ -900,7 +906,7 @@ func TestGenerationServiceUpdateSelectedGenerationAssetWithMissingTaskSource(t *
 }
 
 func TestGenerationServiceUpdateSelectedGenerationAssetFromVoicePreview(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	projectID := "project-selected-voice-preview"
 	previewURL := "/api/v1/generation/voice-previews/official.minimax-speech/warm-bestie"
 	seedGenerationTaskProject(t, dbPath, projectID)
@@ -966,7 +972,7 @@ func TestGenerationServiceUpdateSelectedGenerationAssetFromVoicePreview(t *testi
 }
 
 func TestGenerationTaskServiceUpsertSelectedAssetWithoutTask(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	projectID := "project-selected-direct"
 	seedGenerationTaskProject(t, dbPath, projectID)
 	seedGenerationTaskAsset(t, dbPath, "media-direct", "image", projectID)
@@ -1014,7 +1020,7 @@ func TestGenerationTaskServiceUpsertSelectedAssetWithoutTask(t *testing.T) {
 }
 
 func TestGenerationTaskServiceDeleteAssetSlotPersistsAsMissingRow(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	taskID := "task-delete-slot-row"
 	for _, id := range []string{"image-a", "image-b", "image-c", "image-d"} {
 		seedGenerationTaskAsset(t, dbPath, id, "image", "")
@@ -1069,7 +1075,7 @@ func TestGenerationTaskServiceDeleteAssetSlotPersistsAsMissingRow(t *testing.T) 
 }
 
 func TestGenerationTaskServiceDeleteAssetSlotRemovesSelectedAssetBySourceSlot(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	projectID := "project-delete-selected-slot"
 	taskID := "task-delete-selected-slot"
 	seedGenerationTaskProject(t, dbPath, projectID)
@@ -1126,7 +1132,7 @@ func TestGenerationTaskServiceDeleteAssetSlotRemovesSelectedAssetBySourceSlot(t 
 }
 
 func TestGenerationTaskServiceRejectsGeneratedAssetWithoutAssetID(t *testing.T) {
-	service := NewGenerationTaskService(filepath.Join(t.TempDir(), "settings.db"), nil)
+	service := NewGenerationTaskService(generationTestDBPath(t), nil)
 
 	err := service.Upsert(GenerationTaskRecord{
 		ID:     "task-missing-asset-id",
@@ -1227,7 +1233,7 @@ func generationTaskAssetMIMEType(kind string) string {
 }
 
 func TestGenerationTaskServiceUpsertExistingDoesNotResurrectDeletedTask(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	service := NewGenerationTaskService(dbPath, nil)
 
 	taskID := "task-generating"
@@ -1287,7 +1293,7 @@ func TestGenerationTaskServiceUpsertExistingDoesNotResurrectDeletedTask(t *testi
 }
 
 func TestGenerationTaskServiceManualSelectReplacesOtherTaskSelectionForResource(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	projectID := "project-manual-select-replace"
 	seedGenerationTaskProject(t, dbPath, projectID)
 	seedGenerationTaskAsset(t, dbPath, "old-image", "image", projectID)

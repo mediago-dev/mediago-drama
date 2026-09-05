@@ -14,7 +14,7 @@ import (
 
 func newAgentExecutionRepositoryTest(t *testing.T) (*AgentExecutionRepository, string, string) {
 	t.Helper()
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.sqlite"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.sqlite"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}

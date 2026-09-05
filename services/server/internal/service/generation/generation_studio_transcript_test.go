@@ -13,7 +13,7 @@ import (
 
 func TestAppendStudioTranscriptWritesJSONLAndTextResult(t *testing.T) {
 	workspaceRoot := t.TempDir()
-	mediaRepo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "settings.db"))
+	mediaRepo, err := repository.NewMediaAssetRepository(generationTestDBPath(t))
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
 	}
@@ -90,7 +90,7 @@ func TestAppendStudioTranscriptWritesJSONLAndTextResult(t *testing.T) {
 
 func TestStudioGenerationAssetUsesGenerationSessionDir(t *testing.T) {
 	workspaceRoot := t.TempDir()
-	generationTasks := NewGenerationTaskService(filepath.Join(t.TempDir(), "settings.db"), nil)
+	generationTasks := NewGenerationTaskService(generationTestDBPath(t), nil)
 	conversation := GenerationConversationRecord{
 		ID:        "session-image-1",
 		ScopeID:   defaultGenerationConversationScopeID,
@@ -102,7 +102,7 @@ func TestStudioGenerationAssetUsesGenerationSessionDir(t *testing.T) {
 		t.Fatalf("UpsertConversation() error = %v", err)
 	}
 
-	mediaRepo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "media.db"))
+	mediaRepo, err := repository.NewMediaAssetRepository(generationTestDBPath(t))
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
 	}
@@ -138,7 +138,7 @@ func TestStudioGenerationAssetUsesGenerationSessionDir(t *testing.T) {
 
 func TestAgentGenerationAssetUsesGenerationSessionDir(t *testing.T) {
 	workspaceRoot := t.TempDir()
-	generationTasks := NewGenerationTaskService(filepath.Join(t.TempDir(), "settings.db"), nil)
+	generationTasks := NewGenerationTaskService(generationTestDBPath(t), nil)
 	conversation := GenerationConversationRecord{
 		ID:        "project-alpha",
 		ScopeID:   agentGenerationConversationScopeID,
@@ -150,7 +150,7 @@ func TestAgentGenerationAssetUsesGenerationSessionDir(t *testing.T) {
 		t.Fatalf("UpsertConversation() error = %v", err)
 	}
 
-	mediaRepo, err := repository.NewMediaAssetRepository(filepath.Join(t.TempDir(), "media.db"))
+	mediaRepo, err := repository.NewMediaAssetRepository(generationTestDBPath(t))
 	if err != nil {
 		t.Fatalf("NewMediaAssetRepository() error = %v", err)
 	}

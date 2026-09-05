@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -365,7 +366,11 @@ func TestHasPreparedAgentRequiresCodexCompanion(t *testing.T) {
 		CodexBin:     filepath.Join("codex", "vendor", "aarch64-apple-darwin", "bin", "codex"),
 		CodexVersion: "0.144.0",
 	}
-	raw := `{"id":"codex","bin":"codex-acp","args":[],"version":"1.1.2","codexBin":"codex/vendor/aarch64-apple-darwin/bin/codex","codexVersion":"0.144.0"}`
+	manifestBytes, err := json.Marshal(expected)
+	if err != nil {
+		t.Fatalf("Marshal(expected) error = %v", err)
+	}
+	raw := string(manifestBytes)
 	if err := os.WriteFile(filepath.Join(distDir, "agent.json"), []byte(raw), 0o644); err != nil {
 		t.Fatalf("WriteFile(agent.json) error = %v", err)
 	}

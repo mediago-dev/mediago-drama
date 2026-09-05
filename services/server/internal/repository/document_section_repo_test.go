@@ -8,7 +8,7 @@ import (
 )
 
 func TestDocumentSectionRepositoryUpsertAndMarkMissing(t *testing.T) {
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.db"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}
@@ -95,7 +95,7 @@ func TestDocumentSectionRepositoryUpsertAndMarkMissing(t *testing.T) {
 }
 
 func TestDocumentSectionRepositoryUpsertPreservesDeletedStatus(t *testing.T) {
-	db, err := OpenWorkspaceDB(filepath.Join(t.TempDir(), "workspace.db"))
+	db, err := openTestWorkspaceDB(t, filepath.Join(t.TempDir(), "workspace.db"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceDB() error = %v", err)
 	}

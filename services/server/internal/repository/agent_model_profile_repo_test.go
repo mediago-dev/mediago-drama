@@ -9,6 +9,9 @@ import (
 
 func TestAgentModelProfileRepositoryCRUDAndDefault(t *testing.T) {
 	repo, err := NewAgentModelProfileRepository(filepath.Join(t.TempDir(), "settings.sqlite"))
+	if err == nil {
+		cleanupTestDatabase(t, repo.db)
+	}
 	if err != nil {
 		t.Fatalf("NewAgentModelProfileRepository returned error: %v", err)
 	}

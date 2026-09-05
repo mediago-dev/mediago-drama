@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,6 +45,79 @@ func (store *memoryAPIKeyStore) Clear(keyName string) error {
 	defer store.mu.Unlock()
 	delete(store.values, keyName)
 	return nil
+}
+
+func TestSettingsHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_SETTINGS_HELPER_PROCESS") != "1" {
+		return
+	}
+	args := os.Args
+	separator := 0
+	for index, arg := range args {
+		if arg == "--" {
+			separator = index + 1
+			break
+		}
+	}
+	if separator == 0 {
+		os.Exit(2)
+	}
+	commandArgs := args[separator:]
+	if path := os.Getenv("SETTINGS_HELPER_ARGS_PATH"); path != "" {
+		file, _ := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		if file != nil {
+			_, _ = fmt.Fprintln(file, strings.Join(commandArgs, " "))
+			_ = file.Close()
+		}
+	}
+	if len(commandArgs) >= 2 && commandArgs[0] == "login" && commandArgs[1] == "--headless" {
+		if os.Getenv("SETTINGS_HELPER_MODE") == "reuse" {
+			fmt.Fprintln(os.Stdout, "已复用当前本地 OAuth 登录态。")
+		} else {
+			fmt.Fprintln(os.Stdout, "verification_uri: https://example.test/device")
+			fmt.Fprintln(os.Stdout, "user_code: ABCD-EFGH")
+			fmt.Fprintln(os.Stdout, "device_code: device-123")
+		}
+	} else if len(commandArgs) >= 2 && commandArgs[0] == "login" && commandArgs[1] == "web" {
+		fmt.Fprintln(os.Stdout, "Open https://libtv.example.test/login in your browser")
+	} else if len(commandArgs) >= 2 && commandArgs[0] == "login" && commandArgs[1] == "checklogin" {
+		fmt.Fprintln(os.Stdout, "即梦本地登录态已可用")
+	}
+	if os.Getenv("SETTINGS_HELPER_MODE") == "pending" && len(commandArgs) >= 2 && commandArgs[0] == "login" && commandArgs[1] == "web" {
+		if path := os.Getenv("SETTINGS_HELPER_CURRENT_PID_PATH"); path != "" {
+			_ = os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())), 0o600)
+		}
+		if path := os.Getenv("SETTINGS_HELPER_PIDS_PATH"); path != "" {
+			file, _ := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+			if file != nil {
+				_, _ = fmt.Fprintf(file, "%d\n", os.Getpid())
+				_ = file.Close()
+			}
+		}
+		time.Sleep(time.Second)
+		os.Exit(0)
+	}
+	os.Exit(0)
+}
+
+func writeFakeCLI(t *testing.T, mode string, argsPath string) string {
+	t.Helper()
+	t.Setenv("GO_WANT_SETTINGS_HELPER_PROCESS", "1")
+	t.Setenv("SETTINGS_HELPER_MODE", mode)
+	t.Setenv("SETTINGS_HELPER_ARGS_PATH", argsPath)
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("locating test executable: %v", err)
+	}
+	if runtime.GOOS != "windows" {
+		return executable
+	}
+	binPath := filepath.Join(t.TempDir(), "fake-cli.cmd")
+	content := fmt.Sprintf("@echo off\n\"%s\" -test.run=TestSettingsHelperProcess -- %%*\n", executable)
+	if err := os.WriteFile(binPath, []byte(content), 0o700); err != nil {
+		t.Fatalf("writing fake CLI wrapper: %v", err)
+	}
+	return binPath
 }
 
 func TestSettingsSetListAndClearAPIKey(t *testing.T) {
@@ -307,13 +381,8 @@ func TestSettingsSetAPIKeyValidation(t *testing.T) {
 func TestSettingsClearJimengAPIKeyRunsLogout(t *testing.T) {
 	store := &memoryAPIKeyStore{values: map[string]string{"jimeng": "oauth:old"}}
 	settings := NewSettings(store)
-	tempDir := t.TempDir()
-	argsPath := filepath.Join(tempDir, "args.log")
-	binPath := filepath.Join(tempDir, "dreamina")
-	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$*\" >> %q\nexit 0\n", argsPath)
-	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("writing fake jimeng CLI: %v", err)
-	}
+	argsPath := filepath.Join(t.TempDir(), "args.log")
+	binPath := writeFakeCLI(t, "", argsPath)
 	settings.SetJimengCLIPaths(binPath, "")
 
 	list, err := settings.ClearAPIKey(context.Background(), "jimeng")
@@ -337,13 +406,8 @@ func TestSettingsClearLibTVAPIKeyRunsLogout(t *testing.T) {
 	store := &memoryAPIKeyStore{values: map[string]string{"libtv": "oauth:old"}}
 	settings := NewSettings(store)
 	settings.SetGenerationCLIs([]string{"libtv"})
-	tempDir := t.TempDir()
-	argsPath := filepath.Join(tempDir, "args.log")
-	binPath := filepath.Join(tempDir, "libtv")
-	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$*\" >> %q\nexit 0\n", argsPath)
-	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("writing fake libtv CLI: %v", err)
-	}
+	argsPath := filepath.Join(t.TempDir(), "args.log")
+	binPath := writeFakeCLI(t, "", argsPath)
 	settings.SetLibTVCLIPaths(binPath, "")
 
 	list, err := settings.ClearAPIKey(context.Background(), "libtv")
@@ -365,17 +429,7 @@ func TestSettingsClearLibTVAPIKeyRunsLogout(t *testing.T) {
 
 func TestSettingsBeginJimengLoginStoresOAuthMarkerWhenSessionExists(t *testing.T) {
 	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{}})
-	binPath := filepath.Join(t.TempDir(), "dreamina")
-	script := `#!/bin/sh
-if [ "$1" = "login" ] && [ "$2" = "--headless" ] && [ "$#" -eq 2 ]; then
-  echo '已复用当前本地 OAuth 登录态。'
-  exit 0
-fi
-exit 1
-`
-	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("writing fake jimeng CLI: %v", err)
-	}
+	binPath := writeFakeCLI(t, "reuse", filepath.Join(t.TempDir(), "reuse.args"))
 	settings.SetJimengCLIPaths(binPath, "")
 
 	result, err := settings.BeginJimengLogin(context.Background(), false)
@@ -397,26 +451,8 @@ exit 1
 func TestSettingsJimengHeadlessLoginReturnsChallengeAndCompletes(t *testing.T) {
 	store := &memoryAPIKeyStore{values: map[string]string{}}
 	settings := NewSettings(store)
-	tempDir := t.TempDir()
-	argsPath := filepath.Join(tempDir, "args.log")
-	binPath := filepath.Join(tempDir, "dreamina")
-	script := fmt.Sprintf(`#!/bin/sh
-printf '%%s\n' "$*" >> %q
-if [ "$1" = "login" ] && [ "$2" = "--headless" ] && [ "$#" -eq 2 ]; then
-  echo "verification_uri: https://example.test/device"
-  echo "user_code: ABCD-EFGH"
-  echo "device_code: device-123"
-  exit 0
-fi
-if [ "$1" = "login" ] && [ "$2" = "checklogin" ]; then
-  echo "即梦本地登录态已可用"
-  exit 0
-fi
-exit 1
-`, argsPath)
-	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("writing fake jimeng CLI: %v", err)
-	}
+	argsPath := filepath.Join(t.TempDir(), "args.log")
+	binPath := writeFakeCLI(t, "challenge", argsPath)
 	settings.SetJimengCLIPaths(binPath, "")
 
 	result, err := settings.BeginJimengLogin(context.Background(), false)
@@ -468,18 +504,7 @@ func TestSettingsBeginLibTVLoginReturnsChallengeAndPersistsAfterCLICompletes(t *
 	store := &memoryAPIKeyStore{values: map[string]string{}}
 	settings := NewSettings(store)
 	settings.SetGenerationCLIs([]string{"libtv"})
-	binPath := filepath.Join(t.TempDir(), "libtv")
-	script := `#!/bin/sh
-if [ "$1" = "login" ] && [ "$2" = "web" ] && [ "$#" -eq 2 ]; then
-  echo "Open https://libtv.example.test/login in your browser"
-  sleep 0.2
-  exit 0
-fi
-exit 1
-`
-	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("writing fake libtv CLI: %v", err)
-	}
+	binPath := writeFakeCLI(t, "", filepath.Join(t.TempDir(), "login.args"))
 	settings.SetLibTVCLIPaths(binPath, "")
 
 	result, err := settings.BeginLibTVLogin(context.Background(), false)
@@ -520,30 +545,9 @@ func TestSettingsLibTVPendingLoginCanBeReplacedAndClearedForRetry(t *testing.T) 
 	argsPath := filepath.Join(tempDir, "args.log")
 	pidsPath := filepath.Join(tempDir, "pids.log")
 	currentPIDPath := filepath.Join(tempDir, "current.pid")
-	binPath := filepath.Join(tempDir, "libtv")
-	script := fmt.Sprintf(`#!/bin/sh
-printf '%%s\n' "$*" >> %q
-if [ "$1" = "login" ] && [ "$2" = "web" ] && [ "$#" -eq 2 ]; then
-  if [ -f %q ]; then
-    current_pid=$(cat %q)
-    if kill -0 "$current_pid" 2>/dev/null; then
-      echo "LibTV login is already running" >&2
-      exit 23
-    fi
-  fi
-  echo $$ > %q
-  echo $$ >> %q
-  echo "Open https://libtv.example.test/login in your browser"
-  while :; do sleep 1; done
-fi
-if [ "$1" = "logout" ] && [ "$#" -eq 1 ]; then
-  exit 0
-fi
-exit 1
-`, argsPath, currentPIDPath, currentPIDPath, currentPIDPath, pidsPath)
-	if err := os.WriteFile(binPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("writing fake libtv CLI: %v", err)
-	}
+	t.Setenv("SETTINGS_HELPER_CURRENT_PID_PATH", currentPIDPath)
+	t.Setenv("SETTINGS_HELPER_PIDS_PATH", pidsPath)
+	binPath := writeFakeCLI(t, "pending", argsPath)
 	t.Cleanup(func() {
 		output, _ := os.ReadFile(pidsPath)
 		for _, line := range strings.Fields(string(output)) {

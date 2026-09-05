@@ -9,13 +9,12 @@ import (
 	"image/gif"
 	_ "image/jpeg"
 	"image/png"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestCompressedImageDataURIValueDownscalesLargeImage(t *testing.T) {
-	store := NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
+	store := NewMediaAssets(mediaTestDBPath(t, "settings.db"), t.TempDir())
 	source := encodeTestPNG(t, 1200, 600)
 	asset, err := store.SaveReader(
 		context.Background(),
@@ -55,7 +54,7 @@ func TestCompressedImageDataURIValueDownscalesLargeImage(t *testing.T) {
 }
 
 func TestCompressedImageDataURIValueKeepsSmallImageOriginal(t *testing.T) {
-	store := NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
+	store := NewMediaAssets(mediaTestDBPath(t, "settings.db"), t.TempDir())
 	source := encodeTestPNG(t, 64, 32)
 	asset, err := store.SaveReader(
 		context.Background(),
@@ -87,7 +86,7 @@ func TestCompressedImageDataURIValueKeepsSmallImageOriginal(t *testing.T) {
 }
 
 func TestCompressedImageDataURIValueRejectsUnsupportedUndecodableImage(t *testing.T) {
-	store := NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
+	store := NewMediaAssets(mediaTestDBPath(t, "settings.db"), t.TempDir())
 	asset, err := store.SaveReader(
 		context.Background(),
 		bytes.NewReader([]byte("not-avif-image-data")),
@@ -113,7 +112,7 @@ func TestCompressedImageDataURIValueRejectsUnsupportedUndecodableImage(t *testin
 }
 
 func TestCompressedImageDataURIValueTranscodesUnsupportedDecodableImage(t *testing.T) {
-	store := NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
+	store := NewMediaAssets(mediaTestDBPath(t, "settings.db"), t.TempDir())
 	source := encodeTestGIF(t, 64, 32)
 	asset, err := store.SaveReader(
 		context.Background(),

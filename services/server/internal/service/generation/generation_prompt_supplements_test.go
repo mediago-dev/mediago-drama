@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -13,7 +12,6 @@ import (
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/media"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 )
 
 func TestNormalizeGenerationPromptSupplements(t *testing.T) {
@@ -80,7 +78,7 @@ func TestCreateGenerationMessageAppliesPromptSupplements(t *testing.T) {
 	workflow := newPromptSupplementsTestWorkflow(t)
 	provider := &recordingPromptSupplementsProvider{started: make(chan coregeneration.Request, 1)}
 	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
-		if route.ID != coregeneration.RouteDMXGPTImage2 {
+		if route.ID != coregeneration.RouteWhereslowNanoBanana2 {
 			return nil, fmt.Errorf("unexpected route %q", route.ID)
 		}
 		return provider, nil
@@ -88,7 +86,7 @@ func TestCreateGenerationMessageAppliesPromptSupplements(t *testing.T) {
 
 	_, status, err := workflow.CreateGenerationMessage(context.Background(), GenerationMessageRequest{
 		Kind:    string(coregeneration.KindImage),
-		RouteID: coregeneration.RouteDMXGPTImage2,
+		RouteID: coregeneration.RouteWhereslowNanoBanana2,
 		Prompt:  "base prompt",
 		PromptSupplements: []GenerationPromptSupplementRequest{
 			{ReferenceID: "pack-style", ReferencePrompt: "cinematic lighting"},
@@ -123,7 +121,7 @@ func TestCreatePromptOptimizedGenerationMessageAppliesPromptSupplementsBeforeOpt
 					{Done: true},
 				},
 			}, nil
-		case coregeneration.RouteDMXGPTImage2:
+		case coregeneration.RouteWhereslowNanoBanana2:
 			return imageProvider, nil
 		default:
 			return nil, fmt.Errorf("unexpected route %q", route.ID)
@@ -132,7 +130,7 @@ func TestCreatePromptOptimizedGenerationMessageAppliesPromptSupplementsBeforeOpt
 
 	response, status, err := workflow.CreatePromptOptimizedGenerationMessage(context.Background(), GenerationMessageRequest{
 		Kind:    string(coregeneration.KindImage),
-		RouteID: coregeneration.RouteDMXGPTImage2,
+		RouteID: coregeneration.RouteWhereslowNanoBanana2,
 		Prompt:  "base prompt",
 		PromptSupplements: []GenerationPromptSupplementRequest{
 			{ReferenceID: "pack-style", ReferencePrompt: "cinematic lighting"},
@@ -175,13 +173,13 @@ func waitForPromptSupplementsProviderRequest(t *testing.T, started <-chan corege
 
 func newPromptSupplementsTestWorkflow(t *testing.T) *GenerationService {
 	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "settings.db")
+	dbPath := generationTestDBPath(t)
 	repo, err := repository.NewGenerationTaskRepository(dbPath)
 	if err != nil {
 		t.Fatalf("NewGenerationTaskRepository() error = %v", err)
 	}
 	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
-	settingsService := settings.NewSettings(&generationTestAPIKeyStore{values: map[string]string{
+	settingsService := newGenerationTestSettings(&generationTestAPIKeyStore{values: map[string]string{
 		coregeneration.ProviderDMX: "sk-test",
 	}})
 	return NewGenerationService(settingsService, store, media.NewMediaAssets(dbPath, t.TempDir()))

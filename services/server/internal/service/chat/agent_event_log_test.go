@@ -27,9 +27,19 @@ func newTestChatStoreWithDB(t *testing.T) (*Service, *gorm.DB) {
 	if err != nil {
 		t.Fatalf("opening workspace db: %v", err)
 	}
+	t.Cleanup(func() {
+		if err := repository.CloseDatabase(db); err != nil {
+			t.Errorf("closing workspace db: %v", err)
+		}
+	})
 	workspaceDir := t.TempDir()
 	projects := testProjectProvider{root: workspaceDir, db: db}
 	store := NewService(workspaceDir, repository.NewAgentSessionRepository(db), projects, nil)
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Errorf("closing chat store: %v", err)
+		}
+	})
 	return store, db
 }
 

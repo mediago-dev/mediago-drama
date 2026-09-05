@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -484,13 +485,20 @@ func (service *Settings) startLibTVLogin(ctx context.Context) (ProviderLoginChal
 	}
 
 	processCtx, cancelProcess := context.WithTimeout(context.Background(), libTVLoginProcessTimeout)
-	command := exec.CommandContext(processCtx, binPath, "login", "web")
+	command := localCLICommand(processCtx, binPath, "login", "web")
 	output := newCommandOutputWatcher()
 	command.Stdout = output
 	command.Stderr = output
 	if err := command.Start(); err != nil {
 		cancelProcess()
 		return ProviderLoginChallenge{}, nil, "", err
+	}
+	if runtime.GOOS == "windows" {
+		pid := strconv.Itoa(command.Process.Pid)
+		go func() {
+			<-processCtx.Done()
+			_ = exec.Command("taskkill", "/T", "/F", "/PID", pid).Run()
+		}()
 	}
 
 	done := make(chan error, 1)
@@ -547,7 +555,7 @@ func (service *Settings) runJimengCommand(ctx context.Context, timeout time.Dura
 
 	commandCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	command := exec.CommandContext(commandCtx, binPath, args...)
+	command := localCLICommand(commandCtx, binPath, args...)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		return output, jimengCommandError(strings.Join(args, " "), err, string(output))
@@ -563,12 +571,23 @@ func (service *Settings) runLibTVCommand(ctx context.Context, timeout time.Durat
 
 	commandCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	command := exec.CommandContext(commandCtx, binPath, args...)
+	command := localCLICommand(commandCtx, binPath, args...)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		return output, localCLICommandError("libtv", strings.Join(args, " "), err, string(output))
 	}
 	return output, nil
+}
+
+func localCLICommand(ctx context.Context, binPath string, args ...string) *exec.Cmd {
+	if runtime.GOOS == "windows" {
+		ext := strings.ToLower(filepath.Ext(binPath))
+		if ext == ".cmd" || ext == ".bat" {
+			commandArgs := append([]string{"/d", "/s", "/c", binPath}, args...)
+			return exec.CommandContext(ctx, "cmd.exe", commandArgs...)
+		}
+	}
+	return exec.CommandContext(ctx, binPath, args...)
 }
 
 func (service *Settings) resolveLibTVBinary() (string, error) {

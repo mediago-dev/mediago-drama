@@ -10,6 +10,9 @@ import (
 
 func TestGenerationPreferenceRepositoryLifecycle(t *testing.T) {
 	repo, err := NewGenerationPreferenceRepository(filepath.Join(t.TempDir(), "settings.db"))
+	if err == nil {
+		cleanupTestDatabase(t, repo.db)
+	}
 	if err != nil {
 		t.Fatalf("NewGenerationPreferenceRepository() error = %v", err)
 	}

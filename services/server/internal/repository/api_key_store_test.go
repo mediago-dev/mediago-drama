@@ -7,6 +7,7 @@ import (
 
 func TestAPIKeyStoreSetGetAndClear(t *testing.T) {
 	store := NewAPIKeyStore(filepath.Join(t.TempDir(), "settings.sqlite"))
+	cleanupTestDatabase(t, store.db)
 
 	value, source, err := store.Get("openrouter")
 	if err != nil {
