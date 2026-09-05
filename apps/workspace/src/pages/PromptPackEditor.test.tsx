@@ -477,12 +477,12 @@ describe("PromptPackEditor", () => {
 		expect(navigator).not.toContainElement(title);
 		expect(title.closest("header")).toHaveClass("bg-ide-editor");
 		fireEvent.keyDown(resizeHandle, { key: "Home" });
-		expect(resizeHandle).toHaveAttribute("aria-valuenow", "300");
+		expect(resizeHandle).toHaveAttribute("aria-valuenow", "232");
 		fireEvent.keyDown(resizeHandle, { key: "ArrowRight" });
-		expect(resizeHandle).toHaveAttribute("aria-valuenow", "312");
+		expect(resizeHandle).toHaveAttribute("aria-valuenow", "244");
 		fireEvent.pointerDown(resizeHandle, { clientX: 232 });
 		fireEvent.pointerMove(window, { clientX: 300 });
-		expect(resizeHandle).toHaveAttribute("aria-valuenow", "380");
+		expect(resizeHandle).toHaveAttribute("aria-valuenow", "312");
 		fireEvent.pointerUp(window);
 	});
 

@@ -184,13 +184,13 @@ describe("ProjectSidebarPanel", () => {
 		expect(onOpenNewDocument).toHaveBeenCalledWith("reference");
 	});
 
-	it("right-aligns footer actions on home and project sidebars", () => {
+	it("keeps retired footer actions out of home and project sidebars", () => {
 		const projectSidebar = renderProjectSidebar(true);
-		expect(footerActionRowClassName()).toContain("justify-end");
+		expect(screen.queryByRole("button", { name: "设置" })).toBeNull();
 		projectSidebar.unmount();
 
 		renderProjectsSidebar();
-		expect(footerActionRowClassName()).toContain("justify-end");
+		expect(screen.queryByRole("button", { name: "设置" })).toBeNull();
 	});
 
 	it("shows a return action when the selected project does not exist", () => {
@@ -296,6 +296,3 @@ const renderProjectsSidebar = (
 
 const documentItemClassName = (name = "第一集") =>
 	(screen.getByRole("button", { name }).parentElement as HTMLElement).className;
-
-const footerActionRowClassName = () =>
-	(screen.getByRole("button", { name: "设置" }).parentElement as HTMLElement).className;

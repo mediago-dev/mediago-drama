@@ -43,7 +43,7 @@ import {
 
 const mediagoDocsUrl = "https://mediago.torchstellar.com/account#apiKeys";
 
-const legacyFallbackCatalog: GenerationModelsResponse = {
+export const legacyFallbackCatalog: GenerationModelsResponse = {
 	families: [
 		{ id: "seedream", label: "Seedream", kind: "image" },
 		{ id: "gpt-text", label: "GPT", kind: "text" },

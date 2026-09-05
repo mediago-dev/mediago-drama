@@ -65,6 +65,7 @@ func TestDefaultUserDataDirFallsBackToWorkingDirectory(t *testing.T) {
 func TestResolveWorkspaceDirExpandsHomePath(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 
 	got := ResolveWorkspaceDir("~/MediaGo Workspace")
 	want := filepath.Join(homeDir, "MediaGo Workspace")

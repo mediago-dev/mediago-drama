@@ -742,7 +742,7 @@ describe("MediaGenerationWorkspace", () => {
 		expect(screen.queryByRole("dialog")).toBeNull();
 	});
 
-	it("renders the model route picker in the input panel", () => {
+	it("renders the fixed image model in the input panel", () => {
 		vi.mocked(useGenerationWorkspace).mockReturnValue(
 			workspaceDefaults as unknown as ReturnType<typeof useGenerationWorkspace>,
 		);
@@ -755,8 +755,8 @@ describe("MediaGenerationWorkspace", () => {
 			/>,
 		);
 
-		expect(screen.getByRole("button", { name: "模型版本和供应商" })).toBeTruthy();
-		expect(screen.getByRole("button", { name: "打开模型文档" })).toBeTruthy();
+		expect(screen.getByLabelText("Nano Banana 2")).toHaveTextContent("Nano Banana 2");
+		expect(screen.queryByRole("button", { name: "模型版本和供应商" })).toBeNull();
 	});
 
 	it("labels video references as reference material in the input panel", () => {

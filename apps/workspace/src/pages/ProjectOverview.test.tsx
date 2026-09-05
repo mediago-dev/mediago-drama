@@ -89,6 +89,36 @@ const projectConfig: ProjectConfig = {
 	schemaVersion: 1,
 };
 
+const configureCreatorShots = (count = 1) => {
+	projectConfig.overview.production = {
+		template: {
+			id: "commercial-film",
+			name: "商业广告",
+			description: "",
+			category: "",
+			version: 1,
+			stages: [],
+		},
+		overallProgress: 0,
+		coreAssetCount: 0,
+		shotCount: count,
+		completedShotCount: 0,
+		reviewShotCount: 0,
+		version: "V01",
+		updatedAt: "2026-06-19T02:08:41.000Z",
+		shots: Array.from({ length: count }, (_, index) => ({
+			id: `shot-${index + 1}`,
+			sequence: index + 1,
+			shotCode: `S${String(index + 1).padStart(2, "0")}`,
+			title: index === 0 ? "落水镜头" : "苏醒镜头",
+			description: index === 0 ? "沈阁从黑暗水面坠入湖中。" : "他猛然睁眼。",
+			status: "NOT_STARTED",
+			completion: 0,
+			updatedAt: "2026-06-19T02:08:41.000Z",
+		})),
+	};
+};
+
 const billingSummary: BillingSummaryResponse = {
 	currencies: ["CNY", "USD"],
 	range: { end: "2026-06-19T00:00:00.000Z", start: "2026-06-18T00:00:00.000Z" },
@@ -127,6 +157,7 @@ let videoGenerationTasksFixture: unknown[] = [];
 describe("ProjectOverview", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		projectConfig.overview = { categoryDefaults: {} };
 		selectedGenerationAssetsRequestCount = 0;
 		selectedGenerationAssetsRefreshFixture = null;
 		selectedGenerationAssetsFixture = [
@@ -758,9 +789,9 @@ describe("ProjectOverview", () => {
 		expect(
 			within(dialog).queryByRole("button", { name: "播放 徐乐乐 音频" }),
 		).not.toBeInTheDocument();
-		// 卡片标题旁的 Badge 展示历史成功生成数（替换了原「已选择 N 张」，封面浮层已移除）。
-		expect(within(dialog).getByText("已生成 2 张")).toBeInTheDocument();
-		expect(within(dialog).getByText("已生成 0 张")).toBeInTheDocument();
+		// 卡片标题旁展示当前已归档到项目、可供镜头使用的资产数。
+		expect(within(dialog).getByText("已归档 1 张")).toBeInTheDocument();
+		expect(within(dialog).getByText("已归档 0 张")).toBeInTheDocument();
 		expect(within(dialog).queryByText("已选择 1 张")).not.toBeInTheDocument();
 		expect(within(dialog).getByText("暂无已选图片")).toBeInTheDocument();
 		expect(within(dialog).queryByText("来源：角色设定")).not.toBeInTheDocument();
@@ -1049,7 +1080,9 @@ describe("ProjectOverview", () => {
 		});
 	});
 
-	it("opens storyboard video resources for the selected storyboard document", async () => {
+	it("opens the current single-shot creator workspace from the shots route", async () => {
+		configureCreatorShots();
+
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
 				<MemoryRouter initialEntries={["/projects?projectId=project-a&workspace=shots"]}>
@@ -1058,91 +1091,17 @@ describe("ProjectOverview", () => {
 			</SWRConfig>,
 		);
 
-		await screen.findByRole("button", { name: "第一章分镜脚本 视频生成" });
-		expect(screen.getByText("分镜组 2 项 · 成片 1 个")).toBeInTheDocument();
-		expect(await screen.findByText("分镜组 1 项 · 成片 0 个")).toBeInTheDocument();
-		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 视频生成" }));
-
-		const dialog = await screen.findByRole("dialog");
-		expect(within(dialog).getByText("视频生成 · 第一章分镜脚本")).toBeInTheDocument();
-		expect(within(dialog).getByText("第 01 组 总时长：00:08")).toBeInTheDocument();
-		expect(within(dialog).getByText("第 02 组 总时长：00:06")).toBeInTheDocument();
-		expect(within(dialog).queryByText("分镜 01")).not.toBeInTheDocument();
-		// 卡片标题旁的 Badge 展示历史成功生成数（替换了原「成片 N 个」）。
-		expect(within(dialog).getByText("已生成 2 个")).toBeInTheDocument();
-		expect(within(dialog).getByText("已生成 0 个")).toBeInTheDocument();
-		expect(within(dialog).queryByText("苏醒镜头")).not.toBeInTheDocument();
-		expect(within(dialog).queryByText("门外脚步成片")).not.toBeInTheDocument();
-		expect(within(dialog).getAllByRole("button", { name: "生成视频" })).toHaveLength(2);
-
-		// 点击成片封面用共享 VideoPlayer 打开视频预览，关闭后不影响后续断言。
-		fireEvent.click(
-			within(dialog).getByRole("button", { name: "预览 第 01 组 总时长：00:08 视频" }),
-		);
-		const videoPreview = await screen.findByTestId("video-preview");
-		expect(videoPreview.getAttribute("src")).toContain(
-			"/api/v1/media-assets/selected-video-1/content",
-		);
-		fireEvent.click(screen.getByLabelText("关闭预览"));
-		await waitFor(() => expect(screen.queryByTestId("video-preview")).not.toBeInTheDocument());
-
-		expect(within(dialog).getByRole("img", { name: "已选落水镜头" })).toHaveAttribute(
-			"src",
-			"/api/v1/media-assets/selected-video-1/poster",
-		);
-		expect(within(dialog).queryByText("已有成片")).not.toBeInTheDocument();
-		expect(within(dialog).queryByTestId("overview-video-player")).not.toBeInTheDocument();
-
-		fireEvent.click(within(dialog).getAllByRole("button", { name: "生成视频" })[0]);
-		await waitFor(() => {
-			expect(dialogMocks.MediaGenerationDialog.mock.calls.at(-1)?.[0].request).toMatchObject({
-				kind: "video",
-				projectId: "project-a",
-				resolveLatestSection: false,
-				statusResourceKey: "storyboard-a:section_reel_01",
-				section: expect.objectContaining({
-					blockId: "section_reel_01",
-					documentId: "storyboard-a",
-					headingLevel: 2,
-					headingOccurrence: 1,
-					headingText: "第 01 组 总时长：00:08",
-					markdown: expect.stringContaining("沈阁从黑暗水面坠入湖中。"),
-				}),
-			});
-		});
-		expect(useMediaGenerationStore.getState().activeRequest).toBeNull();
-
-		const generationDialog = await screen.findByRole("dialog", {
-			name: "局部video生成弹窗",
-		});
-		expect(dialog).toHaveAttribute("data-state", "open");
-		const generationDialogClose = within(generationDialog).getByRole("button", {
-			name: "关闭弹窗",
-		});
-		fireEvent.pointerDown(generationDialogClose, { button: 0 });
-		fireEvent.click(generationDialogClose);
-		await waitFor(() => {
-			expect(screen.queryByRole("dialog", { name: "局部video生成弹窗" })).toBeNull();
-		});
-		expect(screen.getByRole("dialog", { name: "视频生成 · 第一章分镜脚本" })).toBe(dialog);
-		expect(dialog).toHaveAttribute("data-state", "open");
-		fireEvent.keyDown(document, { key: "Escape" });
-		await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-		fireEvent.click(screen.getByRole("button", { name: "第二章分镜脚本 视频生成" }));
-
-		const secondDialog = await screen.findByRole("dialog");
-		expect(within(secondDialog).getByText("视频生成 · 第二章分镜脚本")).toBeInTheDocument();
-		expect(within(secondDialog).getByText("第 01 组 总时长：00:05")).toBeInTheDocument();
-		expect(within(secondDialog).queryByText("门外脚步成片")).not.toBeInTheDocument();
+		expect(await screen.findAllByText("落水镜头")).not.toHaveLength(0);
+		expect(screen.getByText("镜头工作台")).toBeInTheDocument();
+		expect(screen.getByLabelText("画面 Prompt")).toBeInTheDocument();
 		expect(
-			within(secondDialog).queryByRole("img", { name: "门外脚步成片" }),
+			screen.queryByRole("button", { name: "第一章分镜脚本 视频生成" }),
 		).not.toBeInTheDocument();
-		expect(within(secondDialog).getByText("暂无成片")).toBeInTheDocument();
-		expect(within(secondDialog).queryByText("已有成片")).not.toBeInTheDocument();
-		expect(within(secondDialog).queryByTestId("overview-video-player")).not.toBeInTheDocument();
 	});
 
-	it("shows storyboard clipping workbench tabs inside video resources", async () => {
+	it("returns from the creator workspace to the production workflow", async () => {
+		configureCreatorShots();
+
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
 				<MemoryRouter initialEntries={["/projects?projectId=project-a&workspace=shots"]}>
@@ -1161,43 +1120,17 @@ describe("ProjectOverview", () => {
 			</SWRConfig>,
 		);
 
-		await screen.findByRole("button", { name: "第一章分镜脚本 视频生成" });
-		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 视频生成" }));
-
-		const dialog = await screen.findByRole("dialog");
-		await waitFor(() => {
-			expect(
-				useDocumentsStore.getState().documents.some((document) => document.id === "storyboard-a"),
-			).toBe(true);
-		});
-		// tab 常驻挂载(forceMount)后,画布/预览两个面板都在 DOM 里,只有激活的 data-state="active"。
-		const activePanelView = () => {
-			const panel = dialog.querySelector<HTMLElement>('[role="tabpanel"][data-state="active"]');
-			if (!panel) throw new Error("no active tabpanel");
-			return within(panel).getByTestId("episode-timeline-view");
-		};
-
-		const canvasTab = within(dialog).getByRole("tab", { name: "画布" });
-		fireEvent.mouseDown(canvasTab, { button: 0 });
-		fireEvent.click(canvasTab);
-
-		await waitFor(() => {
-			expect(activePanelView()).toHaveAttribute("data-workbench", "canvas");
-		});
-		expect(activePanelView()).toHaveAttribute("data-document-id", "storyboard-a");
-		expect(screen.getByTestId("location")).toHaveTextContent("/projects?projectId=project-a");
-		expect(screen.getByTestId("location")).toHaveAttribute("data-project-view", "");
-
-		const previewTab = within(dialog).getByRole("tab", { name: "预览" });
-		fireEvent.mouseDown(previewTab, { button: 0 });
-		fireEvent.click(previewTab);
-
-		await waitFor(() => {
-			expect(activePanelView()).toHaveAttribute("data-workbench", "timeline");
-		});
+		fireEvent.click(await screen.findByRole("button", { name: "返回制作流程" }));
+		await waitFor(() =>
+			expect(screen.getByTestId("location")).toHaveTextContent(
+				"/projects?projectId=project-a&workspace=workflow",
+			),
+		);
 	});
 
-	it("submits storyboard video reels for background batch video generation", async () => {
+	it("opens direct image and video generation for the active creator shot", async () => {
+		configureCreatorShots(2);
+
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
 				<MemoryRouter initialEntries={["/projects?projectId=project-a&workspace=shots"]}>
@@ -1206,65 +1139,21 @@ describe("ProjectOverview", () => {
 			</SWRConfig>,
 		);
 
-		await screen.findByRole("button", { name: "第一章分镜脚本 视频生成" });
-		fireEvent.click(screen.getByRole("button", { name: "第一章分镜脚本 视频生成" }));
-
-		const dialog = await screen.findByRole("dialog");
-		expect(within(dialog).getByRole("button", { name: "批量生成视频（0）" })).toBeDisabled();
-
-		fireEvent.click(within(dialog).getByRole("button", { name: "全选" }));
-		expect(
-			within(dialog)
-				.getByRole("checkbox", { name: "取消选择 第 01 组 总时长：00:08" })
-				.getAttribute("aria-checked"),
-		).toBe("true");
-		expect(
-			within(dialog)
-				.getByRole("checkbox", { name: "取消选择 第 02 组 总时长：00:06" })
-				.getAttribute("aria-checked"),
-		).toBe("true");
-
-		fireEvent.click(within(dialog).getByRole("button", { name: "批量生成视频（2）" }));
-		fireEvent.click(screen.getByText("确认批量设置"));
-
-		expect(within(dialog).queryByText("已完成")).not.toBeInTheDocument();
-		expect(within(dialog).getAllByText("生成中")).toHaveLength(2);
-
-		await waitFor(() => expect(httpClient.post).toHaveBeenCalledTimes(1));
-		const [url, payload] = vi.mocked(httpClient.post).mock.calls[0];
-		expect(url).toBe("/generation/batches");
-		expect(payload).toEqual({
-			conversationTitle: "222 · 视频",
-			kind: "video",
-			projectId: "project-a",
-			scopeId: "agent",
-			sessionId: "project-a-video",
-			items: [
-				expect.objectContaining({
-					id: "storyboard-a:section_reel_01",
-					request: expect.objectContaining({
-						assetTitle: "第 01 组 总时长：00:08",
-						capabilityId: "storyboard",
-						documentContext: expect.objectContaining({ sectionId: "section_reel_01" }),
-						kind: "video",
-						params: { n: 2, ratio: "16:9" },
-						routeId: "video-route",
-					}),
+		expect(await screen.findAllByText("落水镜头")).not.toHaveLength(0);
+		fireEvent.click(screen.getByRole("button", { name: "生成视频" }));
+		expect(await screen.findByRole("dialog", { name: "局部video生成弹窗" })).toBeInTheDocument();
+		expect(dialogMocks.MediaGenerationDialog).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				open: true,
+				request: expect.objectContaining({
+					kind: "video",
+					projectId: "project-a",
+					shotIds: ["shot-1"],
+					statusResourceKey: "shot-1:video",
 				}),
-				expect.objectContaining({
-					id: "storyboard-a:section_reel_02",
-					request: expect.objectContaining({
-						assetTitle: "第 02 组 总时长：00:06",
-						documentContext: expect.objectContaining({ sectionId: "section_reel_02" }),
-					}),
-				}),
-			],
-		});
-		expect(useMediaGenerationStore.getState().activeRequest).toBeNull();
-
-		await waitFor(() => {
-			expect(within(dialog).getByRole("button", { name: "批量生成视频（0）" })).toBeDisabled();
-		});
+			}),
+			undefined,
+		);
 	});
 });
 

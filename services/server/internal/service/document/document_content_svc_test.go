@@ -9,7 +9,7 @@ import (
 )
 
 func TestWorkspaceStateServiceSetDocumentMetadataFromInputs(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -65,7 +65,7 @@ func TestWorkspaceStateServiceSetDocumentMetadataFromInputs(t *testing.T) {
 }
 
 func TestCreateWorkspaceDocumentFromInputDoesNotInjectTemplateContent(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -155,7 +155,7 @@ func TestCreateWorkspaceDocumentFromInputDoesNotInjectTemplateContent(t *testing
 }
 
 func TestCreateWorkspaceDocumentDoesNotInjectTemplateBody(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -174,7 +174,7 @@ func TestCreateWorkspaceDocumentDoesNotInjectTemplateBody(t *testing.T) {
 }
 
 func TestCreateWorkspaceDocumentFromInputWithoutTemplateFallsBackToReference(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -199,7 +199,7 @@ func TestCreateWorkspaceDocumentFromInputWithoutTemplateFallsBackToReference(t *
 }
 
 func TestCreateWorkspaceDocumentFromInputInfersBusinessCategory(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -235,7 +235,7 @@ func TestCreateWorkspaceDocumentFromInputInfersBusinessCategory(t *testing.T) {
 }
 
 func TestBatchWorkspaceDocumentEditAppliesOperationsAsSingleVersion(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -304,7 +304,7 @@ func TestBatchWorkspaceDocumentEditAppliesOperationsAsSingleVersion(t *testing.T
 }
 
 func TestBatchWorkspaceDocumentEditMovesBlockAcrossDocumentsAtomically(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -359,7 +359,7 @@ func TestBatchWorkspaceDocumentEditMovesBlockAcrossDocumentsAtomically(t *testin
 }
 
 func TestPatchWorkspaceDocumentContentAppliesUTF16Ranges(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}

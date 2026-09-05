@@ -111,7 +111,7 @@ describe("StudioSessionsScreen", () => {
 		cleanup();
 	});
 
-	it("renders the production-facing video and image conversation groups", async () => {
+	it("renders only the active production conversation group", async () => {
 		vi.mocked(getGenerationConversations).mockImplementation(async (kind) => {
 			const conversationKind = kind ?? "image";
 			return {
@@ -136,11 +136,11 @@ describe("StudioSessionsScreen", () => {
 			</SWRConfig>,
 		);
 
-		await waitFor(() => expect(screen.getByText("video 会话")).toBeTruthy());
-		expect(getGenerationConversations).toHaveBeenCalledWith("video", "studio", {
+		await waitFor(() => expect(screen.getByText("image 会话")).toBeTruthy());
+		expect(getGenerationConversations).toHaveBeenCalledWith("image", "studio", {
 			allScopes: true,
 		});
-		expect(getGenerationConversations).toHaveBeenCalledWith("image", "studio", {
+		expect(getGenerationConversations).not.toHaveBeenCalledWith("video", "studio", {
 			allScopes: true,
 		});
 		expect(getGenerationConversations).not.toHaveBeenCalledWith("text", "studio", {
@@ -149,9 +149,9 @@ describe("StudioSessionsScreen", () => {
 		expect(screen.getByText("项目图片会话")).toBeTruthy();
 		expect(screen.queryByLabelText("工作模式")).toBeNull();
 
-		fireEvent.click(screen.getByText("video 会话"));
+		fireEvent.click(screen.getByText("image 会话"));
 
-		expect(onSelectConversation).toHaveBeenCalledWith("video", "video-1");
+		expect(onSelectConversation).toHaveBeenCalledWith("image", "image-1");
 	});
 
 	it("creates a conversation from the sidebar new button", async () => {

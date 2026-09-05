@@ -146,7 +146,7 @@ describe("Projects", () => {
 		expect(useProjectStore.getState().activeProjectId).toBe("project-111");
 	});
 
-	it("uses the durable project config when the list summary is stale", async () => {
+	it("uses the durable project config for the current stage when the list summary is stale", async () => {
 		render(
 			<SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
 				<MemoryRouter>
@@ -156,12 +156,10 @@ describe("Projects", () => {
 		);
 
 		// The list fixture intentionally has no production summary. The config request
-		// is the source of truth for the template, stage count and progress shown here.
-		expect(await screen.findByText("商业广告 · 9 个阶段")).toBeInTheDocument();
+		// remains the source of truth for the current production stage shown here.
 		const projectCard = await screen.findByRole("button", { name: /短剧项目/ });
-		expect(projectCard).toHaveTextContent(/1 \/ 9 阶段/);
-		expect(projectCard).toHaveTextContent(/3%/);
-		expect(screen.getByText(/待审核/)).toBeInTheDocument();
+		expect(projectCard).toHaveTextContent("01 创意与分镜定稿");
+		expect(httpClient.get).toHaveBeenCalledWith("/projects/project-111/config");
 	});
 
 	it("archives an active project from the row context menu", async () => {

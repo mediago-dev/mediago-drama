@@ -10,7 +10,7 @@ import (
 )
 
 func TestWorkspaceStateServiceProjectConfig(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}

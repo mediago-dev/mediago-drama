@@ -1548,13 +1548,22 @@ export const ProjectOverview: React.FC = () => {
 						) : null}
 
 						{config && !isLoading && isCreatorWorkspace && productionContext ? (
-							<CreatorProjectWorkspace
-								assets={projectCatalogAssets}
-								context={productionContext}
-								onGenerate={openCreatorShotGeneration}
-								onOpenWorkspace={() => openWorkspace("workflow")}
-								onProductionPatch={updateProductionPatch}
-							/>
+							<>
+								<CreatorProjectWorkspace
+									assets={projectCatalogAssets}
+									context={productionContext}
+									onGenerate={openCreatorShotGeneration}
+									onOpenWorkspace={() => openWorkspace("workflow")}
+									onProductionPatch={updateProductionPatch}
+								/>
+								<MediaGenerationDialog
+									open={Boolean(mediaGenerationRequest)}
+									request={mediaGenerationRequest}
+									onOpenChange={(open) => {
+										if (!open) setMediaGenerationRequest(null);
+									}}
+								/>
+							</>
 						) : null}
 
 						{config && !isLoading && !isCreatorWorkspace ? (

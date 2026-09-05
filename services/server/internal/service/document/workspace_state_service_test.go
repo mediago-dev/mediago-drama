@@ -12,7 +12,7 @@ import (
 )
 
 func TestWorkspaceStateServiceMoveDocumentAndMetadata(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -90,7 +90,7 @@ func TestWorkspaceStateServiceMoveDocumentAndMetadata(t *testing.T) {
 }
 
 func TestWorkspaceStateServicePersistsDocumentCategory(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -162,7 +162,7 @@ func TestWorkspaceStateServicePersistsDocumentCategory(t *testing.T) {
 }
 
 func TestWorkspaceStateServiceNormalizesLegacySourceMaterialCategory(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -204,7 +204,7 @@ func TestWorkspaceStateServiceNormalizesLegacySourceMaterialCategory(t *testing.
 
 func TestWorkspaceStateServiceCreateProjectStartsWithoutOverviewDocument(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -226,7 +226,7 @@ func TestWorkspaceStateServiceCreateProjectStartsWithoutOverviewDocument(t *test
 
 func TestWorkspaceStateServiceRenamesProject(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -264,7 +264,7 @@ func TestWorkspaceStateServiceRenamesProject(t *testing.T) {
 
 func TestWorkspaceStateServiceArchivesTrashesRestoresAndPermanentlyDeletesProject(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -368,7 +368,7 @@ func TestWorkspaceStateServiceArchivesTrashesRestoresAndPermanentlyDeletesProjec
 
 func TestWorkspaceStateServiceTrashesProjectWithMissingDirectory(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -446,7 +446,7 @@ func TestWorkspaceStateServiceRestoreWithoutTrashDirLeavesDefaultWorkspaceIntact
 		t.Fatalf("writing default workspace sentinel: %v", err)
 	}
 
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -472,7 +472,7 @@ func TestWorkspaceStateServiceRestoreWithoutTrashDirLeavesDefaultWorkspaceIntact
 }
 
 func TestWorkspaceStateServicePermanentDeleteRefusesTrashDirOutsideTrashRoot(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -512,7 +512,7 @@ func TestMoveDirectoryRejectsNestedAndEmptyPaths(t *testing.T) {
 
 func TestWorkspaceStateServiceWritesReadableFilenamesAndReconcilesMarkdownFiles(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -601,7 +601,7 @@ func TestWorkspaceStateServiceWritesReadableFilenamesAndReconcilesMarkdownFiles(
 
 func TestWorkspaceStateServiceMirrorsDocumentFoldersToMarkdownProjection(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -671,7 +671,7 @@ func TestWorkspaceStateServiceMirrorsDocumentFoldersToMarkdownProjection(t *test
 }
 
 func TestWorkspaceStateServiceRejectsDuplicateSiblingFolders(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -716,7 +716,7 @@ func TestWorkspaceStateServiceRejectsDuplicateSiblingFolders(t *testing.T) {
 
 func TestWorkspaceStateServiceLoadsDocumentContentFromLocalMarkdownBeforeDB(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -769,7 +769,7 @@ func TestWorkspaceStateServiceLoadsDocumentContentFromLocalMarkdownBeforeDB(t *t
 
 func TestWorkspaceStateServicePrunesDeletedProjectedMarkdownFiles(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -812,7 +812,7 @@ func TestWorkspaceStateServicePrunesDeletedProjectedMarkdownFiles(t *testing.T) 
 
 func TestWorkspaceStateServiceSyncsExistingLocalMarkdownMetadata(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -850,7 +850,7 @@ func TestWorkspaceStateServiceSyncsExistingLocalMarkdownMetadata(t *testing.T) {
 
 func TestWorkspaceStateServiceImportsLocalMarkdownFilesFromWorkDir(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -894,7 +894,7 @@ func TestWorkspaceStateServiceImportsLocalMarkdownFilesFromWorkDir(t *testing.T)
 
 func TestWorkspaceStateServiceImportsLocalTextFilesFromWorkDir(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -953,7 +953,7 @@ func TestWorkspaceStateServiceImportsLocalTextFilesFromWorkDir(t *testing.T) {
 
 func TestWorkspaceStateServiceSkipsProjectAssetTextFilesAsDocuments(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -1019,7 +1019,7 @@ func TestWorkspaceStateServiceSkipsProjectAssetTextFilesAsDocuments(t *testing.T
 
 func TestWorkspaceStateServiceSyncsLocalMarkdownFoldersFromWorkDir(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -1074,7 +1074,7 @@ func TestWorkspaceStateServiceSyncsLocalMarkdownFoldersFromWorkDir(t *testing.T)
 
 func TestWorkspaceStateServiceImportsLocalMarkdownCategoryMetadata(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -1108,7 +1108,7 @@ func TestWorkspaceStateServiceImportsLocalMarkdownCategoryMetadata(t *testing.T)
 
 func TestWorkspaceStateServiceInfersLocalMarkdownBusinessCategories(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -1191,7 +1191,7 @@ func TestWorkspaceStateServiceInfersLocalMarkdownBusinessCategories(t *testing.T
 
 func TestWorkspaceStateServiceImportsProjectOverviewMarkdownAsRegularDocument(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -1218,7 +1218,7 @@ func TestWorkspaceStateServiceImportsProjectOverviewMarkdownAsRegularDocument(t 
 
 func TestWorkspaceStateServiceSaveFailsWhenWorkPathIsNotDirectory(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -1267,7 +1267,7 @@ func TestWorkspaceStateServiceSaveFailsWhenWorkPathIsNotDirectory(t *testing.T) 
 }
 
 func TestWorkspaceStateServiceRequireWorkspaceDocument(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -1302,7 +1302,7 @@ func TestWorkspaceStateServiceRequireWorkspaceDocument(t *testing.T) {
 }
 
 func TestWorkspaceStateServiceCanDeleteLastDocument(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -1332,7 +1332,7 @@ func TestWorkspaceStateServiceCanDeleteLastDocument(t *testing.T) {
 
 func TestWorkspaceStateServiceWritesDocumentEditFileLog(t *testing.T) {
 	workspaceDir := t.TempDir()
-	store := newWorkspaceStateService(workspaceDir)
+	store := newWorkspaceStateService(t, workspaceDir)
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -1391,7 +1391,7 @@ func TestWorkspaceStateServiceWritesDocumentEditFileLog(t *testing.T) {
 }
 
 func TestWorkspaceStateServiceUpdateDocumentHelpersKeepCleanFlag(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}
@@ -1432,7 +1432,7 @@ func TestWorkspaceStateServiceUpdateDocumentHelpersKeepCleanFlag(t *testing.T) {
 }
 
 func TestWorkspaceStateServiceOptimisticLockVersions(t *testing.T) {
-	store := newWorkspaceStateService(t.TempDir())
+	store := newWorkspaceStateService(t, t.TempDir())
 	if store.initErr != nil {
 		t.Fatalf("initializing workspace store: %v", store.initErr)
 	}

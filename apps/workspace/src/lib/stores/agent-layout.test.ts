@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const STORE_KEY = "agent-layout.v3";
+const STORE_KEY = "agent-layout.v4";
 
 const loadStore = async () => {
 	vi.resetModules();

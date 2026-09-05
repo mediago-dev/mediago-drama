@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { providerTypeOf } from "./generationCatalog";
-import { fallbackCatalog } from "./generationFallbackCatalog";
+import { legacyFallbackCatalog as fallbackCatalog } from "./generationFallbackCatalog";
 
 const routeParams = (routeId: string) => {
 	const route = fallbackCatalog.routes.find((item) => item.id === routeId);

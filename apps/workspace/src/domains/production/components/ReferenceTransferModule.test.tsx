@@ -47,8 +47,8 @@ describe("ReferenceTransferModule", () => {
 		expect(await screen.findByText("style.png", undefined, { timeout: 5000 })).toBeInTheDocument();
 		expect(await screen.findByText("pose.png", undefined, { timeout: 5000 })).toBeInTheDocument();
 
-		const styleButtons = screen.getAllByRole("button", { name: "风格" });
-		const poseButtons = screen.getAllByRole("button", { name: "姿势" });
+		const styleButtons = screen.getAllByRole("button", { name: "渲染风格" });
+		const poseButtons = screen.getAllByRole("button", { name: "姿势动作" });
 		fireEvent.click(styleButtons[0]);
 		fireEvent.click(poseButtons[1]);
 
