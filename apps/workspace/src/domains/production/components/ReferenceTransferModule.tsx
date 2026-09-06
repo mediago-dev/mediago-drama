@@ -87,7 +87,7 @@ const normalizeDraft = (value: unknown): ReferenceTransferInput => {
 		doNotCopy: typeof candidate.doNotCopy === "string" ? candidate.doNotCopy : emptyDraft.doNotCopy,
 		evidence: emptyEvidence().map((item) => ({
 			...item,
-			...(evidenceByDimension.get(item.dimension) ?? {}),
+			...evidenceByDimension.get(item.dimension),
 		})),
 	};
 };

@@ -695,7 +695,7 @@ export const ProjectOverview: React.FC = () => {
 						usedInShots: shotIds,
 					};
 					const existing = nodes.find((node) => node.id === nodeId);
-					if (existing) existing.metadata = { ...(existing.metadata ?? {}), ...metadata };
+					if (existing) existing.metadata = { ...existing.metadata, ...metadata };
 					if (!nodes.some((node) => node.id === nodeId)) {
 						nodes.push({
 							id: nodeId,

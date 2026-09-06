@@ -14,7 +14,7 @@ const normalize = (value: string) => {
 	return decoded
 		.toLowerCase()
 		.replace(/\.md(?:\?.*)?$/i, "")
-		.replace(/[《》「」『』【】\[\]()（）<>\s_\-/\\]/g, "");
+		.replace(/[《》「」『』【】[\]()（）<>\s_\-/\\]/g, "");
 };
 
 const scriptVersion = (document: MarkdownDocument) => {

@@ -359,7 +359,7 @@ export const parsePlannedAssets = (plan: string): PlannedAssetItem[] => {
 					.replace(/^[-*+]\s+/, "")
 					.split(/\s*[｜|]\s*/)
 					.map((cell) => cell.trim());
-		if (cells.length === 0 || cells.every((cell) => /^:?-{2,}:?$/.test(cell))) continue;
+		if (cells.every((cell) => /^:?-{2,}:?$/.test(cell))) continue;
 		const joined = cells.join("｜");
 		if (/资产ID.*分类.*资产名称|必要变体.*使用镜头.*必须生成/u.test(joined)) continue;
 		if (/^镜头(?:｜|$)|^人物身份与造型(?:｜|$)/u.test(joined)) continue;
@@ -2090,7 +2090,7 @@ export const ProductionWorkbench: React.FC<ProductionWorkbenchProps> = ({
 					status?: string;
 					createdAt?: string;
 				}>;
-			}> = [...Object.values(useAgentStore.getState().conversations)];
+			}> = Object.values(useAgentStore.getState().conversations);
 			try {
 				const sessions = await listAgentSessions(projectId);
 				for (const session of sessions) {
@@ -2949,7 +2949,7 @@ ${scriptDraft.trim() || "未提供剧本文字，请结合分镜母图完成识�
 												sharedContext: {
 													...context?.production?.sharedContext,
 													visualDNA: {
-														...(context?.production?.sharedContext?.visualDNA ?? {}),
+														...context?.production?.sharedContext?.visualDNA,
 														locked: false,
 													},
 												},
