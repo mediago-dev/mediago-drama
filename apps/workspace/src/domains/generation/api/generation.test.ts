@@ -150,9 +150,7 @@ describe("projectGenerationConversationId", () => {
 
 describe("canonicalGenerationSessionId", () => {
 	it("folds the legacy duplicated project prefix into the current project session", () => {
-		expect(canonicalGenerationSessionId("project-project-ce899-image")).toBe(
-			"project-ce899-image",
-		);
+		expect(canonicalGenerationSessionId("project-project-ce899-image")).toBe("project-ce899-image");
 		expect(canonicalGenerationSessionId("project-ce899-image")).toBe("project-ce899-image");
 	});
 });

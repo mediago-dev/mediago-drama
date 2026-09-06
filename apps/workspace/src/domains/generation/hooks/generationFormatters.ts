@@ -74,7 +74,10 @@ export const userTaskDetails = (
 	const providerDetails =
 		task.provider === "whereslow-image" || route?.provider === "whereslow-image"
 			? [
-					{ label: "供应商", value: route ? routeProviderLabel(route, catalog.providers) : "自定义 Gemini" },
+					{
+						label: "供应商",
+						value: route ? routeProviderLabel(route, catalog.providers) : "自定义 Gemini",
+					},
 					{ label: "模型", value: task.model || route?.model || "" },
 					...(task.baseUrl ? [{ label: "API Base URL", value: task.baseUrl }] : []),
 					...(task.protocol ? [{ label: "协议", value: protocolLabel(task.protocol) }] : []),

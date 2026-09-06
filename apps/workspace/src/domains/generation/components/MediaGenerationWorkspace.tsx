@@ -698,62 +698,66 @@ export const MediaGenerationWorkspace: React.FC<MediaGenerationWorkspaceProps> =
 		route: ws.selectedRoute,
 		version: ws.selectedVersion,
 	});
-	const modelControls = ws.hasConfiguredRoutesForKind && kind === "image" ? (
-		<div className={generationComposerSelectClassName("w-auto shrink-0")} aria-label="Nano Banana 2">
-			<GenerationBrandMark brand={selectedFamilyBrand} className="size-4 text-[0.5rem]" />
-			<span>Nano Banana 2</span>
-		</div>
-	) : ws.hasConfiguredRoutesForKind ? (
-		<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-			<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
-				<SelectTrigger
-					aria-label="模型名称"
-					className={generationComposerSelectClassName("min-w-32 max-w-56 shrink-0")}
-				>
-					<GenerationBrandMark brand={selectedFamilyBrand} className="size-4 text-[0.5rem]" />
-					<span>{selectedFamilyLabel}</span>
-				</SelectTrigger>
-				<SelectContent align="start">
-					{ws.visibleFamilies.map((family) => (
-						<SelectItem
-							key={family.id}
-							value={family.id}
-							textValue={displayGenerationLabelWithoutAlias(family.label)}
-						>
-							<span className="flex min-w-0 items-center gap-2">
-								<GenerationBrandMark
-									brand={generationFamilyBrand(family)}
-									className="size-4 text-[0.5rem]"
-								/>
-								<span className="min-w-0 truncate">
-									{displayGenerationLabelWithoutAlias(family.label)}
-								</span>
-							</span>
-						</SelectItem>
-					))}
-				</SelectContent>
-			</Select>
-			<GenerationModelRoutePicker
-				className="min-w-44 max-w-72 flex-1"
-				routes={ws.visibleFamilyRoutes}
-				selectedRoute={ws.selectedRoute}
-				selectedVersion={ws.selectedVersion}
-				versions={ws.visibleVersions}
-				onSelect={ws.updateModelRoute}
-			/>
-			<Button
-				type="button"
-				variant="ghost"
-				size="sm"
-				aria-label="打开模型文档"
-				className={generationComposerToolbarGhostButtonClassName("shrink-0")}
-				onClick={() => void openDocumentationUrl(ws.selectedRoute.docUrl)}
+	const modelControls =
+		ws.hasConfiguredRoutesForKind && kind === "image" ? (
+			<div
+				className={generationComposerSelectClassName("w-auto shrink-0")}
+				aria-label="Nano Banana 2"
 			>
-				<FileText className="size-4 shrink-0 text-muted-foreground" />
-				<span>文档</span>
-			</Button>
-		</div>
-	) : null;
+				<GenerationBrandMark brand={selectedFamilyBrand} className="size-4 text-[0.5rem]" />
+				<span>Nano Banana 2</span>
+			</div>
+		) : ws.hasConfiguredRoutesForKind ? (
+			<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+				<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
+					<SelectTrigger
+						aria-label="模型名称"
+						className={generationComposerSelectClassName("min-w-32 max-w-56 shrink-0")}
+					>
+						<GenerationBrandMark brand={selectedFamilyBrand} className="size-4 text-[0.5rem]" />
+						<span>{selectedFamilyLabel}</span>
+					</SelectTrigger>
+					<SelectContent align="start">
+						{ws.visibleFamilies.map((family) => (
+							<SelectItem
+								key={family.id}
+								value={family.id}
+								textValue={displayGenerationLabelWithoutAlias(family.label)}
+							>
+								<span className="flex min-w-0 items-center gap-2">
+									<GenerationBrandMark
+										brand={generationFamilyBrand(family)}
+										className="size-4 text-[0.5rem]"
+									/>
+									<span className="min-w-0 truncate">
+										{displayGenerationLabelWithoutAlias(family.label)}
+									</span>
+								</span>
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+				<GenerationModelRoutePicker
+					className="min-w-44 max-w-72 flex-1"
+					routes={ws.visibleFamilyRoutes}
+					selectedRoute={ws.selectedRoute}
+					selectedVersion={ws.selectedVersion}
+					versions={ws.visibleVersions}
+					onSelect={ws.updateModelRoute}
+				/>
+				<Button
+					type="button"
+					variant="ghost"
+					size="sm"
+					aria-label="打开模型文档"
+					className={generationComposerToolbarGhostButtonClassName("shrink-0")}
+					onClick={() => void openDocumentationUrl(ws.selectedRoute.docUrl)}
+				>
+					<FileText className="size-4 shrink-0 text-muted-foreground" />
+					<span>文档</span>
+				</Button>
+			</div>
+		) : null;
 	const generationEntries = ws.orderedGenerationEntries.filter((entry) => entry.kind === kind);
 	const isAssetSelectionControlled = Boolean(onToggleAsset);
 	// 归属类型：调用方显式优先，否则回退到由 taskType 推导（保持历史行为）。

@@ -514,7 +514,7 @@ const APIKeysPanel: React.FC = () => {
 										onChange={(event) =>
 											setCustomImageDraft((current) => ({ ...current, model: event.target.value }))
 										}
-									placeholder="nano-banana-2"
+										placeholder="nano-banana-2"
 									/>
 								</div>
 								<div className="grid gap-2">

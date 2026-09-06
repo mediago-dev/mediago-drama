@@ -61,7 +61,8 @@ const sameSelectedResourceKind = (
 	// A single planned asset can intentionally have one generated image per
 	// storyboard shot. Keep those records side by side; only replace the
 	// record for the exact same shot binding.
-	((current.shotIds ?? []).length === 0 || (next.shotIds ?? []).length === 0 ||
+	((current.shotIds ?? []).length === 0 ||
+		(next.shotIds ?? []).length === 0 ||
 		(new Set(current.shotIds ?? []).size === new Set(next.shotIds ?? []).size &&
 			new Set(current.shotIds ?? []).size > 0 &&
 			[...(current.shotIds ?? [])].every((shotId) => (next.shotIds ?? []).includes(shotId))));

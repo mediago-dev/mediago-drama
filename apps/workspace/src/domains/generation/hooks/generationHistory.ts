@@ -50,9 +50,9 @@ export const messageFromResponse = (
 	errorCode: response.errorCode,
 	errorType: response.errorType,
 	errorProvider: response.errorProvider,
-		errorModel: response.errorModel,
-		errorEndpoint: response.errorEndpoint,
-		errorHTTPStatus: response.errorHTTPStatus,
+	errorModel: response.errorModel,
+	errorEndpoint: response.errorEndpoint,
+	errorHTTPStatus: response.errorHTTPStatus,
 	retryable: response.retryable,
 });
 
@@ -71,9 +71,9 @@ const messageFromTask = (task: GenerationTask): ChatMessage => ({
 	errorCode: task.errorCode,
 	errorType: task.errorType,
 	errorProvider: task.errorProvider,
-		errorModel: task.errorModel,
-		errorEndpoint: task.errorEndpoint,
-		errorHTTPStatus: task.errorHTTPStatus,
+	errorModel: task.errorModel,
+	errorEndpoint: task.errorEndpoint,
+	errorHTTPStatus: task.errorHTTPStatus,
 	retryable: task.retryable,
 	updatedAt: task.updatedAt,
 });

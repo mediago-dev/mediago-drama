@@ -456,10 +456,13 @@ export const ProjectNavigator: React.FC<ProjectNavigatorProps> = ({ activeProjec
 		navigate("/");
 	}, [displayProject, navigate, setActiveProjectId, setWorkMode]);
 
-	const openGenerationKind = useCallback((kind: "image" | "video") => {
-		setWorkMode("studio");
-		navigate(studioTabPath(kind));
-	}, [navigate, setWorkMode]);
+	const openGenerationKind = useCallback(
+		(kind: "image" | "video") => {
+			setWorkMode("studio");
+			navigate(studioTabPath(kind));
+		},
+		[navigate, setWorkMode],
+	);
 
 	const openProjectSettings = useCallback(() => {
 		setActiveSettingsTab(projectSettingsGeneralTab);

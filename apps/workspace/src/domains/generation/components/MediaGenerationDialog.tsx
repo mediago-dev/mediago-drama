@@ -105,32 +105,31 @@ export const MediaGenerationDialog: React.FC<MediaGenerationDialogProps> = ({
 	const handleGenerationStart = useCallback(() => {
 		if (statusResourceKey) markGenerating(statusResourceKey);
 	}, [markGenerating, statusResourceKey]);
-	const handleGenerationComplete = useCallback((
-		_pendingId: string,
-		assets: GenerationAsset[],
-		sourceTaskId: string,
-	) => {
-		if (statusResourceKey) clearStatus(statusResourceKey);
-		// 第 04 步从资产卡发起时，不能只停在“生成历史”。首张结果会成为
-		// 当前资产版本，同时镜像绑定到同名的项目资源节点（角色/场景/道具），
-		// 让项目总览的资源树立即展示缩略图和可用镜头。
-		if (
-			request?.kind !== "image" ||
-			!projectId?.trim() ||
-			!statusResourceKey?.trim() ||
-			!request.selectedAssetResourceType
-		) {
-			return;
-		}
-		const asset = assets.find((item) => item.kind === "image" && Boolean(item.assetId?.trim()));
-		if (!asset) return;
-		void archiveProductionImageToResourceTree({
-			asset,
-			projectId,
-			request,
-			sourceTaskId,
-		});
-	}, [clearStatus, projectId, request, statusResourceKey]);
+	const handleGenerationComplete = useCallback(
+		(_pendingId: string, assets: GenerationAsset[], sourceTaskId: string) => {
+			if (statusResourceKey) clearStatus(statusResourceKey);
+			// 第 04 步从资产卡发起时，不能只停在“生成历史”。首张结果会成为
+			// 当前资产版本，同时镜像绑定到同名的项目资源节点（角色/场景/道具），
+			// 让项目总览的资源树立即展示缩略图和可用镜头。
+			if (
+				request?.kind !== "image" ||
+				!projectId?.trim() ||
+				!statusResourceKey?.trim() ||
+				!request.selectedAssetResourceType
+			) {
+				return;
+			}
+			const asset = assets.find((item) => item.kind === "image" && Boolean(item.assetId?.trim()));
+			if (!asset) return;
+			void archiveProductionImageToResourceTree({
+				asset,
+				projectId,
+				request,
+				sourceTaskId,
+			});
+		},
+		[clearStatus, projectId, request, statusResourceKey],
+	);
 	const handleGenerationError = useCallback(
 		(_pendingId: string, rawMessage?: string) => {
 			const notice = generationFailureNotice(rawMessage);

@@ -32,7 +32,6 @@ describe("default image model migration", () => {
 		});
 		expect(migrated.routeParams["dmx.seedance-2"]).toEqual({ duration: 5 });
 	});
-
 });
 
 const userMessage = (localId: string, content: string, offsetMs = 0): ChatMessage => ({

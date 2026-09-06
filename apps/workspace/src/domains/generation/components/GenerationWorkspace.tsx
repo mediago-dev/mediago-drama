@@ -491,61 +491,64 @@ export const GenerationWorkspace: React.FC<GenerationWorkspaceProps> = ({
 								{lockKind ? null : <ModeToggle compact kind={ws.kind} onChange={ws.setKind} />}
 								{ws.kind === "image" ? (
 									<div className={generationComposerSelectClassName()} aria-label="Nano Banana 2">
-										<GenerationBrandMark brand={selectedFamilyBrand} className="size-4 text-[0.5rem]" />
-										<span>Nano Banana 2</span>
-									</div>
-								) : (
-								<>
-								<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
-									<SelectTrigger
-										aria-label="模型名称"
-										className={generationComposerSelectClassName()}
-									>
 										<GenerationBrandMark
 											brand={selectedFamilyBrand}
 											className="size-4 text-[0.5rem]"
 										/>
-										<span>{selectedFamilyLabel}</span>
-									</SelectTrigger>
-									<SelectContent align="start">
-										{ws.visibleFamilies.map((family) => (
-											<SelectItem
-												key={family.id}
-												value={family.id}
-												textValue={displayGenerationLabelWithoutAlias(family.label)}
+										<span>Nano Banana 2</span>
+									</div>
+								) : (
+									<>
+										<Select value={ws.selectedFamily.id} onValueChange={ws.updateFamily}>
+											<SelectTrigger
+												aria-label="模型名称"
+												className={generationComposerSelectClassName()}
 											>
-												<span className="flex min-w-0 items-center gap-2">
-													<GenerationBrandMark
-														brand={generationFamilyBrand(family)}
-														className="size-4 text-[0.5rem]"
-													/>
-													<span className="min-w-0 truncate">
-														{displayGenerationLabelWithoutAlias(family.label)}
-													</span>
-												</span>
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-								<GenerationModelRoutePicker
-									routes={ws.visibleFamilyRoutes}
-									selectedRoute={ws.selectedRoute}
-									selectedVersion={ws.selectedVersion}
-									versions={ws.visibleVersions}
-									onSelect={ws.updateModelRoute}
-								/>
-								<Button
-									type="button"
-									variant="ghost"
-									size="sm"
-									aria-label="打开模型文档"
-									className={generationComposerToolbarGhostButtonClassName()}
-									onClick={() => void openDocumentationUrl(ws.selectedRoute.docUrl)}
-								>
-									<FileText className="size-4 shrink-0 text-muted-foreground" />
-									<span>文档</span>
-								</Button>
-								</>
+												<GenerationBrandMark
+													brand={selectedFamilyBrand}
+													className="size-4 text-[0.5rem]"
+												/>
+												<span>{selectedFamilyLabel}</span>
+											</SelectTrigger>
+											<SelectContent align="start">
+												{ws.visibleFamilies.map((family) => (
+													<SelectItem
+														key={family.id}
+														value={family.id}
+														textValue={displayGenerationLabelWithoutAlias(family.label)}
+													>
+														<span className="flex min-w-0 items-center gap-2">
+															<GenerationBrandMark
+																brand={generationFamilyBrand(family)}
+																className="size-4 text-[0.5rem]"
+															/>
+															<span className="min-w-0 truncate">
+																{displayGenerationLabelWithoutAlias(family.label)}
+															</span>
+														</span>
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+										<GenerationModelRoutePicker
+											routes={ws.visibleFamilyRoutes}
+											selectedRoute={ws.selectedRoute}
+											selectedVersion={ws.selectedVersion}
+											versions={ws.visibleVersions}
+											onSelect={ws.updateModelRoute}
+										/>
+										<Button
+											type="button"
+											variant="ghost"
+											size="sm"
+											aria-label="打开模型文档"
+											className={generationComposerToolbarGhostButtonClassName()}
+											onClick={() => void openDocumentationUrl(ws.selectedRoute.docUrl)}
+										>
+											<FileText className="size-4 shrink-0 text-muted-foreground" />
+											<span>文档</span>
+										</Button>
+									</>
 								)}
 							</>
 						}

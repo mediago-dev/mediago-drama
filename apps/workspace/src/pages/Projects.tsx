@@ -556,13 +556,20 @@ export const Projects: React.FC = () => {
 		const top = Math.min(selection.startY, selection.currentY);
 		const bottom = Math.max(selection.startY, selection.currentY);
 		const next = new Set<string>();
-		projectSurfaceRef.current?.querySelectorAll<HTMLElement>("[data-project-card-id]").forEach((card) => {
-			const bounds = card.getBoundingClientRect();
-			if (bounds.left <= right && bounds.right >= left && bounds.top <= bottom && bounds.bottom >= top) {
-				const projectId = card.dataset.projectCardId;
-				if (projectId) next.add(projectId);
-			}
-		});
+		projectSurfaceRef.current
+			?.querySelectorAll<HTMLElement>("[data-project-card-id]")
+			.forEach((card) => {
+				const bounds = card.getBoundingClientRect();
+				if (
+					bounds.left <= right &&
+					bounds.right >= left &&
+					bounds.top <= bottom &&
+					bounds.bottom >= top
+				) {
+					const projectId = card.dataset.projectCardId;
+					if (projectId) next.add(projectId);
+				}
+			});
 		setSelectedIds(next);
 	};
 
@@ -1571,7 +1578,8 @@ const retryProjectRemoval = async (operation: () => Promise<unknown>) => {
 			if (status === 404) return;
 			lastError = error;
 			if (status !== undefined && status < 500) throw error;
-			if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+			if (attempt < 2)
+				await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
 		}
 	}
 	throw lastError;
