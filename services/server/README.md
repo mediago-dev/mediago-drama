@@ -2,6 +2,14 @@
 
 HTTP server and stdio MCP entrypoints for the MediaGo Drama workspace.
 
+Open-source development uses `~/mediago-drama-oss-dev/workspace` from
+`configs/server.yaml`. Without an explicit workspace, the server uses
+`<os.UserConfigDir()>/mediago-drama-oss/workspace`. `MEDIAGO_WORKSPACE_DIR`
+overrides the YAML workspace in the HTTP server and all stdio MCP entrypoints.
+Existing data in `mediago-drama` and `mediago-drama-dev` is not imported automatically.
+Database initialization failures stop HTTP startup before background workers run;
+the startup error includes the resolved workspace database path.
+
 Multimodal provider integrations live in
 `github.com/mediago-dev/mediago-drama/packages/core`; server code should
 import `core` when they need those capabilities.

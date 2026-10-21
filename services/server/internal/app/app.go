@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -78,6 +79,18 @@ type Handler struct {
 	api *apiHandler
 }
 
+// ReadinessError reports initialization failures with the workspace database path.
+func (handler *Handler) ReadinessError() error {
+	if handler == nil || handler.api == nil {
+		return errors.New("app handler is nil")
+	}
+	if err := handler.api.ReadinessError(); err != nil {
+		return fmt.Errorf("initializing workspace %q (database %q): %w",
+			handler.api.workspaceState.Dir(), handler.api.workspaceState.DatabasePath(), err)
+	}
+	return nil
+}
+
 // Close stops app workers and flushes buffered resources.
 func (handler *Handler) Close() error {
 	if handler == nil || handler.api == nil {
@@ -91,10 +104,10 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 
 	api := newAPIHandler(config)
-	if !config.DisableGenerationWorker {
+	if api.ReadinessError() == nil && !config.DisableGenerationWorker {
 		api.startGenerationWorker(config)
 	}
-	if !config.DisableWorkspaceWatcher {
+	if api.ReadinessError() == nil && !config.DisableWorkspaceWatcher {
 		api.startWorkspaceFileWatcher(config)
 	}
 	mcpHandler := httphandlers.NewMCP(api.agentBridgeToken, func(_ *http.Request) *mcp.Server {

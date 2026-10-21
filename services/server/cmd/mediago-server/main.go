@@ -197,6 +197,11 @@ func run(args []string) error {
 	}
 	handler := server.NewHandlerWithConfig(staticFS, appConfig)
 	defer closeServerHandler(handler)
+	if readiness, ok := handler.(interface{ ReadinessError() error }); ok {
+		if err := readiness.ReadinessError(); err != nil {
+			return err
+		}
+	}
 	httpServer := &http.Server{
 		Addr:    addr,
 		Handler: handler,

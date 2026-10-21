@@ -79,19 +79,21 @@ type DocumentMCPConfig struct {
 	SelectionText    string `yaml:"selection_text"`
 }
 
-// Load reads a YAML server configuration file over the built-in defaults.
+// Load reads YAML over defaults, then applies the workspace environment override.
 func Load(path string) (ServerConfig, error) {
 	config := defaults()
 	path = strings.TrimSpace(path)
-	if path == "" {
-		return config, nil
+	if path != "" {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return config, fmt.Errorf("reading config %s: %w", path, err)
+		}
+		if err := yaml.Unmarshal(raw, &config); err != nil {
+			return config, fmt.Errorf("parsing config %s: %w", path, err)
+		}
 	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return config, fmt.Errorf("reading config %s: %w", path, err)
-	}
-	if err := yaml.Unmarshal(raw, &config); err != nil {
-		return config, fmt.Errorf("parsing config %s: %w", path, err)
+	if workspaceDir := strings.TrimSpace(os.Getenv("MEDIAGO_WORKSPACE_DIR")); workspaceDir != "" {
+		config.WorkspaceDir = workspaceDir
 	}
 	return normalize(config), nil
 }

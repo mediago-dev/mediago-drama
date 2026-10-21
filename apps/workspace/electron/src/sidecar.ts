@@ -2,7 +2,14 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { agentsDir, isPackaged, resourceRoot, serverBinaryPath, toolsDir } from "./paths.js";
+import {
+	agentsDir,
+	appDataPaths,
+	isPackaged,
+	resourceRoot,
+	serverBinaryPath,
+	toolsDir,
+} from "./paths.js";
 
 let child: ChildProcessWithoutNullStreams | null = null;
 let connection: SidecarConnection | null = null;
@@ -109,6 +116,7 @@ const sidecarEnvironment = (
 
 	return {
 		...inherited,
+		MEDIAGO_WORKSPACE_DIR: configuredValue("MEDIAGO_WORKSPACE_DIR", appDataPaths().workspace),
 		MEDIAGO_AGENT_ID: configuredValue("MEDIAGO_AGENT_ID", platformConfig.agent || "opencode"),
 		MEDIAGO_MODEL_PLATFORM: configuredValue(
 			"MEDIAGO_MODEL_PLATFORM",

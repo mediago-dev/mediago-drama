@@ -708,7 +708,10 @@ func TestAliyunWanSchedulerLimitsConcurrency(t *testing.T) {
 			defer waitGroup.Done()
 			_, err := scheduler.run(context.Background(), func(context.Context) (generation.Response, error) {
 				current := active.Add(1)
-				for current > maxActive.Load() && !maxActive.CompareAndSwap(maxActive.Load(), current) {
+				for observed := maxActive.Load(); current > observed; observed = maxActive.Load() {
+					if maxActive.CompareAndSwap(observed, current) {
+						break
+					}
 				}
 				time.Sleep(20 * time.Millisecond)
 				active.Add(-1)

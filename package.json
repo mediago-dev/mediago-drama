@@ -9,6 +9,7 @@
     "build:server": "task build:server",
     "prepare-agent": "task prepare-agent",
     "dev": "task dev",
+    "dev:web": "task dev:web",
     "dev:server": "task dev:server",
     "build:workspace": "task workspace:build",
     "workspace:dev": "task workspace:dev",

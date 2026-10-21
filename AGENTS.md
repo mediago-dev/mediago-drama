@@ -1,3 +1,15 @@
+# 当前 One CLI 工作流
+
+本仓库已迁移到 One CLI 的 TOML v2 工作区。以下约定优先于下方旧模板的工具入口说明；旧模板受管片段保留供架构参考。
+
+- 工作区根目录由 `one.manifest.toml` 标识，项目任务集中在根 `mise.toml`。
+- 先用 `one run --list` 查看任务；使用 `one run <task> -p <project>` 执行子项目任务。
+- `one dev` 同时启动服务端和 Electron 桌面端，桌面端等待服务端就绪；`one run dev:web` 启动浏览器开发环境。需要时可单独运行 `one run dev:server` 或 `one run dev:desktop`。
+- `one build`、`one check`、`one test` 复用既有 Taskfile 流程；`one run check:scripts` 检查发布脚本。
+- 修改 package.json scripts 或 Taskfile 后运行 `one init mise`，保留根 mise 中的定制流程和资源同步依赖。
+- 应用版本只在 `apps/workspace/package.json` 中维护；manifest 不保存版本、模板或部署配置。
+- 保留已有 Husky、lint-staged 和 commitlint 规则，不用 `one init hooks` 自动覆盖定制检查。
+
 <!-- one ai-guides:start -->
 # Codex 工作区 AI 指南
 

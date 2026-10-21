@@ -276,7 +276,7 @@ func TestGenerateChatImageReturnsSuccessfulImagesWhenSomeRequestsFail(t *testing
 func TestGenerateChatImageReturnsRealErrorWhenAllRequestsFail(t *testing.T) {
 	const imageCount = 3
 	var requestCount atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		requestCount.Add(1)
 		writer.Header().Set("Content-Type", "application/json")
 		writer.WriteHeader(http.StatusInternalServerError)

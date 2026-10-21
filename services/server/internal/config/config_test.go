@@ -106,6 +106,36 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadWorkspaceEnvironmentOverride(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		yaml bool
+	}{
+		{name: "defaults"},
+		{name: "yaml", yaml: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			workspaceDir := filepath.Join(root, "custom workspace")
+			t.Setenv("MEDIAGO_WORKSPACE_DIR", " "+workspaceDir+" ")
+			path := ""
+			if test.yaml {
+				path = filepath.Join(root, "server.yaml")
+				if err := os.WriteFile(path, []byte("workspace_dir: ~/legacy/workspace\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			config, err := Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if config.WorkspaceDir != workspaceDir {
+				t.Fatalf("WorkspaceDir = %q, want %q", config.WorkspaceDir, workspaceDir)
+			}
+		})
+	}
+}
+
 func TestLoadNormalizesUnknownPromptInstructionDelivery(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "server.yaml")
 	if err := os.WriteFile(path, []byte("prompt:\n  instruction_delivery: unsupported\n"), 0o600); err != nil {

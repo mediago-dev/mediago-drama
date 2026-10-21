@@ -180,6 +180,12 @@ tasks:
       - task -d packages/vendor prepare:generation-clis GENERATION_CLIS="{{.GENERATION_CLIS}}" PLATFORM="{{.PLATFORM}}"
 
   dev:
+    desc: Run the server and Electron desktop app together
+    deps:
+      - task: dev:server
+      - task: dev:desktop
+
+  dev:web:
     desc: Run the built server binary and web workspace for browser development
     deps:
       - task: build:server
@@ -215,12 +221,13 @@ tasks:
         pnpm -C apps/workspace dev
 
   dev:desktop:
-    desc: Run the Electron desktop app against an external dev server
+    desc: Wait for the dev server and run the Electron desktop app
     env:
       VITE_API_PROXY_TARGET: "{{.DEV_SERVER_URL}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.DEV_SERVER_PORT}}"
       VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL: "{{.DEV_PROMPT_PACK_PUBLISH_URL}}"
     cmds:
+      - pnpm -C apps/workspace exec wait-on --timeout 300000 --httpTimeout 2000 "http-get://127.0.0.1:{{.DEV_SERVER_PORT}}/api/v1/health"
       - pnpm -C apps/workspace electron:dev
 
   dev:server:

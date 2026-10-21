@@ -25,7 +25,7 @@ import {
 } from "./ipc-contract.js";
 import { assertTrustedIpcSender, normalizeDevelopmentRendererURL } from "./ipc-security.js";
 import { showDesktopSystemNotification } from "./desktop-notifications.js";
-import { preloadPath, rendererDistDir } from "./paths.js";
+import { configureAppDataPaths, preloadPath, rendererDistDir } from "./paths.js";
 import { parsePromptPackSaveRequest } from "./prompt-pack-save.js";
 import { normalizeExternalURL, resolveRendererNavigation } from "./navigation-security.js";
 import {
@@ -35,6 +35,8 @@ import {
 } from "./renderer-protocol.js";
 import { type SidecarConnection, startServerSidecar, stopServerSidecar } from "./sidecar.js";
 import { registerDesktopUpdater } from "./updater.js";
+
+configureAppDataPaths();
 
 protocol.registerSchemesAsPrivileged([
 	{

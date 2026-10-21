@@ -20,6 +20,11 @@ vi.mock("node:fs", () => {
 });
 vi.mock("./paths.js", () => ({
 	agentsDir: () => "/resources/agents",
+	appDataPaths: () => ({
+		workspace: mocks.isPackaged
+			? "/data/mediago-drama-oss/workspace"
+			: "/home/mediago-drama-oss-dev/workspace",
+	}),
 	isPackaged: () => mocks.isPackaged,
 	resourceRoot: () => "/resources",
 	serverBinaryPath: () => "/resources/bin/mediago-server",
@@ -67,6 +72,7 @@ describe("server sidecar lifecycle", () => {
 		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_BUNDLE_REV");
 		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_SCHEMA_VERSION");
 		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_INSTANCE_TOKEN");
+		expect(spawnOptions.env?.MEDIAGO_WORKSPACE_DIR).toBe("/home/mediago-drama-oss-dev/workspace");
 	});
 
 	it("refuses to start when the server sidecar is missing", async () => {
@@ -83,6 +89,7 @@ describe("server sidecar lifecycle", () => {
 		mocks.isPackaged = true;
 		vi.stubEnv("ELECTRON_RENDERER_URL", "https://attacker.invalid");
 		vi.stubEnv("MEDIAGO_SERVER_PORT", "59999");
+		vi.stubEnv("MEDIAGO_WORKSPACE_DIR", "/official/workspace");
 		vi.stubEnv("MEDIAGO_SIDECAR_TOKEN", "attacker-token");
 		vi.stubEnv("MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL", "https://attacker.invalid");
 		vi.stubEnv("MEDIAGO_PROMPT_PACK_SIGNING_PUBLIC_KEY", "attacker-key");
@@ -102,6 +109,7 @@ describe("server sidecar lifecycle", () => {
 		expect(spawnOptions.env).toMatchObject({
 			MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: "",
 			MEDIAGO_SERVER_PORT: "48273",
+			MEDIAGO_WORKSPACE_DIR: "/data/mediago-drama-oss/workspace",
 			MEDIAGO_SIDECAR_MODE: "1",
 		});
 		expect(connection?.origin).toBe("http://127.0.0.1:48273");
@@ -115,6 +123,14 @@ describe("server sidecar lifecycle", () => {
 		expect(spawnOptions.env).not.toHaveProperty("HTTPS_PROXY");
 		expect(spawnOptions.env).not.toHaveProperty("SSL_CERT_FILE");
 		expect(spawnOptions.env).not.toHaveProperty("SSLKEYLOGFILE");
+	});
+
+	it("allows an explicit development workspace override", async () => {
+		vi.stubEnv("MEDIAGO_WORKSPACE_DIR", "/custom/workspace");
+		mocks.spawn.mockReturnValue(new FakeChildProcess());
+		const sidecar = await import("./sidecar.js");
+		sidecar.startServerSidecar();
+		expect(mocks.spawn.mock.calls[0]?.[2].env.MEDIAGO_WORKSPACE_DIR).toBe("/custom/workspace");
 	});
 
 	it("leaves the builtin sidecar to the development server only in development", async () => {

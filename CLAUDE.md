@@ -1,3 +1,5 @@
+当前工作区使用 `one.manifest.toml` 和根 `mise.toml`。请先阅读 [AGENTS.md](./AGENTS.md) 顶部的当前 One CLI 工作流；其中的迁移约定优先于下方旧模板的工具入口说明。
+
 <!-- one ai-guides:start -->
 # Claude Code 工作区 AI 指南
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,42 @@ import (
 	corepricing "github.com/mediago-dev/mediago-drama/packages/core/pkg/pricing"
 	serverconfig "github.com/mediago-dev/mediago-drama/services/server/internal/config"
 )
+
+func TestRunRejectsUninitializedWorkspaceBeforeServing(t *testing.T) {
+	root := t.TempDir()
+	blocked := filepath.Join(root, "blocked")
+	if err := os.WriteFile(blocked, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// An occupied port also bounds the regression case where startup ignores readiness.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	workspaceDir := filepath.Join(blocked, "workspace")
+	raw, err := json.Marshal(map[string]any{
+		"workspace_dir": workspaceDir,
+		"log_path":      filepath.Join(root, "server.log"),
+		"port":          listener.Addr().(*net.TCPAddr).Port,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(root, "server.yaml")
+	if err := os.WriteFile(configPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("MEDIAGO_WORKSPACE_DIR", "")
+	t.Setenv("MEDIAGO_SERVER_PORT", "")
+	t.Setenv("MEDIAGO_SIDECAR_MODE", "0")
+	t.Setenv("ONE_INTERNAL_API_URL", "")
+	t.Setenv("ONE_INTERNAL_API_TOKEN", "")
+	err = run([]string{"--config", configPath})
+	if err == nil || !strings.Contains(err.Error(), "initializing workspace") || !strings.Contains(err.Error(), "app.db") {
+		t.Fatalf("run() error = %v, want workspace initialization failure with database path", err)
+	}
+}
 
 func TestApplyEnvOverrides(t *testing.T) {
 	t.Setenv("MEDIAGO_AGENT_ID", "opencode")
