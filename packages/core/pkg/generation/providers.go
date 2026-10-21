@@ -29,12 +29,10 @@ func Providers() []ProviderInfo {
 		{ID: ProviderDeepSeek, Label: labels[ProviderDeepSeek], ProviderType: ProviderTypeOfficial},
 		{ID: ProviderVolcengine, Label: labels[ProviderVolcengine], ProviderType: ProviderTypeOfficial},
 		{ID: ProviderAliyun, Label: labels[ProviderAliyun], ProviderType: ProviderTypeOfficial},
-		{ID: ProviderMediago, Label: labels[ProviderMediago], ProviderType: ProviderTypeAggregator},
-		{ID: ProviderDMX, Label: labels[ProviderDMX], ProviderType: ProviderTypeAggregator},
+
 		{ID: ProviderOpenRouter, Label: labels[ProviderOpenRouter], ProviderType: ProviderTypeAggregator},
 		{ID: ProviderJimeng, Label: labels[ProviderJimeng], ProviderType: ProviderTypeLocal},
 		{ID: ProviderLibTV, Label: labels[ProviderLibTV], ProviderType: ProviderTypeLocal},
-		{ID: ProviderXiaoyunque, Label: labels[ProviderXiaoyunque], ProviderType: ProviderTypeLocal},
 	}
 
 	result := make([]ProviderInfo, len(providers))

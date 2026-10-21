@@ -13,12 +13,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
-	corepricing "github.com/mediago-dev/mediago-drama/packages/core/pkg/pricing"
 	server "github.com/mediago-dev/mediago-drama/services/server/internal/app"
 	appagent "github.com/mediago-dev/mediago-drama/services/server/internal/app/agent"
 	serverconfig "github.com/mediago-dev/mediago-drama/services/server/internal/config"
@@ -26,8 +24,6 @@ import (
 	servicesettings "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/workspace"
 )
-
-var defaultPromptPackPolicy = "marketplace"
 
 // @title MediaGo Drama API
 // @version 0.0.0
@@ -40,7 +36,7 @@ var defaultPromptPackPolicy = "marketplace"
 // @tag.description Model Context Protocol HTTP endpoints.
 // @tag.name Capabilities
 // @tag.description Capability manifests exposed by the server.
-// @tag.name Billing
+// @tag.name Usage
 // @tag.description Usage and cost summaries.
 // @tag.name Projects
 // @tag.description Workspace project lifecycle APIs.
@@ -109,11 +105,16 @@ func run(args []string) error {
 		return fmt.Errorf("loading embedded workspace assets: %w", err)
 	}
 	workspaceDir := server.ResolveWorkspaceDir(config.WorkspaceDir)
+	// Never share Codex credentials, sessions or configuration with another edition.
+	codexHome := filepath.Join(workspaceDir, ".mediago-drama", "runtime", "agents", "codex", "account-home")
+	if err := os.Setenv("CODEX_HOME", codexHome); err != nil {
+		return fmt.Errorf("configuring isolated Codex home: %w", err)
+	}
 	logPath := config.LogPath
 	if strings.TrimSpace(logPath) == "" {
 		logPath = filepath.Join(workspaceDir, ".mediago-drama", "logs", "server.log")
 	}
-	acpLogPath := filepath.Join(filepath.Dir(logPath), "acp.log")
+	runtimeLogPath := filepath.Join(filepath.Dir(logPath), "runtime.log")
 	logPath, closeLog, err := platformlogger.ConfigureDefaultLogger(logPath, config.LogLevel)
 	if err != nil {
 		return fmt.Errorf("configuring logger: %w", err)
@@ -123,18 +124,25 @@ func run(args []string) error {
 			slog.Error("closing log file", "error", err)
 		}
 	}()
-	acpLogger, acpLogPath, closeACPLog, err := platformlogger.NewComponentLogger("acp", acpLogPath)
+	runtimeLogger, runtimeLogPath, closeRuntimeLog, err := platformlogger.NewComponentLogger("runtime", runtimeLogPath)
 	if err != nil {
-		return fmt.Errorf("configuring ACP logger: %w", err)
+		return fmt.Errorf("configuring Runtime logger: %w", err)
 	}
 	defer func() {
-		if err := closeACPLog(); err != nil {
-			slog.Error("closing ACP log file", "error", err)
+		if err := closeRuntimeLog(); err != nil {
+			slog.Error("closing Runtime log file", "error", err)
 		}
 	}()
-	appagent.SetACPLogger(acpLogger)
+	appagent.SetRuntimeLogger(runtimeLogger)
 
 	addr := net.JoinHostPort(config.Host, strconv.Itoa(config.Port))
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("listening for workspace: %w", err)
+	}
+	defer listener.Close()
+	config.Port = listener.Addr().(*net.TCPAddr).Port
+	addr = net.JoinHostPort(config.Host, strconv.Itoa(config.Port))
 	bridgeAddr := net.JoinHostPort(agentBridgeHost(config.Host), strconv.Itoa(config.Port))
 	bridgeToken, err := generateServeInternalToken()
 	if err != nil {
@@ -147,56 +155,42 @@ func run(args []string) error {
 	if err := os.Setenv("ONE_INTERNAL_API_TOKEN", bridgeToken); err != nil {
 		return fmt.Errorf("exporting ONE_INTERNAL_API_TOKEN: %w", err)
 	}
-	billingPrices, err := loadBillingPrices(config.Billing.PriceOverlayPath, configPath)
-	if err != nil {
-		return err
-	}
-	protectedPackImporterPath, err := resolveProtectedPackImporterPath()
-	if err != nil {
-		return err
-	}
-	allowUnprotectedPackImport, err := unprotectedPromptPackImportAllowed()
-	if err != nil {
-		return err
-	}
 	sidecarToken, err := configuredSidecarToken()
 	if err != nil {
 		return err
 	}
 	appConfig := server.Config{
-		Host:                       config.Host,
-		Port:                       config.Port,
-		WorkspaceDir:               workspaceDir,
-		ACPCommand:                 config.ACPCommand,
-		AgentID:                    config.Agent.ID,
-		AgentBinDir:                config.Agent.BinDir,
-		ModelPlatforms:             config.ModelPlatforms,
-		GenerationCLIs:             config.GenerationCLIs,
-		MediagoBaseURL:             config.MediagoBaseURL,
-		SidecarToken:               sidecarToken,
-		ProtectedPackImporterPath:  protectedPackImporterPath,
-		AllowUnprotectedPackImport: allowUnprotectedPackImport,
-		FFmpegPath:                 config.FFmpeg.Path,
-		FFmpegBinDir:               config.FFmpeg.BinDir,
-		JimengBinPath:              config.Jimeng.Path,
-		JimengBinDir:               config.Jimeng.BinDir,
-		LibTVBinPath:               config.LibTV.Path,
-		LibTVBinDir:                config.LibTV.BinDir,
-		LibTVProjectID:             config.LibTV.ProjectID,
-		PippitBinPath:              config.Pippit.Path,
-		PippitBinDir:               config.Pippit.BinDir,
-		DocumentMCPConfigPath:      configPath,
-		AgentBridgeURL:             internalAPIURL + "/api/v1/internal/agent/spawn",
-		AgentBridgeToken:           bridgeToken,
-		PromptMaxSectionChars:      config.Prompt.MaxSectionChars,
-		PromptDelivery:             config.Prompt.InstructionDelivery,
-		BillingPrices:              billingPrices,
-	}
-	if err := configureEdition(&appConfig); err != nil {
-		return fmt.Errorf("configuring server edition: %w", err)
+		Host:           config.Host,
+		Port:           config.Port,
+		WorkspaceDir:   workspaceDir,
+		CodexPath:      config.CodexPath,
+		AgentID:        config.Agent.ID,
+		AgentBinDir:    config.Agent.BinDir,
+		ModelPlatforms: config.ModelPlatforms,
+		GenerationCLIs: config.GenerationCLIs,
+
+		SidecarToken:   sidecarToken,
+		FFmpegPath:     config.FFmpeg.Path,
+		FFmpegBinDir:   config.FFmpeg.BinDir,
+		JimengBinPath:  config.Jimeng.Path,
+		JimengBinDir:   config.Jimeng.BinDir,
+		LibTVBinPath:   config.LibTV.Path,
+		LibTVBinDir:    config.LibTV.BinDir,
+		LibTVProjectID: config.LibTV.ProjectID,
+
+		DocumentMCPConfigPath: configPath,
+		AgentBridgeURL:        internalAPIURL + "/api/v1/internal/agent/spawn",
+		AgentBridgeToken:      bridgeToken,
+		PromptMaxSectionChars: config.Prompt.MaxSectionChars,
+		PromptDelivery:        config.Prompt.InstructionDelivery,
 	}
 	handler := server.NewHandlerWithConfig(staticFS, appConfig)
 	defer closeServerHandler(handler)
+	if readiness, ok := handler.(interface{ ReadinessError() error }); ok {
+		if err := readiness.ReadinessError(); err != nil {
+			return err
+		}
+	}
 	httpServer := &http.Server{
 		Addr:    addr,
 		Handler: handler,
@@ -206,14 +200,17 @@ func run(args []string) error {
 	}
 
 	fmt.Printf("Serving workspace at http://%s\n", addr)
+	if sidecarToken != "" {
+		fmt.Printf("MEDIAGO_SIDECAR_READY http://%s\n", addr)
+	}
 	fmt.Printf("MCP endpoint: http://%s/mcp\n", addr)
 	printDevelopmentDocsURL(addr)
 	fmt.Printf("Workspace: %s\n", workspaceDir)
 	fmt.Printf("Logs: %s\n", logPath)
-	fmt.Printf("ACP logs: %s\n", acpLogPath)
-	fmt.Printf("Agent runtime: acp\n")
+	fmt.Printf("Runtime logs: %s\n", runtimeLogPath)
+	fmt.Printf("Agent runtime: codex app-server\n")
 	fmt.Printf("Agent backend: %s (%s)\n", displayAgentID(config.Agent.ID), displayAgentMode(config.Agent.BinDir))
-	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("serving workspace: %w", err)
 	}
 	return nil
@@ -227,31 +224,6 @@ func closeServerHandler(handler http.Handler) {
 	if err := closer.Close(); err != nil {
 		slog.Error("closing server handler", "error", err)
 	}
-}
-
-func loadBillingPrices(overlayPath string, configPath string) (corepricing.Table, error) {
-	overlayPath = strings.TrimSpace(overlayPath)
-	if overlayPath == "" {
-		return corepricing.Default(), nil
-	}
-	resolvedPath := resolveConfigRelativePath(overlayPath, configPath)
-	file, err := os.Open(resolvedPath)
-	if err != nil {
-		return nil, fmt.Errorf("opening billing price overlay %s: %w", resolvedPath, err)
-	}
-	defer file.Close()
-	table, err := corepricing.OverlayJSON(corepricing.Default(), file)
-	if err != nil {
-		return nil, fmt.Errorf("loading billing price overlay %s: %w", resolvedPath, err)
-	}
-	return table, nil
-}
-
-func resolveConfigRelativePath(path string, configPath string) string {
-	if filepath.IsAbs(path) || strings.TrimSpace(configPath) == "" {
-		return path
-	}
-	return filepath.Join(filepath.Dir(configPath), path)
 }
 
 func shutdownOnStdinClose(httpServer *http.Server) {
@@ -289,9 +261,7 @@ func applyEnvOverrides(config *serverconfig.ServerConfig) error {
 		}
 		config.GenerationCLIs = ids
 	}
-	if value := strings.TrimSpace(os.Getenv("MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL")); value != "" {
-		config.MediagoBaseURL = strings.TrimRight(value, "/")
-	}
+
 	if value := strings.TrimSpace(os.Getenv("MEDIAGO_FFMPEG_PATH")); value != "" {
 		config.FFmpeg.Path = value
 	}
@@ -313,12 +283,7 @@ func applyEnvOverrides(config *serverconfig.ServerConfig) error {
 	if value := strings.TrimSpace(os.Getenv("MEDIAGO_LIBTV_PROJECT_ID")); value != "" {
 		config.LibTV.ProjectID = value
 	}
-	if value := strings.TrimSpace(os.Getenv("MEDIAGO_PIPPIT_PATH")); value != "" {
-		config.Pippit.Path = value
-	}
-	if value := strings.TrimSpace(os.Getenv("MEDIAGO_PIPPIT_BIN_DIR")); value != "" {
-		config.Pippit.BinDir = value
-	}
+
 	if value := strings.TrimSpace(os.Getenv("MEDIAGO_SERVER_PORT")); value != "" {
 		port, err := parseServerPort(value)
 		if err != nil {
@@ -351,9 +316,7 @@ func applyPackagedToolDefaults(config *serverconfig.ServerConfig) {
 	if strings.TrimSpace(config.LibTV.BinDir) == "" {
 		config.LibTV.BinDir = toolsDir
 	}
-	if strings.TrimSpace(config.Pippit.BinDir) == "" {
-		config.Pippit.BinDir = toolsDir
-	}
+
 }
 
 func applySidecarDefaults(config *serverconfig.ServerConfig) {
@@ -387,56 +350,6 @@ func packagedToolsDir() (string, bool) {
 	return candidate, true
 }
 
-func resolveProtectedPackImporterPath() (string, error) {
-	if _, err := promptPackPolicy(); err != nil {
-		return "", err
-	}
-	if configured := strings.TrimSpace(os.Getenv("MEDIAGO_PROMPT_PACK_IMPORTER_PATH")); configured != "" {
-		return configured, nil
-	}
-	toolsDir, ok := packagedToolsDir()
-	if !ok {
-		return "", nil
-	}
-	candidate := filepath.Join(toolsDir, "mediago-rights", protectedPackImporterExecutableName())
-	info, err := os.Stat(candidate)
-	if err != nil || !info.Mode().IsRegular() {
-		return "", nil
-	}
-	return candidate, nil
-}
-
-func unprotectedPromptPackImportAllowed() (bool, error) {
-	policy, err := promptPackPolicy()
-	if err != nil {
-		return false, err
-	}
-	return policy == "partner", nil
-}
-
-func promptPackPolicy() (string, error) {
-	policy := strings.ToLower(strings.TrimSpace(defaultPromptPackPolicy))
-	if policy == "" {
-		policy = "marketplace"
-	}
-	switch policy {
-	case "marketplace", "partner":
-		return policy, nil
-	default:
-		return "", fmt.Errorf(
-			"invalid embedded prompt-pack policy %q: expected marketplace or partner",
-			policy,
-		)
-	}
-}
-
-func protectedPackImporterExecutableName() string {
-	if runtime.GOOS == "windows" {
-		return "mediago-rights.exe"
-	}
-	return "mediago-rights"
-}
-
 func exitOnStdinCloseEnabled() bool {
 	return truthyEnvValue(os.Getenv("MEDIAGO_EXIT_ON_STDIN_CLOSE"))
 }
@@ -455,8 +368,8 @@ func parseServerPort(value string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if port <= 0 || port > 65535 {
-		return 0, fmt.Errorf("port must be between 1 and 65535")
+	if port < 0 || port > 65535 {
+		return 0, fmt.Errorf("port must be between 0 and 65535")
 	}
 	return port, nil
 }

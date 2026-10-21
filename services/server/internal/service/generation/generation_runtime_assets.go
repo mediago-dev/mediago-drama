@@ -73,8 +73,7 @@ func (workflow *GenerationService) resolveGenerationReferences(
 
 func routeSupportsAudioReference(route coregeneration.ModelRoute) bool {
 	return route.Kind == coregeneration.KindVideo &&
-		(route.Adapter == coregeneration.AdapterJimengCLIVideo ||
-			route.Adapter == coregeneration.AdapterPippitCLIVideo)
+		route.Adapter == coregeneration.AdapterJimengCLIVideo
 }
 
 func (workflow *GenerationService) audioReferenceValue(asset media.MediaAsset) (string, error) {

@@ -1,9 +1,9 @@
 import { Check, Circle, LoaderCircle, X } from "lucide-react";
 import type React from "react";
-import type { AgentACPPlanEntry } from "@/domains/agent/stores";
+import type { AgentRuntimePlanEntry } from "@/domains/agent/stores";
 import { cn } from "@/shared/lib/utils";
 
-export const PlanBlock: React.FC<{ content: string; entries?: AgentACPPlanEntry[] }> = ({
+export const PlanBlock: React.FC<{ content: string; entries?: AgentRuntimePlanEntry[] }> = ({
 	content,
 	entries,
 }) => {

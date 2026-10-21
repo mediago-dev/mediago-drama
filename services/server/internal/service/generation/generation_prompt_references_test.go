@@ -146,7 +146,7 @@ func TestCreateVideoGenerationKeepsStoredPromptAndRewritesProviderPrompt(t *test
 	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
 	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
 		values: map[string]string{
-			coregeneration.ProviderDMX: "sk-video",
+			coregeneration.ProviderVolcengine: "sk-video",
 		},
 	})
 	mediaAssets := media.NewMediaAssets(dbPath, t.TempDir())
@@ -154,7 +154,7 @@ func TestCreateVideoGenerationKeepsStoredPromptAndRewritesProviderPrompt(t *test
 	provider := &blockingVideoGenerateProvider{
 		started:  make(chan struct{}),
 		release:  make(chan struct{}),
-		response: coregeneration.Response{ID: "dmx.seedance-2.0-fast:cgt-reference", Status: "submitted"},
+		response: coregeneration.Response{ID: "official.seedance-2.0-fast:cgt-reference", Status: "submitted"},
 	}
 	workflow := NewGenerationService(settingsSvc, store, mediaAssets)
 	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
@@ -163,7 +163,7 @@ func TestCreateVideoGenerationKeepsStoredPromptAndRewritesProviderPrompt(t *test
 
 	response, status, err := workflow.CreateGenerationMessage(context.Background(), GenerationMessageRequest{
 		Kind:              string(coregeneration.KindVideo),
-		RouteID:           coregeneration.RouteDMXSeedance20Fast,
+		RouteID:           coregeneration.RouteOfficialSeedance20Fast,
 		ModelID:           coregeneration.ModelJimengSeedance2Fast,
 		Model:             "doubao-seedance-2-0-fast-260128",
 		Prompt:            "沈言 @沈言角色 参考图",

@@ -9,7 +9,7 @@ import (
 
 func TestListCapabilitiesComputesAvailability(t *testing.T) {
 	service := NewService(corecapability.Default(), func(routeID string) bool {
-		return routeID == "dmx.gpt-4.1-mini-text"
+		return routeID == "official.gpt-4.1-mini-text"
 	})
 
 	response := service.ListCapabilities()

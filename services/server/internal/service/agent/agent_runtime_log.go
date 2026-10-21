@@ -5,9 +5,9 @@ import (
 	"strings"
 )
 
-const ACPRuntimeLogKind = "runtimeLog"
+const RuntimeLogKind = "runtimeLog"
 
-var acpRuntimeLogMarkers = []string{
+var runtimeLogMarkers = []string{
 	"codex_core::session",
 	"failed to load skill",
 	"missing yaml frontmatter",
@@ -15,42 +15,42 @@ var acpRuntimeLogMarkers = []string{
 	"error codex_core",
 }
 
-// IsACPRuntimeLogEvent reports whether an ACP event should be presented as runtime output.
-func IsACPRuntimeLogEvent(acp AgentACPEvent) bool {
-	if strings.TrimSpace(acp.Kind) == ACPRuntimeLogKind {
+// IsRuntimeLogEvent reports whether an Runtime event should be presented as runtime output.
+func IsRuntimeLogEvent(runtime AgentRuntimeEvent) bool {
+	if strings.TrimSpace(runtime.Kind) == RuntimeLogKind {
 		return true
 	}
-	return IsACPToolRuntimeLog(acp)
+	return IsRuntimeToolRuntimeLog(runtime)
 }
 
-// IsACPToolRuntimeLog conservatively detects ACP tool updates that are process runtime logs.
-func IsACPToolRuntimeLog(acp AgentACPEvent) bool {
-	if acp.Kind != "toolCall" && acp.Kind != "toolCallUpdate" {
+// IsRuntimeToolRuntimeLog conservatively detects Runtime tool updates that are process runtime logs.
+func IsRuntimeToolRuntimeLog(runtime AgentRuntimeEvent) bool {
+	if runtime.Kind != "toolCall" && runtime.Kind != "toolCallUpdate" {
 		return false
 	}
-	toolKind := strings.TrimSpace(acp.ToolKind)
+	toolKind := strings.TrimSpace(runtime.ToolKind)
 	if toolKind != "" && toolKind != "other" {
 		return false
 	}
-	if displayACPToolTitle(acp.Title, acp.ToolCallID) != "" {
+	if displayRuntimeToolTitle(runtime.Title, runtime.ToolCallID) != "" {
 		return false
 	}
-	if len(acp.Locations) > 0 {
+	if len(runtime.Locations) > 0 {
 		return false
 	}
-	if len(firstNonEmptyRawMessage(acp.RawInput)) > 0 {
+	if len(firstNonEmptyRawMessage(runtime.RawInput)) > 0 {
 		return false
 	}
-	for _, block := range acp.Content {
+	for _, block := range runtime.Content {
 		if block.Type == "diff" {
 			return false
 		}
 	}
-	text := normalizeRuntimeLogText(ACPRuntimeLogText(acp))
+	text := normalizeRuntimeLogText(RuntimeLogText(runtime))
 	if text == "" {
 		return false
 	}
-	for _, marker := range acpRuntimeLogMarkers {
+	for _, marker := range runtimeLogMarkers {
 		if strings.Contains(text, marker) {
 			return true
 		}
@@ -58,10 +58,10 @@ func IsACPToolRuntimeLog(acp AgentACPEvent) bool {
 	return false
 }
 
-// ACPRuntimeLogText returns the human-readable text carried by an ACP runtime log event.
-func ACPRuntimeLogText(acp AgentACPEvent) string {
-	parts := make([]string, 0, len(acp.Content)+1)
-	for _, block := range acp.Content {
+// RuntimeLogText returns the human-readable text carried by an Runtime runtime log event.
+func RuntimeLogText(runtime AgentRuntimeEvent) string {
+	parts := make([]string, 0, len(runtime.Content)+1)
+	for _, block := range runtime.Content {
 		switch block.Type {
 		case "diff":
 			text := strings.TrimSpace(strings.Join([]string{block.OldText, block.NewText}, "\n"))
@@ -75,7 +75,7 @@ func ACPRuntimeLogText(acp AgentACPEvent) string {
 			}
 		}
 	}
-	if text := strings.TrimSpace(rawMessageRuntimeLogText(acp.RawOutput)); text != "" {
+	if text := strings.TrimSpace(rawMessageRuntimeLogText(runtime.RawOutput)); text != "" {
 		parts = append(parts, text)
 	}
 	return strings.Join(parts, "\n")

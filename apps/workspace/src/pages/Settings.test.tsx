@@ -78,79 +78,39 @@ describe("Settings API key page", () => {
 		cleanup();
 	});
 
-	it("shows MediaGo hero and CLI section, keeps other providers collapsed", async () => {
-		renderSettings();
-
-		expect(await screen.findByRole("heading", { name: "统一接口" })).toBeInTheDocument();
-		expect(screen.getByText("一个 API Key，通用全部生成模型")).toBeInTheDocument();
-		expect(screen.getAllByText("推荐")).toHaveLength(1);
-
-		expect(screen.getByRole("heading", { name: "会员 CLI 接入" })).toBeInTheDocument();
-		expect(
-			screen.getByText("已开通即梦高级会员？可直接登录即梦账号接入，无需 API Key。"),
-		).toBeInTheDocument();
-		expect(screen.getByText("即梦")).toBeInTheDocument();
-
-		expect(screen.getByRole("button", { name: /其他接入方式/ })).toBeInTheDocument();
-		expect(screen.queryByRole("heading", { name: "自定义接口" })).not.toBeInTheDocument();
-		expect(screen.queryByRole("heading", { name: "官方供应商" })).not.toBeInTheDocument();
-	});
-
-	it("does not show aggregation providers omitted from the build allowlist", async () => {
-		vi.mocked(getAPIKeys).mockResolvedValue(
-			apiKeysResponse({ mediagoConfigured: true, openrouterConfigured: true }),
-		);
-		vi.mocked(getModelPlatforms).mockResolvedValue({ platforms: [] });
-
-		renderSettings();
-
-		expect(
-			await screen.findByRole("heading", { name: "当前版本未启用 MediaGo" }),
-		).toBeInTheDocument();
-		expect(screen.queryByRole("heading", { name: "统一接口" })).not.toBeInTheDocument();
-		fireEvent.click(screen.getByRole("button", { name: /其他接入方式/ }));
-		expect(screen.queryByText("OpenRouter")).not.toBeInTheDocument();
-	});
-
-	it("renders MediaGo model chips from platform data", async () => {
-		renderSettings();
-
-		expect(await screen.findByText("支持模型")).toBeInTheDocument();
-		expect(screen.getByText("MiniMax M3")).toBeInTheDocument();
-		expect(screen.getByText("GLM 4.7")).toBeInTheDocument();
-	});
-
-	it("keeps Wan and supported HappyHorse variants visible after the model chip limit", async () => {
+	it("shows supported channels and hides removed channels from stale responses", async () => {
+		const response = apiKeysResponse({ mediagoConfigured: true, includeExtraCLI: true });
+		response.providers.push({ ...response.providers[0]!, id: "dmx", label: "DMXAPI" });
+		vi.mocked(getAPIKeys).mockResolvedValue(response);
 		vi.mocked(getModelPlatforms).mockResolvedValue(
-			modelPlatformsResponse({
-				mediagoModels: [
-					"GPT Image 2",
-					"Gemini 2.5 Flash Image",
-					"Gemini 3.1 Flash Lite Image",
-					"Gemini 3 Pro Image",
-					"Gemini 2.5 Flash",
-					"Gemini 3.1 Flash Image",
-					"Gemini 3.5 Flash",
-					"Gemini 3.1 Pro Preview",
-					"Wan 2.7 Image",
-					"Wan 2.7 Image Pro",
-					"HappyHorse 1.1 Text to Video",
-					"HappyHorse 1.1 Image to Video",
-					"HappyHorse 1.1 Reference to Video",
-				],
-			}),
+			modelPlatformsResponse({ cliProviderIDs: ["jimeng", "libtv", "xiaoyunque"] }),
 		);
-
 		renderSettings();
-
-		expect(await screen.findByText("Wan 2.7 Image")).toBeInTheDocument();
-		expect(screen.getByText("Wan 2.7 Image Pro")).toBeInTheDocument();
-		expect(screen.getByText("HappyHorse 1.1 Text to Video")).toBeInTheDocument();
-		expect(screen.getByText("HappyHorse 1.1 Reference to Video")).toBeInTheDocument();
-		expect(screen.queryByText("HappyHorse 1.1 Image to Video")).not.toBeInTheDocument();
-		expect(screen.getByText("等 13 个模型")).toBeInTheDocument();
+		expect(await screen.findByRole("heading", { name: "会员 CLI 接入" })).toBeInTheDocument();
+		expect(screen.getByText("即梦")).toBeInTheDocument();
+		expect(screen.getByText("LibTV")).toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: /其他接入方式/ }));
+		expect(screen.getByText("OpenRouter")).toBeInTheDocument();
+		for (const label of ["MediaGo", "DMXAPI", "DMX", "小云雀", "当前版本未启用 MediaGo"]) {
+			expect(screen.queryByText(label)).not.toBeInTheDocument();
+		}
 	});
 
+	it("saves a supported OpenRouter credential and refreshes model caches", async () => {
+		vi.mocked(saveAPIKey).mockResolvedValue(apiKeysResponse({ openrouterConfigured: true }));
+		renderSettings();
+		fireEvent.click(await screen.findByRole("button", { name: /其他接入方式/ }));
+		fireEvent.click(screen.getByRole("button", { name: "编辑 OpenRouter" }));
+		const dialog = await screen.findByRole("dialog", { name: "配置 OpenRouter" });
+		fireEvent.change(within(dialog).getByLabelText("OpenRouter API Key"), {
+			target: { value: "sk-openrouter-test" },
+		});
+		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+		await waitFor(() =>
+			expect(saveAPIKey).toHaveBeenCalledWith("openrouter", "sk-openrouter-test"),
+		);
+		expectModelDependentCachesRevalidated();
+	});
 	it("expands other providers on demand", async () => {
 		renderSettings();
 
@@ -169,44 +129,6 @@ describe("Settings API key page", () => {
 		expect(await screen.findByRole("button", { name: /其他接入方式/ })).toBeInTheDocument();
 		expect(screen.queryByRole("heading", { name: "自定义接口" })).not.toBeInTheDocument();
 		expect(screen.queryByRole("heading", { name: "官方供应商" })).not.toBeInTheDocument();
-	});
-
-	it("opens the MediaGo API key page from the config dialog", async () => {
-		renderSettings();
-
-		fireEvent.click(await screen.findByRole("button", { name: /配置 API Key/ }));
-		fireEvent.click(await screen.findByRole("button", { name: /免费注册获取/ }));
-
-		expect(openExternalUrl).toHaveBeenCalledWith(expect.stringContaining("apiKeys"));
-	});
-
-	it("saves the MediaGo key from the config dialog", async () => {
-		renderSettings();
-
-		fireEvent.click(await screen.findByRole("button", { name: /配置 API Key/ }));
-		const dialog = await screen.findByRole("dialog", { name: "配置 MediaGo API Key" });
-		const input = within(dialog).getByLabelText("MediaGo API Key") as HTMLInputElement;
-		fireEvent.change(input, { target: { value: "sk-mediago-123456" } });
-
-		expect(screen.getByText("API Key 已输入，可以点击一键配置完成保存。")).toBeInTheDocument();
-		fireEvent.click(within(dialog).getByRole("button", { name: "一键配置" }));
-
-		await waitFor(() => expect(saveAPIKey).toHaveBeenCalledWith("mediago", "sk-mediago-123456"));
-		expectModelDependentCachesRevalidated();
-	});
-
-	it("refreshes model-dependent caches after clearing a credential", async () => {
-		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ mediagoConfigured: true }));
-		vi.mocked(clearAPIKey).mockResolvedValue(apiKeysResponse({}));
-		renderSettings();
-
-		fireEvent.click(await screen.findByRole("button", { name: /管理 API Key/ }));
-		fireEvent.click(await screen.findByRole("button", { name: "清除当前 Key" }));
-		expect(clearAPIKey).not.toHaveBeenCalled();
-		fireEvent.click(await screen.findByRole("button", { name: "清除 API Key" }));
-
-		await waitFor(() => expect(clearAPIKey).toHaveBeenCalledWith("mediago"));
-		expectModelDependentCachesRevalidated();
 	});
 
 	it("clears a configured API key from the row menu only after confirmation", async () => {
@@ -292,59 +214,6 @@ describe("Settings API key page", () => {
 		await waitFor(() => expect(clearAPIKey).toHaveBeenCalledWith("jimeng"));
 		await waitFor(() => expect(screen.queryByText("等待浏览器授权")).not.toBeInTheDocument());
 		expect(await screen.findByRole("button", { name: "登录" })).toBeEnabled();
-	});
-
-	it("renders LibTV and Xiaoyunque CLI providers from platform data", async () => {
-		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ includeExtraCLI: true }));
-		vi.mocked(getModelPlatforms).mockResolvedValue(
-			modelPlatformsResponse({ cliProviderIDs: ["libtv", "xiaoyunque"] }),
-		);
-
-		renderSettings();
-
-		const cliSection = (await screen.findByRole("heading", { name: "会员 CLI 接入" })).closest(
-			"section",
-		);
-		expect(cliSection).toBeTruthy();
-		expect(within(cliSection as HTMLElement).getByText("LibTV")).toBeInTheDocument();
-		expect(within(cliSection as HTMLElement).getByText("小云雀")).toBeInTheDocument();
-		expect(
-			within(cliSection as HTMLElement).getByRole("button", { name: "登录" }),
-		).toBeInTheDocument();
-		expect(
-			screen.queryByText("已有小云雀 Access Key？可通过本地 Pippit CLI 接入。"),
-		).not.toBeInTheDocument();
-		expect(
-			within(cliSection as HTMLElement).queryByLabelText("小云雀 API Key"),
-		).not.toBeInTheDocument();
-		fireEvent.click(within(cliSection as HTMLElement).getByRole("button", { name: "编辑 小云雀" }));
-		const dialog = await screen.findByRole("dialog", { name: "配置 小云雀" });
-		expect(within(dialog).getByLabelText("小云雀 API Key")).toBeInTheDocument();
-		expect(within(cliSection as HTMLElement).queryByText("即梦")).not.toBeInTheDocument();
-	});
-
-	it("saves the Xiaoyunque key from a CLI config dialog", async () => {
-		vi.mocked(getAPIKeys).mockResolvedValue(apiKeysResponse({ includeExtraCLI: true }));
-		vi.mocked(getModelPlatforms).mockResolvedValue(
-			modelPlatformsResponse({ cliProviderIDs: ["xiaoyunque"] }),
-		);
-
-		renderSettings();
-
-		const cliSection = (await screen.findByRole("heading", { name: "会员 CLI 接入" })).closest(
-			"section",
-		);
-		expect(cliSection).toBeTruthy();
-		fireEvent.click(within(cliSection as HTMLElement).getByRole("button", { name: "编辑 小云雀" }));
-		const dialog = await screen.findByRole("dialog", { name: "配置 小云雀" });
-		fireEvent.change(within(dialog).getByLabelText("小云雀 API Key"), {
-			target: { value: "xyq-access-key-123456" },
-		});
-		fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
-
-		await waitFor(() =>
-			expect(saveAPIKey).toHaveBeenCalledWith("xiaoyunque", "xyq-access-key-123456"),
-		);
 	});
 
 	it("refreshes model-dependent caches after an immediate LibTV login", async () => {

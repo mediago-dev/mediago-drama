@@ -41,8 +41,8 @@ func (repo *AgentSessionRepository) UpsertAgentSession(model domain.AgentSession
 		Columns: []clause.Column{{Name: "session_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"title",
-			"acp_session_id",
-			"acp_instruction_hash",
+			"codex_thread_id",
+			"codex_instruction_hash",
 			"last_status",
 			"last_message",
 			"updated_at",

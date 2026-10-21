@@ -18,11 +18,11 @@ type AgentChatStore interface {
 // AgentChat handles agent chat HTTP routes.
 type AgentChat struct {
 	store              AgentChatStore
-	pendingPermissions func(sessionID string) []service.AgentACPPermissionRequest
+	pendingPermissions func(sessionID string) []service.AgentRuntimePermissionRequest
 }
 
 // NewAgentChat returns an agent chat route handler.
-func NewAgentChat(store AgentChatStore, pendingPermissions ...func(sessionID string) []service.AgentACPPermissionRequest) AgentChat {
+func NewAgentChat(store AgentChatStore, pendingPermissions ...func(sessionID string) []service.AgentRuntimePermissionRequest) AgentChat {
 	handler := AgentChat{store: store}
 	if len(pendingPermissions) > 0 {
 		handler.pendingPermissions = pendingPermissions[0]

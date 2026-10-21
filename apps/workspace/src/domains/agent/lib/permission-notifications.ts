@@ -1,11 +1,11 @@
-import type { AgentRuntimeACPPermissionRequest } from "@/domains/agent/api/agent";
+import type { AgentRuntimePermissionRequest } from "@/domains/agent/api/agent";
 import { isDesktopRuntime } from "@/shared/lib/api-base";
 import { showDesktopNotification } from "@/shared/desktop/actions";
 
 export type AgentPermissionNotificationResult = "shown" | "fallback";
 
 export const showAgentPermissionSystemNotification = async (
-	request: AgentRuntimeACPPermissionRequest,
+	request: AgentRuntimePermissionRequest,
 	onClick: () => void,
 ): Promise<AgentPermissionNotificationResult> => {
 	if (isDesktopRuntime()) {
@@ -34,7 +34,7 @@ export const showAgentPermissionSystemNotification = async (
 };
 
 const showPermissionDesktopNotification = async (
-	request: AgentRuntimeACPPermissionRequest,
+	request: AgentRuntimePermissionRequest,
 	onClick: () => void,
 ): Promise<AgentPermissionNotificationResult> => {
 	const shown = await showDesktopNotification({
@@ -50,7 +50,7 @@ const showPermissionDesktopNotification = async (
 const supportsSystemNotifications = () =>
 	typeof window !== "undefined" && "Notification" in window && typeof Notification === "function";
 
-const notificationBody = (request: AgentRuntimeACPPermissionRequest) => {
+const notificationBody = (request: AgentRuntimePermissionRequest) => {
 	const title = request.toolCall?.title || request.toolCall?.id || "工具调用";
 	return truncateNotificationText(`智能体请求执行 ${title}，需要确认后继续。`);
 };

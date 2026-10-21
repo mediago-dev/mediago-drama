@@ -11,7 +11,10 @@ describe("MarkdownHybridEditor", () => {
 
 	it("renders markdown image URLs against the packaged desktop server", async () => {
 		vi.stubEnv("DEV", false);
-		window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
+		window.mediagoDesktop = {
+			isElectron: true,
+			serverOrigin: "http://127.0.0.1:49157",
+		} as typeof window.mediagoDesktop;
 
 		render(
 			<MarkdownHybridEditor
@@ -24,7 +27,7 @@ describe("MarkdownHybridEditor", () => {
 		await waitFor(() => {
 			expect(screen.getByRole("img", { name: "角色图" })).toHaveAttribute(
 				"src",
-				"http://127.0.0.1:48273/api/v1/media-assets/character/content",
+				"http://127.0.0.1:49157/api/v1/media-assets/character/content",
 			);
 		});
 	});

@@ -8,50 +8,12 @@ func officialSeedanceParams() RouteParamConfig {
 	return routeParamConfig(params, translation)
 }
 
-func dmxSeedanceParams() RouteParamConfig {
-	return seedanceParams()
-}
-
 func jimengSeedanceParams() RouteParamConfig {
 	return jimengSeedanceRouteParams(false)
 }
 
 func jimengSeedanceVIPParams() RouteParamConfig {
 	return jimengSeedanceRouteParams(true)
-}
-
-func pippitSeedanceParams() RouteParamConfig {
-	return pippitSeedanceRouteParams(false)
-}
-
-func pippitSeedanceStandardParams() RouteParamConfig {
-	return pippitSeedanceRouteParams(true)
-}
-
-func pippitSeedanceRouteParams(allow1080p bool) RouteParamConfig {
-	resolutionOptions := []ParamOption{{Label: "720p", Value: "720p"}}
-	if allow1080p {
-		resolutionOptions = append(resolutionOptions, ParamOption{Label: "1080p", Value: "1080p"})
-	}
-
-	params := []RouteParam{
-		selectRouteParam(ParamAspectRatio, "16:9", []ParamOption{
-			{Label: "16:9", Value: "16:9"},
-			{Label: "4:3", Value: "4:3"},
-			{Label: "1:1", Value: "1:1"},
-			{Label: "3:4", Value: "3:4"},
-			{Label: "9:16", Value: "9:16"},
-		}),
-		selectRouteParam(ParamResolution, "720p", resolutionOptions),
-		withRouteHelp(selectRouteParam(ParamDuration, "5", jimengSeedanceDurationOptions()), "小云雀支持 4-15 秒视频。"),
-	}
-	return routeParamConfig(params, ParamTranslation{
-		Moves: []ParamMove{
-			{From: ParamAspectRatio, To: "ratio"},
-			{From: ParamResolution},
-			{From: ParamDuration},
-		},
-	})
 }
 
 func libTVSeedanceParams() RouteParamConfig {

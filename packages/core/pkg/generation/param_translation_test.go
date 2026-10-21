@@ -128,7 +128,7 @@ func TestTranslateRouteParamsMovesAndValues(t *testing.T) {
 }
 
 func TestTranslateRouteParamsJoinsWithRouteDefaults(t *testing.T) {
-	route := mustRoute(t, RouteDMXSeedream5Lite)
+	route := mustRoute(t, RouteOfficialSeedream5Lite)
 	resolved := ApplyRoute(Request{
 		Kind:    KindImage,
 		RouteID: route.ID,
@@ -149,7 +149,7 @@ func TestTranslateRouteParamsJoinsWithRouteDefaults(t *testing.T) {
 }
 
 func TestTranslateRouteParamsJoinsSeedreamAdaptiveSize(t *testing.T) {
-	route := mustRoute(t, RouteDMXSeedream5Lite)
+	route := mustRoute(t, RouteOfficialSeedream5Lite)
 	resolved := ApplyRoute(Request{
 		Kind:    KindImage,
 		RouteID: route.ID,
@@ -165,7 +165,7 @@ func TestTranslateRouteParamsJoinsSeedreamAdaptiveSize(t *testing.T) {
 }
 
 func TestTranslateRouteParamsJoinsSeedreamPortraitThreeFourSize(t *testing.T) {
-	route := mustRoute(t, RouteDMXSeedream5Lite)
+	route := mustRoute(t, RouteOfficialSeedream5Lite)
 	resolved := ApplyRoute(Request{
 		Kind:    KindImage,
 		RouteID: route.ID,
@@ -181,7 +181,7 @@ func TestTranslateRouteParamsJoinsSeedreamPortraitThreeFourSize(t *testing.T) {
 }
 
 func TestTranslateRouteParamsJoinsGPTImageSize(t *testing.T) {
-	route := mustRoute(t, RouteDMXGPTImage2)
+	route := mustRoute(t, RouteOfficialGPTImage2)
 
 	tests := []struct {
 		name   string
@@ -221,151 +221,8 @@ func TestTranslateRouteParamsJoinsGPTImageSize(t *testing.T) {
 	}
 }
 
-func TestTranslateRouteParamsJoinsMediagoGPTImageSize(t *testing.T) {
-	route := mustRoute(t, RouteMediagoGPTImage2)
-	request := Request{
-		Kind:    KindImage,
-		RouteID: route.ID,
-		Params: map[string]any{
-			"aspectRatio":       "16:9",
-			"resolution":        "2K",
-			"quality":           "high",
-			"outputFormat":      "webp",
-			"moderation":        "low",
-			"outputCompression": float64(60),
-			"background":        "opaque",
-			"n":                 float64(2),
-		},
-	}
-	if err := ValidateRequestForRoute(request, route); err != nil {
-		t.Fatalf("ValidateRequestForRoute() error = %v", err)
-	}
-
-	resolved := ApplyRoute(request, route)
-	if got := resolved.Params["quality"]; got != "high" {
-		t.Fatalf("quality = %#v, want high", got)
-	}
-	if got := resolved.Params["background"]; got != "opaque" {
-		t.Fatalf("background = %#v, want opaque", got)
-	}
-	if got := resolved.Params["size"]; got != "2048x1152" {
-		t.Fatalf("size = %#v, want 2048x1152", got)
-	}
-	if got := resolved.Params["outputFormat"]; got != "webp" {
-		t.Fatalf("outputFormat = %#v, want webp", got)
-	}
-}
-
-func TestTranslateRouteParamsMovesMediagoNanoBanana31ImageConfig(t *testing.T) {
-	route := mustRoute(t, RouteMediagoNanoBanana31)
-	request := Request{
-		Kind:    KindImage,
-		RouteID: route.ID,
-		Params: map[string]any{
-			"aspectRatio": "16:9",
-			"resolution":  "2K",
-			"n":           float64(2),
-		},
-	}
-	normalized, err := NormalizeRouteParams(route, request.Params)
-	if err != nil {
-		t.Fatalf("NormalizeRouteParams() error = %v", err)
-	}
-
-	resolved, err := TranslateRouteParams(route, normalized)
-	if err != nil {
-		t.Fatalf("TranslateRouteParams() error = %v", err)
-	}
-	if got := resolved["aspectRatio"]; got != "16:9" {
-		t.Fatalf("aspectRatio = %#v, want 16:9", got)
-	}
-	if got := resolved["imageSize"]; got != "2K" {
-		t.Fatalf("imageSize = %#v, want 2K", got)
-	}
-	if _, ok := resolved["size"]; ok {
-		t.Fatalf("size should not be produced for MediaGo Gemini chat image: %#v", resolved)
-	}
-	if _, ok := resolved["resolution"]; ok {
-		t.Fatalf("canonical resolution leaked after translation: %#v", resolved)
-	}
-	if got := resolved["n"]; got != float64(2) {
-		t.Fatalf("n = %#v, want 2", got)
-	}
-}
-
-func TestTranslateRouteParamsMovesMediagoNanoBananaProImageConfig(t *testing.T) {
-	route := mustRoute(t, RouteMediagoNanoBananaPro)
-	request := Request{
-		Kind:    KindImage,
-		RouteID: route.ID,
-		Params: map[string]any{
-			"aspectRatio": "16:9",
-			"resolution":  "4K",
-			"n":           float64(1),
-		},
-	}
-	normalized, err := NormalizeRouteParams(route, request.Params)
-	if err != nil {
-		t.Fatalf("NormalizeRouteParams() error = %v", err)
-	}
-
-	resolved, err := TranslateRouteParams(route, normalized)
-	if err != nil {
-		t.Fatalf("TranslateRouteParams() error = %v", err)
-	}
-	if got := resolved["aspectRatio"]; got != "16:9" {
-		t.Fatalf("aspectRatio = %#v, want 16:9", got)
-	}
-	if got := resolved["imageSize"]; got != "4K" {
-		t.Fatalf("imageSize = %#v, want 4K", got)
-	}
-	if _, ok := resolved["size"]; ok {
-		t.Fatalf("size should not be produced for MediaGo Gemini chat image: %#v", resolved)
-	}
-	if _, ok := resolved["resolution"]; ok {
-		t.Fatalf("canonical resolution leaked after translation: %#v", resolved)
-	}
-	if got := resolved["n"]; got != float64(1) {
-		t.Fatalf("n = %#v, want 1", got)
-	}
-}
-
-func TestTranslateRouteParamsKeepsMediagoNanoBanana25ResolutionUIOnly(t *testing.T) {
-	route := mustRoute(t, RouteMediagoNanoBanana25)
-	request := Request{
-		Kind:    KindImage,
-		RouteID: route.ID,
-		Params: map[string]any{
-			"aspectRatio": "16:9",
-			"resolution":  "1K",
-			"n":           float64(1),
-		},
-	}
-	normalized, err := NormalizeRouteParams(route, request.Params)
-	if err != nil {
-		t.Fatalf("NormalizeRouteParams() error = %v", err)
-	}
-
-	resolved, err := TranslateRouteParams(route, normalized)
-	if err != nil {
-		t.Fatalf("TranslateRouteParams() error = %v", err)
-	}
-	if got := resolved["aspectRatio"]; got != "16:9" {
-		t.Fatalf("aspectRatio = %#v, want 16:9", got)
-	}
-	if _, ok := resolved["resolution"]; ok {
-		t.Fatalf("canonical resolution leaked after translation: %#v", resolved)
-	}
-	if got := resolved["imageSize"]; got != "1K" {
-		t.Fatalf("imageSize = %#v, want 1K for UI-only translated param", got)
-	}
-	if got := resolved["n"]; got != float64(1) {
-		t.Fatalf("n = %#v, want 1", got)
-	}
-}
-
 func TestTranslateRouteParamsRejectsUnavailableGPTImageCombo(t *testing.T) {
-	route := mustRoute(t, RouteDMXGPTImage2)
+	route := mustRoute(t, RouteOfficialGPTImage2)
 	request := Request{
 		Kind:    KindImage,
 		RouteID: route.ID,
@@ -436,7 +293,7 @@ func TestUpgradeLegacyRouteParams(t *testing.T) {
 		},
 		{
 			name:  "imageSize alias",
-			route: RouteDMXNanoBanana31,
+			route: RouteOfficialNanoBanana31,
 			params: map[string]any{
 				"aspectRatio": "16:9",
 				"imageSize":   "2K",
@@ -448,7 +305,7 @@ func TestUpgradeLegacyRouteParams(t *testing.T) {
 		},
 		{
 			name:  "seedream joined size",
-			route: RouteDMXSeedream5Lite,
+			route: RouteOfficialSeedream5Lite,
 			params: map[string]any{
 				"size": "1600x2848",
 			},
@@ -459,7 +316,7 @@ func TestUpgradeLegacyRouteParams(t *testing.T) {
 		},
 		{
 			name:  "seedream legacy named size",
-			route: RouteDMXSeedream5Lite,
+			route: RouteOfficialSeedream5Lite,
 			params: map[string]any{
 				"size": "2K",
 			},
@@ -470,7 +327,7 @@ func TestUpgradeLegacyRouteParams(t *testing.T) {
 		},
 		{
 			name:  "seedream exact square size",
-			route: RouteDMXSeedream5Lite,
+			route: RouteOfficialSeedream5Lite,
 			params: map[string]any{
 				"size": "2048x2048",
 			},
@@ -481,7 +338,7 @@ func TestUpgradeLegacyRouteParams(t *testing.T) {
 		},
 		{
 			name:  "seedream exact portrait 3:4 size",
-			route: RouteDMXSeedream5Lite,
+			route: RouteOfficialSeedream5Lite,
 			params: map[string]any{
 				"size": "1728x2304",
 			},
@@ -492,7 +349,7 @@ func TestUpgradeLegacyRouteParams(t *testing.T) {
 		},
 		{
 			name:  "gpt image auto size",
-			route: RouteDMXGPTImage2,
+			route: RouteOfficialGPTImage2,
 			params: map[string]any{
 				"size": "auto",
 			},
@@ -503,7 +360,7 @@ func TestUpgradeLegacyRouteParams(t *testing.T) {
 		},
 		{
 			name:  "gpt image wide size",
-			route: RouteDMXGPTImage2,
+			route: RouteOfficialGPTImage2,
 			params: map[string]any{
 				"size": "2048x1152",
 			},

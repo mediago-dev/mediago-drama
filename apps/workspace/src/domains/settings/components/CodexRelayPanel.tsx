@@ -68,7 +68,7 @@ interface CodexRelayPanelProps {
 }
 
 export const CodexRelayPanel: React.FC<CodexRelayPanelProps> = ({
-	description = "配置 Codex ACP 请求使用的本地中转代理。",
+	description = "配置 Codex Runtime 请求使用的本地中转代理。",
 	officialChannel,
 	title = "Codex 中转",
 }) => {
@@ -485,7 +485,7 @@ const OfficialChannelCard: React.FC<{
 						onClick={channel.onLogout}
 					>
 						<LogOut />
-						退出全局账号
+						退出账号
 					</Button>
 				) : channel.status === "loggedOut" ? (
 					<Button type="button" size="sm" disabled={channel.busy} onClick={channel.onLogin}>
@@ -608,7 +608,7 @@ const channelCardClass = (active: boolean) =>
 const officialStatusCopy = (channel: CodexOfficialChannel) => {
 	switch (channel.status) {
 		case "loading":
-			return "正在读取全局 Codex 账号";
+			return "正在读取开源版 Codex 账号";
 		case "error":
 			return "内置 Codex 账号服务不可用";
 		case "pending":

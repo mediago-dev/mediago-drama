@@ -681,35 +681,11 @@ func (handler PromptPacks) HandleResetPack(context *gin.Context) {
 
 func writePromptPackError(context *gin.Context, err error) {
 	switch {
-	case errors.Is(err, promptpack.ErrProtectedPackAccessDenied):
-		httpresponse.Error(
-			context,
-			http.StatusForbidden,
-			"当前 MediaGo 账号没有该技能包的导入权限，请在 MediaGo 授权页面完成购买或加入发布者席位后重新导入",
-		)
-	case errors.Is(err, promptpack.ErrProtectedPackAuthorizationExpired):
-		httpresponse.Error(
-			context,
-			http.StatusRequestTimeout,
-			"技能包授权已过期，请重新导入并完成授权",
-		)
-	case errors.Is(err, promptpack.ErrProtectedPackUnavailable):
-		httpresponse.Error(
-			context,
-			http.StatusServiceUnavailable,
-			"技能包授权服务暂时不可用，请稍后重试",
-		)
-	case errors.Is(err, promptpack.ErrUnprotectedPackImportDenied):
-		httpresponse.Error(
-			context,
-			http.StatusUnprocessableEntity,
-			"未加密技能包不能直接导入，请先前往 MediaGo 官网完成发布和加密",
-		)
 	case errors.Is(err, promptpack.ErrUnsupportedPackVersion):
 		httpresponse.Error(
 			context,
 			http.StatusUnprocessableEntity,
-			"当前构建不支持此技能包版本，请使用 MediaGo Drama 官方版导入",
+			"不支持此技能包格式版本，请导入普通 v1 .mgpack 文件",
 		)
 	case errors.Is(err, promptpack.ErrInvalidPack):
 		httpresponse.ErrorFromStatus(context, http.StatusBadRequest, err)

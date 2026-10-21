@@ -102,7 +102,7 @@ type CodexRelaySettingsMutation struct {
 	Profiles        []CodexRelayProfileMutation `json:"profiles"`
 }
 
-// CodexRelayRuntimeConfig describes the process config generated for Codex ACP.
+// CodexRelayRuntimeConfig describes the process config generated for Codex Runtime.
 type CodexRelayRuntimeConfig struct {
 	ConfigDir  string
 	CodexHome  string
@@ -268,7 +268,7 @@ func (service *Settings) PrepareCodexRelayRuntimeConfig(ctx context.Context, wor
 		return CodexRelayRuntimeConfig{}, fmt.Errorf("%w: local relay url is empty", ErrCodexRelayInvalid)
 	}
 
-	codexHome := filepath.Join(shared.WorkspacePathsFor(workspaceDir).GlobalMetadataDir(), "runtime", "agents", "codex", "home")
+	codexHome := filepath.Join(shared.WorkspacePathsFor(workspaceDir).GlobalMetadataDir(), "runtime", "agents", "codex", "relay-home")
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
 		return CodexRelayRuntimeConfig{}, fmt.Errorf("creating codex relay home: %w", err)
 	}
@@ -296,12 +296,12 @@ func (service *Settings) DescribeCodexRuntimeHome(ctx context.Context, workspace
 	_ = ctx
 	if _, _, err := service.activeCodexRelayProfile(); err != nil {
 		if errors.Is(err, ErrCodexRelayNotConfigured) {
-			return CodexRuntimeHomeDescriptor{}, nil
+			return CodexRuntimeHomeDescriptor{CodexHome: filepath.Join(shared.WorkspacePathsFor(workspaceDir).GlobalMetadataDir(), "runtime", "agents", "codex", "account-home"), Isolated: true}, nil
 		}
 		return CodexRuntimeHomeDescriptor{}, err
 	}
 	return CodexRuntimeHomeDescriptor{
-		CodexHome: filepath.Join(shared.WorkspacePathsFor(workspaceDir).GlobalMetadataDir(), "runtime", "agents", "codex", "home"),
+		CodexHome: filepath.Join(shared.WorkspacePathsFor(workspaceDir).GlobalMetadataDir(), "runtime", "agents", "codex", "relay-home"),
 		Isolated:  true,
 	}, nil
 }

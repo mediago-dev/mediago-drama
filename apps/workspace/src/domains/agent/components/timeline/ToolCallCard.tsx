@@ -13,7 +13,7 @@ import {
 import type React from "react";
 import { memo, useMemo, useState } from "react";
 import {
-	type AgentACPContentBlock,
+	type AgentRuntimeContentBlock,
 	type AgentMessage,
 	type AgentMessageMetadata,
 } from "@/domains/agent/stores";
@@ -36,12 +36,12 @@ import {
 interface ToolCallDetails {
 	metadata: AgentMessageMetadata;
 	title: string;
-	acpKind: string;
+	runtimeKind: string;
 	Icon: React.ComponentType<{ className?: string }>;
 	status?: string;
 	inputText?: string;
 	inputValue?: unknown;
-	outputBlocks: AgentACPContentBlock[];
+	outputBlocks: AgentRuntimeContentBlock[];
 	rawOutputValue?: unknown;
 	outputBytes: number;
 	outputLines: number;
@@ -53,7 +53,8 @@ interface ToolCallDetails {
 export const ToolCallCard: React.FC<{ message: AgentMessage }> = memo(({ message }) => {
 	const [expanded, setExpanded] = useState(false);
 	const details = useMemo(() => getToolCallDetails(message), [message]);
-	const { metadata, title, acpKind, Icon, status, inputSummary, outputSummary, isMCP } = details;
+	const { metadata, title, runtimeKind, Icon, status, inputSummary, outputSummary, isMCP } =
+		details;
 
 	return (
 		<article className="agent-tool-card border border-border bg-ide-editor text-xs">
@@ -75,7 +76,7 @@ export const ToolCallCard: React.FC<{ message: AgentMessage }> = memo(({ message
 					<span className="flex min-w-0 flex-wrap items-center gap-1.5">
 						<span className="truncate font-medium text-foreground">{title}</span>
 						<span className="agent-chip shrink-0 rounded-sm border border-border bg-ide-toolbar px-1.5 py-0.5 text-2xs text-muted-foreground">
-							{acpKind}
+							{runtimeKind}
 						</span>
 						{isMCP ? (
 							<span className="agent-chip agent-chip-info shrink-0 rounded-sm border border-info-border bg-info-surface px-1.5 py-0.5 text-2xs text-info-foreground">
@@ -111,13 +112,13 @@ export const ToolCallBody: React.FC<{
 	className?: string;
 }> = memo(({ message, className }) => {
 	const details = useMemo(() => getToolCallDetails(message), [message]);
-	const { metadata, acpKind, inputText, inputValue, outputBlocks, rawOutputValue } = details;
+	const { metadata, runtimeKind, inputText, inputValue, outputBlocks, rawOutputValue } = details;
 	const hasInput = inputValue !== undefined || Boolean(inputText);
 	const hasLocations = Boolean(metadata.locations?.length);
 
 	return (
 		<div className={cn("agent-tool-body min-w-0 space-y-2", className)}>
-			<ToolOutputPanel acpKind={acpKind} blocks={outputBlocks} message={message} />
+			<ToolOutputPanel runtimeKind={runtimeKind} blocks={outputBlocks} message={message} />
 			{hasInput || hasLocations || rawOutputValue !== undefined ? (
 				<div className="agent-tool-secondary-details flex flex-wrap items-start gap-x-3 gap-y-1">
 					{hasInput ? (
@@ -151,8 +152,8 @@ export const getToolCallDetails = (message: AgentMessage): ToolCallDetails => {
 		cleanToolTitle(metadata.toolName || "", metadata.toolCallId) ||
 		cleanToolTitle(message.title || "", metadata.toolCallId) ||
 		"工具调用";
-	const acpKind = getAcpKind(message, metadata, title);
-	const Icon = acpIconByKind[acpKind] ?? Wrench;
+	const runtimeKind = getRuntimeKind(message, metadata, title);
+	const Icon = runtimeIconByKind[runtimeKind] ?? Wrench;
 	const status =
 		typeof metadata.status === "string"
 			? metadata.status
@@ -171,7 +172,7 @@ export const getToolCallDetails = (message: AgentMessage): ToolCallDetails => {
 		const text = block.text?.trim();
 		return Boolean(text && text !== block.terminalId?.trim());
 	});
-	const rawOutputBlock = contentBlockFromRawOutput(rawOutputValue, acpKind);
+	const rawOutputBlock = contentBlockFromRawOutput(rawOutputValue, runtimeKind);
 	const outputBlocks = protocolHasText
 		? protocolOutputBlocks
 		: rawOutputBlock
@@ -195,7 +196,7 @@ export const getToolCallDetails = (message: AgentMessage): ToolCallDetails => {
 	return {
 		metadata,
 		title,
-		acpKind,
+		runtimeKind,
 		Icon,
 		status,
 		inputText,
@@ -211,10 +212,10 @@ export const getToolCallDetails = (message: AgentMessage): ToolCallDetails => {
 };
 
 const ToolOutputPanel: React.FC<{
-	acpKind: string;
-	blocks: AgentACPContentBlock[];
+	runtimeKind: string;
+	blocks: AgentRuntimeContentBlock[];
 	message: AgentMessage;
-}> = ({ acpKind, blocks, message }) => {
+}> = ({ runtimeKind, blocks, message }) => {
 	if (blocks.length === 0) {
 		return <EmptyToolPanel>{message.content || "暂无输出"}</EmptyToolPanel>;
 	}
@@ -231,7 +232,7 @@ const ToolOutputPanel: React.FC<{
 				const text =
 					parsedJsonText !== undefined
 						? prettyJson(parsedJsonText)
-						: acpKind === "execute" || hasAnsiEscape(rawText)
+						: runtimeKind === "execute" || hasAnsiEscape(rawText)
 							? stripAnsiEscape(rawText)
 							: rawText;
 				if (!text) return null;
@@ -268,13 +269,13 @@ const CompactToolDetails: React.FC<{
 
 const contentBlockFromRawOutput = (
 	rawOutput: unknown,
-	acpKind: string,
-): AgentACPContentBlock | undefined => {
+	runtimeKind: string,
+): AgentRuntimeContentBlock | undefined => {
 	if (rawOutput === undefined || rawOutput === null) return undefined;
 	if (typeof rawOutput === "string") {
 		return rawOutput
 			? {
-					type: acpKind === "execute" || hasAnsiEscape(rawOutput) ? "terminal" : "text",
+					type: runtimeKind === "execute" || hasAnsiEscape(rawOutput) ? "terminal" : "text",
 					text: rawOutput,
 				}
 			: undefined;
@@ -295,7 +296,7 @@ const contentBlockFromRawOutput = (
 
 	const exitCode = numberField(rawOutput, "exit_code");
 	const isTerminalOutput =
-		acpKind === "execute" ||
+		runtimeKind === "execute" ||
 		rawOutput.command !== undefined ||
 		exitCode !== undefined ||
 		hasAnsiEscape(text);
@@ -363,7 +364,7 @@ export const StatusBadge: React.FC<{ status?: string }> = ({ status }) => {
 	);
 };
 
-const acpIconByKind: Record<string, React.ComponentType<{ className?: string }>> = {
+const runtimeIconByKind: Record<string, React.ComponentType<{ className?: string }>> = {
 	delete: Trash2,
 	edit: Pencil,
 	execute: TerminalSquare,
@@ -375,22 +376,23 @@ const acpIconByKind: Record<string, React.ComponentType<{ className?: string }>>
 	think: Brain,
 };
 
-const defaultAcpKindByMessageKind: Partial<Record<NonNullable<AgentMessage["kind"]>, string>> = {
-	diff: "edit",
-	file: "read",
-	patch: "edit",
-	terminal: "execute",
-};
+const defaultRuntimeKindByMessageKind: Partial<Record<NonNullable<AgentMessage["kind"]>, string>> =
+	{
+		diff: "edit",
+		file: "read",
+		patch: "edit",
+		terminal: "execute",
+	};
 
-const getAcpKind = (message: AgentMessage, metadata: AgentMessageMetadata, title: string) => {
+const getRuntimeKind = (message: AgentMessage, metadata: AgentMessageMetadata, title: string) => {
 	const inferred = inferToolKind(title);
-	if (typeof metadata.acpKind === "string") {
-		const explicit = metadata.acpKind.trim();
+	if (typeof metadata.runtimeKind === "string") {
+		const explicit = metadata.runtimeKind.trim();
 		if (explicit && explicit !== "other") return explicit;
 		if (inferred) return inferred;
 		if (explicit) return explicit;
 	}
-	return inferred || defaultAcpKindByMessageKind[message.kind ?? "tool"] || "other";
+	return inferred || defaultRuntimeKindByMessageKind[message.kind ?? "tool"] || "other";
 };
 
 const statusTone = (status: string) => {

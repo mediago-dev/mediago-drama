@@ -226,8 +226,8 @@ func ProjectAgentEvent(
 			conversation.UpdatedAt = event.CreatedAt
 			conversations[conversation.RunID] = conversation
 		}
-	case "agent.acp":
-		projectACPEvent(event, conversations, activity)
+	case "agent.runtime":
+		projectRuntimeEvent(event, conversations, activity)
 	case "agent.patch.proposed":
 		summary := "Agent 已生成文档更新方案。"
 		if event.DocumentProposal != nil && strings.TrimSpace(event.DocumentProposal.Summary) != "" {

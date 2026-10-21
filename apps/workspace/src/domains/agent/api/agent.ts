@@ -1,12 +1,12 @@
 import type {
-	AgentACPContentBlock as GeneratedAgentACPContentBlock,
-	AgentACPEvent as GeneratedAgentACPEvent,
-	AgentACPLocation as GeneratedAgentACPLocation,
-	AgentACPPlanEntry as GeneratedAgentACPPlanEntry,
-	AgentACPPermissionOption as GeneratedAgentACPPermissionOption,
-	AgentACPPermissionRequest as GeneratedAgentACPPermissionRequest,
-	AgentACPRuntimeAlert as GeneratedAgentACPRuntimeAlert,
-	AgentACPToolCallSummary as GeneratedAgentACPToolCallSummary,
+	AgentRuntimeContentBlock as GeneratedAgentRuntimeContentBlock,
+	AgentRuntimeEvent as GeneratedAgentRuntimeEvent,
+	AgentRuntimeLocation as GeneratedAgentRuntimeLocation,
+	AgentRuntimePlanEntry as GeneratedAgentRuntimePlanEntry,
+	AgentRuntimePermissionOption as GeneratedAgentRuntimePermissionOption,
+	AgentRuntimePermissionRequest as GeneratedAgentRuntimePermissionRequest,
+	AgentRuntimeAlert as GeneratedAgentRuntimeAlert,
+	AgentRuntimeToolCallSummary as GeneratedAgentRuntimeToolCallSummary,
 	AgentA2UIPayload as GeneratedAgentA2UIPayload,
 	AgentBackendsPayload,
 	AgentChatAppendRequest as GeneratedAgentChatAppendRequest,
@@ -47,7 +47,7 @@ import type {
 export type { AgentDocumentToolName } from "@/api/types/document-tools";
 
 export type {
-	AgentACPConfigSelection,
+	AgentRuntimeConfigSelection,
 	AgentDocumentProposal,
 	AgentDocumentToolApproval,
 	AgentDocumentToolApprovalDecisionPayload,
@@ -110,23 +110,23 @@ const projectAgentPath = (projectId: string | null | undefined, path: string) =>
 	return `/projects/${encodeURIComponent(id)}/agent${path}`;
 };
 
-export type AgentRuntimeACPLocation = GeneratedAgentACPLocation;
+export type AgentRuntimeLocation = GeneratedAgentRuntimeLocation;
 
-export type AgentRuntimeACPContentBlock = GeneratedAgentACPContentBlock;
+export type AgentRuntimeContentBlock = GeneratedAgentRuntimeContentBlock;
 
-export type AgentRuntimeACPPlanEntry = GeneratedAgentACPPlanEntry;
+export type AgentRuntimePlanEntry = GeneratedAgentRuntimePlanEntry;
 
-export type AgentRuntimeACPToolCallSummary = GeneratedAgentACPToolCallSummary;
+export type AgentRuntimeToolCallSummary = GeneratedAgentRuntimeToolCallSummary;
 
 export type AgentA2UIPayload = GeneratedAgentA2UIPayload;
 
-export type AgentRuntimeACPPermissionOption = GeneratedAgentACPPermissionOption;
+export type AgentRuntimePermissionOption = GeneratedAgentRuntimePermissionOption;
 
-export type AgentRuntimeACPPermissionRequest = GeneratedAgentACPPermissionRequest;
+export type AgentRuntimePermissionRequest = GeneratedAgentRuntimePermissionRequest;
 
-export type AgentRuntimeACPRuntimeAlert = GeneratedAgentACPRuntimeAlert;
+export type AgentRuntimeAlert = GeneratedAgentRuntimeAlert;
 
-export type AgentRuntimeACPEvent = GeneratedAgentACPEvent;
+export type AgentRuntimeUpdate = GeneratedAgentRuntimeEvent;
 
 export type AgentDocumentEditEvent = GeneratedAgentDocumentEditEvent;
 
@@ -140,7 +140,7 @@ export type AgentDocumentSelectionEvent = ProtocolAgentDocumentSelectionEvent;
 
 type AgentRuntimeEventBase = Omit<
 	GeneratedAgentEvent,
-	| "acp"
+	| "runtime"
 	| "content"
 	| "delta"
 	| "documentEdit"
@@ -172,7 +172,7 @@ export type AgentRuntimeEvent =
 	| (AgentRuntimeEventBase & { type: "agent.message.accepted" })
 	| (AgentRuntimeEventBase & { type: "agent.run.started" })
 	| (AgentRuntimeEventBase & { type: "agent.activity" })
-	| (AgentRuntimeEventBase & { type: "agent.acp"; acp?: AgentRuntimeACPEvent })
+	| (AgentRuntimeEventBase & { type: "agent.runtime"; runtime?: AgentRuntimeUpdate })
 	| (AgentRuntimeEventBase & { type: "agent.message.delta"; delta: string })
 	| (AgentRuntimeEventBase & { type: "agent.message.completed"; content?: string })
 	| (AgentRuntimeEventBase & { type: "agent.ui"; a2ui?: AgentA2UIPayload })
@@ -245,6 +245,7 @@ export const decideAgentPermission = async (input: {
 	requestId: string;
 	optionId?: string;
 	cancelled?: boolean;
+	answers?: Record<string, string[]>;
 }) => {
 	const response = await httpClient.post<AgentSessionStatus>(
 		projectAgentPath(
@@ -253,7 +254,11 @@ export const decideAgentPermission = async (input: {
 				input.requestId,
 			)}/decision`,
 		),
-		{ optionId: input.optionId, cancelled: input.cancelled },
+		{
+			optionId: input.optionId,
+			cancelled: input.cancelled,
+			...(input.answers ? { answers: input.answers } : {}),
+		},
 	);
 	return response.data;
 };

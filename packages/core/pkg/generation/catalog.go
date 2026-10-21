@@ -45,9 +45,22 @@ func Routes() []ModelRoute {
 func ModelFamilyGroups() []ModelFamilyGroup {
 	groups := make([]ModelFamilyGroup, 0, len(familySpecs))
 	for _, spec := range familySpecs {
+		if len(spec.Routes) == 0 {
+			continue
+		}
+		usedVersions := make(map[string]bool, len(spec.Routes))
+		for _, route := range spec.Routes {
+			usedVersions[route.VersionID] = true
+		}
+		versions := make([]ModelVersion, 0, len(spec.Versions))
+		for _, version := range spec.Versions {
+			if usedVersions[version.ID] {
+				versions = append(versions, version)
+			}
+		}
 		groups = append(groups, ModelFamilyGroup{
 			Family:   spec.Family,
-			Versions: cloneVersions(spec.Versions),
+			Versions: cloneVersions(versions),
 			Routes:   cloneRoutes(spec.Routes),
 		})
 	}

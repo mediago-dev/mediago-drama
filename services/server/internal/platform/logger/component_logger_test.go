@@ -19,14 +19,14 @@ func TestNewComponentLoggerWritesDebugToFileAndForwardsByGlobalLevel(t *testing.
 		Level: slog.LevelInfo,
 	})))
 
-	logPath := filepath.Join(t.TempDir(), "acp.log")
-	logger, currentPath, closeLog, err := NewComponentLogger("acp", logPath)
+	logPath := filepath.Join(t.TempDir(), "runtime.log")
+	logger, currentPath, closeLog, err := NewComponentLogger("runtime", logPath)
 	if err != nil {
 		t.Fatalf("NewComponentLogger: %v", err)
 	}
 
-	logger.Debug("acp session update", "session_id", "session-1")
-	logger.Info("acp prompt completed", "duration_ms", 1280)
+	logger.Debug("runtime session update", "session_id", "session-1")
+	logger.Info("runtime prompt completed", "duration_ms", 1280)
 	if err := closeLog(); err != nil {
 		t.Fatalf("closing component log: %v", err)
 	}
@@ -44,18 +44,18 @@ func TestNewComponentLoggerWritesDebugToFileAndForwardsByGlobalLevel(t *testing.
 		if err := json.Unmarshal([]byte(line), &record); err != nil {
 			t.Fatalf("component log line %q is not JSON: %v", line, err)
 		}
-		if record["component"] != "acp" {
-			t.Fatalf("component log line %q missing component=acp", line)
+		if record["component"] != "runtime" {
+			t.Fatalf("component log line %q missing component=runtime", line)
 		}
 	}
-	if !strings.Contains(lines[0], "acp session update") {
+	if !strings.Contains(lines[0], "runtime session update") {
 		t.Fatalf("file line %q, want the debug record first", lines[0])
 	}
 
-	if strings.Contains(forwarded.String(), "acp session update") {
+	if strings.Contains(forwarded.String(), "runtime session update") {
 		t.Fatalf("forwarded output %q, want debug record filtered by global level", forwarded.String())
 	}
-	if !strings.Contains(forwarded.String(), "acp prompt completed") {
+	if !strings.Contains(forwarded.String(), "runtime prompt completed") {
 		t.Fatalf("forwarded output %q, want info record forwarded", forwarded.String())
 	}
 }

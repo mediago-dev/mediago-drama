@@ -3,8 +3,6 @@ package settings
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -72,47 +70,6 @@ func TestSettingsSetListAndClearAPIKey(t *testing.T) {
 	}
 }
 
-func TestSettingsListAPIKeysIncludesGenerationAndAgentProviders(t *testing.T) {
-	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{}})
-	settings.SetModelPlatforms([]string{
-		ModelPlatformMediago,
-		ModelPlatformOpenRouter,
-		ModelPlatformDMXAPI,
-	})
-
-	list, err := settings.ListAPIKeys(context.Background())
-	if err != nil {
-		t.Fatalf("ListAPIKeys returned error: %v", err)
-	}
-
-	provider := providerByID(t, list, "deepseek")
-	if provider.Configured || provider.Source != "none" {
-		t.Fatalf("deepseek provider = %#v, want unconfigured provider", provider)
-	}
-	if provider.Label != "DeepSeek" ||
-		!stringSliceContains(provider.Capabilities, "agent") ||
-		!stringSliceContains(provider.Capabilities, "generation") {
-		t.Fatalf("deepseek provider = %#v, want generation and agent DeepSeek provider", provider)
-	}
-
-	provider = providerByID(t, list, "dmx")
-	if provider.Configured || provider.Source != "none" {
-		t.Fatalf("dmx provider = %#v, want unconfigured provider", provider)
-	}
-	if provider.Label != "DMX" ||
-		!stringSliceContains(provider.Capabilities, "agent") ||
-		!stringSliceContains(provider.Capabilities, "generation") {
-		t.Fatalf("dmx provider = %#v, want generation and agent DMX provider", provider)
-	}
-
-	provider = providerByID(t, list, "mediago")
-	if provider.Label != "MediaGo" ||
-		!stringSliceContains(provider.Capabilities, "agent") ||
-		!stringSliceContains(provider.Capabilities, "generation") {
-		t.Fatalf("mediago provider = %#v, want generation and agent MediaGo provider", provider)
-	}
-}
-
 func TestSettingsListAPIKeysExcludesAggregationProvidersOutsideBuildAllowlist(t *testing.T) {
 	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{
 		generation.ProviderMediago:    "mgak-existing",
@@ -136,59 +93,6 @@ func TestSettingsListAPIKeysExcludesAggregationProvidersOutsideBuildAllowlist(t 
 	}
 	if !apiKeyProviderExists(list, generation.ProviderOpenAI) {
 		t.Fatalf("providers = %#v, want official providers unaffected", list.Providers)
-	}
-}
-
-func TestSettingsListModelPlatformsDefaultsAndOverrides(t *testing.T) {
-	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{}})
-
-	list := settings.ListModelPlatforms(context.Background())
-	if len(list.Platforms) != 2 ||
-		list.Platforms[0].ID != ModelPlatformMediago ||
-		list.Platforms[1].ID != generation.ProviderJimeng ||
-		list.Platforms[1].Kind != "cli" {
-		t.Fatalf("default platforms = %#v, want mediago and default jimeng CLI", list.Platforms)
-	}
-	if len(list.Platforms[0].ModelGroups) == 0 {
-		t.Fatalf("default mediago platform groups = %#v, want catalog fallback groups", list.Platforms[0].ModelGroups)
-	}
-
-	settings.SetGenerationCLIs([]string{})
-	settings.SetModelPlatforms([]string{ModelPlatformOpenRouter, ModelPlatformDMXAPI})
-	list = settings.ListModelPlatforms(context.Background())
-	if len(list.Platforms) != 2 ||
-		list.Platforms[0].ID != ModelPlatformOpenRouter ||
-		list.Platforms[1].APIKeyProviderID != "dmx" {
-		t.Fatalf("override platforms = %#v, want openrouter then dmxapi", list.Platforms)
-	}
-}
-
-func TestSettingsGenerationCLIProvidersFollowConfiguration(t *testing.T) {
-	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{}})
-	settings.SetGenerationCLIs([]string{"libtv", "pippit"})
-
-	list := settings.ListModelPlatforms(context.Background())
-	if !modelPlatformExists(list, generation.ProviderLibTV) ||
-		!modelPlatformExists(list, generation.ProviderXiaoyunque) ||
-		modelPlatformExists(list, generation.ProviderJimeng) {
-		t.Fatalf("platforms = %#v, want libtv and xiaoyunque CLI platforms only", list.Platforms)
-	}
-
-	keys, err := settings.ListAPIKeys(context.Background())
-	if err != nil {
-		t.Fatalf("ListAPIKeys returned error: %v", err)
-	}
-	if !apiKeyProviderExists(keys, generation.ProviderLibTV) ||
-		!apiKeyProviderExists(keys, generation.ProviderXiaoyunque) ||
-		apiKeyProviderExists(keys, generation.ProviderJimeng) {
-		t.Fatalf("providers = %#v, want enabled CLI providers only", keys.Providers)
-	}
-
-	if _, err := settings.SetAPIKey(context.Background(), generation.ProviderXiaoyunque, "xyq-key"); err != nil {
-		t.Fatalf("SetAPIKey xiaoyunque returned error: %v", err)
-	}
-	if _, err := settings.SetAPIKey(context.Background(), generation.ProviderJimeng, "oauth:old"); err != ErrAPIKeyProviderNotFound {
-		t.Fatalf("SetAPIKey jimeng error = %v, want ErrAPIKeyProviderNotFound", err)
 	}
 }
 
@@ -223,73 +127,6 @@ func TestSettingsLibTVProjectBindingsPersist(t *testing.T) {
 		binding.CreatedAt != "2026-07-11T00:00:00Z" ||
 		binding.UpdatedAt == "" {
 		t.Fatalf("binding = %#v, want persisted LibTV project binding", binding)
-	}
-}
-
-func TestParseGenerationCLIProviderIDs(t *testing.T) {
-	got, err := ParseGenerationCLIProviderIDs("dreamina,libtv,pippit,xiaoyunque,pippit-tool-cli")
-	if err != nil {
-		t.Fatalf("ParseGenerationCLIProviderIDs returned error: %v", err)
-	}
-	if strings.Join(got, ",") != "jimeng,libtv,xiaoyunque" {
-		t.Fatalf("ids = %#v, want deduped provider ids", got)
-	}
-
-	got, err = ParseGenerationCLIProviderIDs("none")
-	if err != nil {
-		t.Fatalf("ParseGenerationCLIProviderIDs(none) returned error: %v", err)
-	}
-	if len(got) != 0 {
-		t.Fatalf("ids = %#v, want empty list for none", got)
-	}
-	if _, err := ParseGenerationCLIProviderIDs("auto"); err == nil {
-		t.Fatal("ParseGenerationCLIProviderIDs(auto) returned nil error, want unsupported CLI error")
-	}
-}
-
-func TestSettingsListModelPlatformsUsesMediagoGatewayModels(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/api/v1/models/user" {
-			t.Fatalf("request path = %q, want /api/v1/models/user", request.URL.Path)
-		}
-		if got := request.Header.Get("Authorization"); got != "Bearer mgak-test" {
-			t.Fatalf("authorization = %q, want bearer key", got)
-		}
-		writer.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(writer, `{
-				"data": [
-					{"id":"glm-5.2","name":"GLM-5.2","kind":"text"},
-					{"id":"qwen-mt-plus","name":"Qwen MT Plus","kind":"text"},
-					{"id":"doubao-seedream-5-0-lite","name":"Seedream 5.0 Lite","kind":"image"},
-					{"id":"gemini-disabled","name":"Gemini Disabled","kind":"text","enabled":false},
-					{"id":"hidden-model","name":"Hidden Model","kind":"text","status":"hidden"}
-				]
-			}`)
-	}))
-	defer server.Close()
-
-	settings := NewSettings(&memoryAPIKeyStore{values: map[string]string{
-		ModelPlatformMediago: "mgak-test",
-	}})
-	settings.SetGenerationCLIs([]string{})
-	settings.SetMediagoBaseURL(server.URL + "/api/v1")
-
-	list := settings.ListModelPlatforms(context.Background())
-	if len(list.Platforms) != 1 {
-		t.Fatalf("platforms = %#v, want one mediago platform", list.Platforms)
-	}
-	groups := map[string][]string{}
-	for _, group := range list.Platforms[0].ModelGroups {
-		groups[group.Label] = group.Models
-	}
-	if !stringSliceContainsFold(groups["智谱 GLM"], "GLM-5.2") ||
-		!stringSliceContainsFold(groups["通义千问"], "Qwen MT Plus") ||
-		!stringSliceContainsFold(groups["字节"], "Seedream 5.0 Lite") {
-		t.Fatalf("model groups = %#v, want gateway vendor groups", list.Platforms[0].ModelGroups)
-	}
-	if stringSliceContainsFold(groups["Google Gemini"], "Gemini Disabled") ||
-		stringSliceContainsFold(groups["其他"], "Hidden Model") {
-		t.Fatalf("model groups = %#v, want disabled gateway models hidden", list.Platforms[0].ModelGroups)
 	}
 }
 
@@ -633,4 +470,59 @@ func stringSliceContains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestSettingsSupportedChannelsAndLegacyCredentials(t *testing.T) {
+	store := &memoryAPIKeyStore{values: map[string]string{"mediago": "old-key", "dmx": "old-key", "xiaoyunque": "old-key"}}
+	settings := NewSettings(store)
+	settings.SetGenerationCLIs([]string{"dreamina", "libtv"})
+	list, err := settings.ListAPIKeys(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"openrouter", "openai", "google", "jimeng", "libtv"} {
+		providerByID(t, list, id)
+	}
+	for _, id := range []string{"mediago", "dmx", "dmxapi", "xiaoyunque", "pippit"} {
+		if apiKeyProviderExists(list, id) {
+			t.Errorf("removed provider %q is visible", id)
+		}
+		if settings.GenerationProviderEnabled(id) {
+			t.Errorf("removed provider %q is enabled", id)
+		}
+		if _, err := settings.SetAPIKey(context.Background(), id, "new-key"); err == nil {
+			t.Errorf("removed provider %q accepted a credential", id)
+		}
+	}
+	platforms := settings.ListModelPlatforms(context.Background())
+	if len(platforms.Platforms) != 3 || platforms.Platforms[0].ID != "openrouter" {
+		t.Fatalf("platforms = %#v", platforms)
+	}
+	if store.values["mediago"] != "old-key" {
+		t.Fatal("historical credentials were modified")
+	}
+	settings.SetModelPlatforms([]string{})
+	if settings.GenerationProviderEnabled("openrouter") {
+		t.Fatal("disabled aggregation provider is enabled")
+	}
+	if !settings.GenerationProviderEnabled("openai") {
+		t.Fatal("official provider was disabled")
+	}
+}
+
+func TestParseSupportedGenerationCLIsAndModelPlatforms(t *testing.T) {
+	got, err := ParseGenerationCLIProviderIDs("dreamina,jimeng,libtv")
+	if err != nil || strings.Join(got, ",") != "jimeng,libtv" {
+		t.Fatalf("CLI ids = %v, %v", got, err)
+	}
+	for _, id := range []string{"pippit", "xiaoyunque", "pippit-tool-cli"} {
+		if _, err := ParseGenerationCLIProviderIDs(id); err == nil {
+			t.Errorf("removed CLI %q was accepted", id)
+		}
+	}
+	for _, id := range []string{"mediago", "dmxapi", "xiaoyunque"} {
+		if _, err := ParseModelPlatformIDs(id); err == nil {
+			t.Errorf("removed platform %q was accepted", id)
+		}
+	}
 }

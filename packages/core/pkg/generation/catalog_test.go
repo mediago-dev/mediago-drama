@@ -46,12 +46,9 @@ func TestCatalogRoutesReferenceKnownFamiliesAndVersions(t *testing.T) {
 		ProviderDeepSeek,
 		ProviderVolcengine,
 		ProviderAliyun,
-		ProviderMediago,
-		ProviderDMX,
 		ProviderOpenRouter,
 		ProviderJimeng,
 		ProviderLibTV,
-		ProviderXiaoyunque,
 	} {
 		if !providers[provider] {
 			t.Fatalf("catalog does not expose provider %q", provider)
@@ -66,37 +63,19 @@ func TestTextCatalogIncludesExpandedRoutes(t *testing.T) {
 		provider string
 		model    string
 	}{
-		{RouteDMXGPT55Text, FamilyGPTText, ProviderDMX, "gpt-5.5"},
-		{RouteDMXGPT54Text, FamilyGPTText, ProviderDMX, "gpt-5.4"},
-		{RouteDMXGPT54MiniText, FamilyGPTText, ProviderDMX, "gpt-5.4-mini"},
-		{RouteMediagoGPT55Text, FamilyGPTText, ProviderMediago, "gpt-5.5"},
-		{RouteMediagoGPT54Text, FamilyGPTText, ProviderMediago, "gpt-5.4"},
-		{RouteMediagoGPT54MiniText, FamilyGPTText, ProviderMediago, "gpt-5.4-mini"},
+
 		{RouteOpenRouterGPT55Text, FamilyGPTText, ProviderOpenRouter, "openai/gpt-5.5"},
 		{RouteOpenRouterGPT54Text, FamilyGPTText, ProviderOpenRouter, "openai/gpt-5.4"},
 		{RouteOpenRouterGPT54MiniText, FamilyGPTText, ProviderOpenRouter, "openai/gpt-5.4-mini"},
-		{RouteDMXGemini35FlashText, FamilyGeminiText, ProviderDMX, "gemini-3.5-flash"},
-		{RouteDMXGemini31ProText, FamilyGeminiText, ProviderDMX, "gemini-3.1-pro-preview"},
-		{RouteDMXGemini31FlashLiteText, FamilyGeminiText, ProviderDMX, "gemini-3.1-flash-lite"},
-		{RouteMediagoGemini35FlashText, FamilyGeminiText, ProviderMediago, "gemini-3.5-flash"},
-		{RouteMediagoGemini31ProText, FamilyGeminiText, ProviderMediago, "gemini-3.1-pro-preview"},
-		{RouteMediagoGemini31FlashLiteText, FamilyGeminiText, ProviderMediago, "gemini-3.1-flash-lite"},
+
 		{RouteOpenRouterGemini35FlashText, FamilyGeminiText, ProviderOpenRouter, "google/gemini-3.5-flash"},
 		{RouteOpenRouterGemini31ProText, FamilyGeminiText, ProviderOpenRouter, "google/gemini-3.1-pro-preview"},
 		{RouteOpenRouterGemini31FlashLiteText, FamilyGeminiText, ProviderOpenRouter, "google/gemini-3.1-flash-lite"},
-		{RouteDMXMiniMaxM3Text, FamilyMiniMaxText, ProviderDMX, "MiniMax-M3"},
-		{RouteDMXMiniMaxM27Text, FamilyMiniMaxText, ProviderDMX, "MiniMax-M2.7"},
-		{RouteDMXMiniMaxM27HighspeedText, FamilyMiniMaxText, ProviderDMX, "MiniMax-M2.7-highspeed"},
-		{RouteMediagoMiniMaxM3Text, FamilyMiniMaxText, ProviderMediago, "MiniMax-M3"},
-		{RouteMediagoMiniMaxM27Text, FamilyMiniMaxText, ProviderMediago, "MiniMax-M2.7"},
-		{RouteMediagoMiniMaxM27HighspeedText, FamilyMiniMaxText, ProviderMediago, "MiniMax-M2.7-highspeed"},
+
 		{RouteOpenRouterMiniMaxM3Text, FamilyMiniMaxText, ProviderOpenRouter, "minimax/minimax-m3"},
 		{RouteOpenRouterMiniMaxM27Text, FamilyMiniMaxText, ProviderOpenRouter, "minimax/minimax-m2.7"},
 		{RouteOpenRouterMiniMaxM27HighspeedText, FamilyMiniMaxText, ProviderOpenRouter, "minimax/minimax-m2.7-highspeed"},
-		{RouteDMXDeepSeekV4FlashText, FamilyDeepSeekText, ProviderDMX, "deepseek-v4-flash"},
-		{RouteDMXDeepSeekV4ProText, FamilyDeepSeekText, ProviderDMX, "deepseek-v4-pro"},
-		{RouteMediagoDeepSeekV4FlashText, FamilyDeepSeekText, ProviderMediago, "deepseek-v4-flash"},
-		{RouteMediagoDeepSeekV4ProText, FamilyDeepSeekText, ProviderMediago, "deepseek-v4-pro"},
+
 		{RouteOpenRouterDeepSeekV4FlashText, FamilyDeepSeekText, ProviderOpenRouter, "deepseek/deepseek-v4-flash"},
 		{RouteOpenRouterDeepSeekV4ProText, FamilyDeepSeekText, ProviderOpenRouter, "deepseek/deepseek-v4-pro"},
 		{RouteOfficialGPT55Text, FamilyGPTText, ProviderOpenAI, "gpt-5.5"},
@@ -128,53 +107,6 @@ func TestTextCatalogIncludesExpandedRoutes(t *testing.T) {
 		}
 		if tc.provider == ProviderMediago && route.Adapter != AdapterMediagoText {
 			t.Fatalf("route %q adapter = %q, want %q", tc.id, route.Adapter, AdapterMediagoText)
-		}
-	}
-}
-
-func TestImageCatalogIncludesMediagoRoutes(t *testing.T) {
-	cases := []struct {
-		id           string
-		family       string
-		version      string
-		model        string
-		adapter      string
-		refs         bool
-		status       RouteStatus
-		reasonPrefix string
-	}{
-		{RouteMediagoSeedream5Lite, FamilySeedream, VersionSeedream5Lite, "doubao-seedream-5-0-lite", AdapterMediagoChatImage, false, RouteStatusAvailable, ""},
-		{RouteMediagoGPTImage2, FamilyGPTImage, VersionGPTImage2, "gpt-image-2", AdapterMediagoImages, true, RouteStatusAvailable, ""},
-		{RouteMediagoNanoBanana31, FamilyNanoBanana, VersionNanoBanana31, "gemini-3.1-flash-image", AdapterMediagoChatImage, true, RouteStatusAvailable, ""},
-		{RouteMediagoNanoBananaPro, FamilyNanoBanana, VersionNanoBananaPro, "gemini-3-pro-image", AdapterMediagoChatImage, true, RouteStatusAvailable, ""},
-		{RouteMediagoNanoBanana25, FamilyNanoBanana, VersionNanoBanana25, "gemini-2.5-flash-image", AdapterMediagoChatImage, true, RouteStatusAvailable, ""},
-	}
-
-	for _, tc := range cases {
-		route, ok := FindRoute(tc.id)
-		if !ok {
-			t.Fatalf("route %q is missing", tc.id)
-		}
-		if route.Kind != KindImage || route.FamilyID != tc.family || route.VersionID != tc.version {
-			t.Fatalf("route %q = %#v, want image family/version route", tc.id, route)
-		}
-		if route.Provider != ProviderMediago || route.Model != tc.model {
-			t.Fatalf("route %q provider/model = %q/%q, want %q/%q", tc.id, route.Provider, route.Model, ProviderMediago, tc.model)
-		}
-		if len(route.AuthKeys) != 1 || route.AuthKeys[0] != ProviderMediago {
-			t.Fatalf("route %q auth keys = %#v, want MediaGo key", tc.id, route.AuthKeys)
-		}
-		if route.Adapter != tc.adapter {
-			t.Fatalf("route %q adapter = %q, want %q", tc.id, route.Adapter, tc.adapter)
-		}
-		if route.SupportsReferenceURLs != tc.refs {
-			t.Fatalf("route %q refs = %v, want %v", tc.id, route.SupportsReferenceURLs, tc.refs)
-		}
-		if route.Status != tc.status {
-			t.Fatalf("route %q status = %q, want %q", tc.id, route.Status, tc.status)
-		}
-		if tc.reasonPrefix != "" && !strings.HasPrefix(route.StatusReason, tc.reasonPrefix) {
-			t.Fatalf("route %q status reason = %q, want prefix %q", tc.id, route.StatusReason, tc.reasonPrefix)
 		}
 	}
 }
@@ -266,53 +198,6 @@ func TestImageCatalogIncludesOfficialWan27Routes(t *testing.T) {
 	}
 }
 
-func TestImageCatalogIncludesMediagoWan27Routes(t *testing.T) {
-	pro := mustRoute(t, RouteMediagoWan27ImagePro)
-	if pro.Provider != ProviderMediago || pro.Model != ModelWan27ImagePro {
-		t.Fatalf("pro provider/model = %q/%q, want %q/%q", pro.Provider, pro.Model, ProviderMediago, ModelWan27ImagePro)
-	}
-	if pro.Adapter != AdapterMediagoImages || pro.MaxReferenceURLs != 9 {
-		t.Fatalf("pro adapter/max refs = %q/%d", pro.Adapter, pro.MaxReferenceURLs)
-	}
-	assertHasParams(t, pro, "aspectRatio", "resolution", "n")
-	assertOptionValues(t, mustParam(t, pro, "resolution"), []string{"1K", "2K", "4K"})
-	if !mustParam(t, pro, "resolution").Options[2].RequiresNoReferenceURLs {
-		t.Fatal("MediaGo Wan 2.7 Pro 4K should require no reference URLs")
-	}
-	translated, err := TranslateRouteParams(pro, map[string]any{
-		"aspectRatio": "16:9",
-		"resolution":  "4K",
-		"n":           float64(2),
-	})
-	if err != nil {
-		t.Fatalf("TranslateRouteParams() error = %v", err)
-	}
-	if translated["size"] != "4096*2304" || translated["n"] != float64(2) {
-		t.Fatalf("translated params = %#v", translated)
-	}
-	if _, ok := translated["thinking_mode"]; ok {
-		t.Fatalf("MediaGo Wan params should not contain direct-Bailian fields: %#v", translated)
-	}
-
-	standard := mustRoute(t, RouteMediagoWan27Image)
-	if standard.Provider != ProviderMediago || standard.Adapter != AdapterMediagoImages {
-		t.Fatalf("standard provider/adapter = %q/%q", standard.Provider, standard.Adapter)
-	}
-	assertOptionValues(t, mustParam(t, standard, "resolution"), []string{"1K", "2K"})
-
-	if err := ValidateRequestForRoute(Request{
-		Kind:          KindImage,
-		RouteID:       pro.ID,
-		ReferenceURLs: []string{"https://example.test/reference.png"},
-		Params: map[string]any{
-			"aspectRatio": "1:1",
-			"resolution":  "4K",
-		},
-	}, pro); err == nil || !strings.Contains(err.Error(), "requires no reference URLs") {
-		t.Fatalf("4K request with references error = %v", err)
-	}
-}
-
 func TestVideoCatalogIncludesOfficialHappyHorseRoute(t *testing.T) {
 	for _, routeID := range []string{
 		"official.happyhorse-1.1-i2v",
@@ -364,53 +249,6 @@ func TestVideoCatalogIncludesOfficialHappyHorseRoute(t *testing.T) {
 	}
 	if versionCount != 1 {
 		t.Fatalf("HappyHorse version count = %d, want 1", versionCount)
-	}
-}
-
-func TestVideoCatalogIncludesMediagoHappyHorseRoute(t *testing.T) {
-	route := mustRoute(t, RouteMediagoHappyHorse11)
-	if route.Provider != ProviderMediago || route.Model != ModelHappyHorse11T2V {
-		t.Fatalf("provider/model = %q/%q", route.Provider, route.Model)
-	}
-	if route.Adapter != AdapterMediagoVideo || !route.Async {
-		t.Fatalf("adapter/async = %q/%v", route.Adapter, route.Async)
-	}
-	if !route.SupportsReferenceURLs || route.MaxReferenceURLs != 9 {
-		t.Fatalf("references = %v/%d", route.SupportsReferenceURLs, route.MaxReferenceURLs)
-	}
-	assertHasParams(t, route, "aspectRatio", "resolution", "duration")
-	translated, err := TranslateRouteParams(route, map[string]any{
-		"aspectRatio": "9:16",
-		"resolution":  "1080p",
-		"duration":    "6",
-	})
-	if err != nil {
-		t.Fatalf("TranslateRouteParams() error = %v", err)
-	}
-	if translated["aspectRatio"] != "9:16" || translated["resolution"] != "1080p" || translated["duration"] != "6" {
-		t.Fatalf("translated params = %#v", translated)
-	}
-}
-
-func TestMediagoWanAndHappyHorseRoutesKeepOfficialRouteFirst(t *testing.T) {
-	tests := []struct {
-		versionID string
-		want      []string
-	}{
-		{versionID: VersionWan27ImagePro, want: []string{RouteOfficialWan27ImagePro, RouteMediagoWan27ImagePro}},
-		{versionID: VersionWan27Image, want: []string{RouteOfficialWan27Image, RouteMediagoWan27Image}},
-		{versionID: VersionHappyHorse11, want: []string{RouteOfficialHappyHorse11, RouteMediagoHappyHorse11}},
-	}
-	for _, test := range tests {
-		routeIDs := []string{}
-		for _, route := range Routes() {
-			if route.VersionID == test.versionID {
-				routeIDs = append(routeIDs, route.ID)
-			}
-		}
-		if !reflect.DeepEqual(routeIDs, test.want) {
-			t.Fatalf("version %q routes = %#v, want %#v", test.versionID, routeIDs, test.want)
-		}
 	}
 }
 
@@ -568,68 +406,6 @@ func TestLibTVCatalogIncludesSeedanceRoutes(t *testing.T) {
 	}
 }
 
-func TestXiaoyunqueCatalogIncludesPippitSeedanceRoutes(t *testing.T) {
-	cases := []struct {
-		id       string
-		version  string
-		model    string
-		has1080p bool
-	}{
-		{RouteXiaoyunqueSeedance20Fast, VersionSeedance20Fast, "seedance2.0_fast_vision", false},
-		{RouteXiaoyunqueSeedance20Mini, VersionSeedance20Mini, "Seedance_2.0_mini", false},
-		{RouteXiaoyunqueSeedance20, VersionSeedance20, "seedance2.0_vision", true},
-		{RouteXiaoyunqueSeedance20MiniLite, VersionSeedance20MiniLite, "Seedance_2.0_mini_lite", false},
-	}
-
-	for _, tc := range cases {
-		route, ok := FindRoute(tc.id)
-		if !ok {
-			t.Fatalf("route %q is missing", tc.id)
-		}
-		if route.Kind != KindVideo ||
-			route.FamilyID != FamilySeedance ||
-			route.VersionID != tc.version ||
-			route.Provider != ProviderXiaoyunque ||
-			route.Adapter != AdapterPippitCLIVideo {
-			t.Fatalf("route %q = %#v, want Xiaoyunque Pippit video route", tc.id, route)
-		}
-		if route.Model != tc.model || !route.Async || !route.SupportsReferenceURLs {
-			t.Fatalf("route %q execution metadata = %#v", tc.id, route)
-		}
-		if len(route.AuthKeys) != 1 || route.AuthKeys[0] != ProviderXiaoyunque {
-			t.Fatalf("route %q auth keys = %#v, want Xiaoyunque key", tc.id, route.AuthKeys)
-		}
-		resolution := mustParam(t, route, "resolution")
-		assertHasOptions(t, resolution, "720p")
-		if tc.has1080p {
-			assertHasOptions(t, resolution, "1080p")
-		} else {
-			assertLacksOption(t, resolution, "1080p")
-		}
-	}
-
-	route := mustRoute(t, RouteXiaoyunqueSeedance20MiniLite)
-	params, err := NormalizeRouteParams(route, map[string]any{
-		"aspectRatio": "9:16",
-		"resolution":  "720p",
-		"duration":    "5",
-	})
-	if err != nil {
-		t.Fatalf("NormalizeRouteParams() error = %v", err)
-	}
-	translated, err := TranslateRouteParams(route, params)
-	if err != nil {
-		t.Fatalf("TranslateRouteParams() error = %v", err)
-	}
-	if !reflect.DeepEqual(translated, map[string]any{
-		"ratio":      "9:16",
-		"resolution": "720p",
-		"duration":   "5",
-	}) {
-		t.Fatalf("translated params = %#v", translated)
-	}
-}
-
 func TestOfficialVolcengineSeedanceCatalogIncludesMiniAndStandard(t *testing.T) {
 	cases := []struct {
 		id      string
@@ -716,8 +492,8 @@ func TestCatalogKeepsLegacyModelIDs(t *testing.T) {
 	if !ok {
 		t.Fatal("legacy seedance model does not map to a route")
 	}
-	if route.ID != RouteDMXSeedance20Fast {
-		t.Fatalf("legacy seedance route = %q, want %q", route.ID, RouteDMXSeedance20Fast)
+	if route.ID != RouteJimengSeedance20Fast {
+		t.Fatalf("legacy seedance route = %q, want %q", route.ID, RouteJimengSeedance20Fast)
 	}
 
 	model, ok := FindModel(ModelNanoBanana)
@@ -797,7 +573,7 @@ func TestModelFamilyGroupsReturnIsolatedCopies(t *testing.T) {
 }
 
 func TestCatalogCopiesParamBounds(t *testing.T) {
-	route := mustRoute(t, RouteDMXGPTImage2)
+	route := mustRoute(t, RouteOfficialGPTImage2)
 	param := mustParam(t, route, "outputCompression")
 	if param.Min == nil || param.Max == nil {
 		t.Fatal("outputCompression should have min and max bounds")
@@ -807,7 +583,7 @@ func TestCatalogCopiesParamBounds(t *testing.T) {
 	*param.Min = -999
 	*param.Max = 999
 
-	nextRoute := mustRoute(t, RouteDMXGPTImage2)
+	nextRoute := mustRoute(t, RouteOfficialGPTImage2)
 	nextParam := mustParam(t, nextRoute, "outputCompression")
 	if nextParam.Min == nil || nextParam.Max == nil {
 		t.Fatal("outputCompression lost min or max bounds")
@@ -822,24 +598,24 @@ func TestDefaultRoutes(t *testing.T) {
 	if !ok {
 		t.Fatal("image default route is missing")
 	}
-	if imageRoute.ID != RouteDMXSeedream5Lite {
-		t.Fatalf("image default route = %q, want %q", imageRoute.ID, RouteDMXSeedream5Lite)
+	if imageRoute.ID != RouteOfficialSeedream5Lite {
+		t.Fatalf("image default route = %q, want %q", imageRoute.ID, RouteOfficialSeedream5Lite)
 	}
 
 	videoRoute, ok := DefaultRoute(KindVideo)
 	if !ok {
 		t.Fatal("video default route is missing")
 	}
-	if videoRoute.ID != RouteDMXSeedance20Fast {
-		t.Fatalf("video default route = %q, want %q", videoRoute.ID, RouteDMXSeedance20Fast)
+	if videoRoute.ID != RouteJimengSeedance20Fast {
+		t.Fatalf("video default route = %q, want %q", videoRoute.ID, RouteJimengSeedance20Fast)
 	}
 
 	textRoute, ok := DefaultRoute(KindText)
 	if !ok {
 		t.Fatal("text default route is missing")
 	}
-	if textRoute.ID != RouteDMXGPT41MiniText {
-		t.Fatalf("text default route = %q, want %q", textRoute.ID, RouteDMXGPT41MiniText)
+	if textRoute.ID != RouteOfficialGPT55Text {
+		t.Fatalf("text default route = %q, want %q", textRoute.ID, RouteOfficialGPT55Text)
 	}
 
 	audioRoute, ok := DefaultRoute(KindAudio)
@@ -888,15 +664,15 @@ func TestResolveRoute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveRoute() legacy error = %v", err)
 	}
-	if route.ID != RouteDMXGPTImage2 {
-		t.Fatalf("legacy route = %q, want %q", route.ID, RouteDMXGPTImage2)
+	if route.ID != RouteOfficialGPTImage2 {
+		t.Fatalf("legacy route = %q, want %q", route.ID, RouteOfficialGPTImage2)
 	}
 
-	if _, err := ResolveRoute(RouteQuery{RouteID: RouteDMXGPTImage2, Kind: KindVideo}); err == nil {
+	if _, err := ResolveRoute(RouteQuery{RouteID: RouteOfficialGPTImage2, Kind: KindVideo}); err == nil {
 		t.Fatal("ResolveRoute() accepted a mismatched kind")
 	}
 
-	if _, err := ResolveRoute(RouteQuery{RouteID: RouteDMXGPTImage2, Provider: ProviderOpenAI}); err == nil {
+	if _, err := ResolveRoute(RouteQuery{RouteID: RouteOfficialGPTImage2, Provider: ProviderGoogle}); err == nil {
 		t.Fatal("ResolveRoute() accepted a mismatched provider")
 	}
 
@@ -927,7 +703,8 @@ func TestValidateRequestForRouteRejectsUnsupportedReferenceURLs(t *testing.T) {
 		t.Fatal("ValidateRequestForRoute() accepted reference URLs for a route that does not support them")
 	}
 
-	route = mustRoute(t, RouteDMXGPTImage2)
+	route = mustRoute(t, RouteLibTVGPTImage2)
+	route.MaxReferenceURLs = 4
 	err = ValidateRequestForRoute(Request{
 		Kind:          KindImage,
 		ReferenceURLs: []string{"https://example.test/reference.png"},
@@ -968,7 +745,7 @@ func TestValidateRequestForRouteRejectsUnsupportedReferenceURLs(t *testing.T) {
 }
 
 func TestValidateRouteParams(t *testing.T) {
-	route := mustRoute(t, RouteDMXGPTImage2)
+	route := mustRoute(t, RouteOfficialGPTImage2)
 	err := ValidateRouteParams(route, map[string]any{
 		"quality": "ultra",
 	})
@@ -983,7 +760,7 @@ func TestValidateRouteParams(t *testing.T) {
 		t.Fatal("ValidateRouteParams() accepted a number above max")
 	}
 
-	route = mustRoute(t, RouteDMXSeedance20Fast)
+	route = mustRoute(t, RouteOfficialSeedance20Fast)
 	err = ValidateRouteParams(route, map[string]any{
 		"duration": 2,
 	})
@@ -1007,12 +784,12 @@ func TestValidateRouteParams(t *testing.T) {
 }
 
 func TestNormalizeRouteParams(t *testing.T) {
-	route := mustRoute(t, RouteDMXSeedance20Fast)
+	route := mustRoute(t, RouteOfficialSeedance20Fast)
 	source := map[string]any{
-		"duration":       "10",
-		"generateAudio":  "false",
-		"watermark":      "true",
-		"negativePrompt": " kept for compatibility ",
+		"duration":      "10",
+		"generateAudio": "false",
+		"watermark":     "true",
+		"legacyExtra":   " kept for compatibility ",
 	}
 
 	normalized, err := NormalizeRouteParams(route, source)
@@ -1025,8 +802,8 @@ func TestNormalizeRouteParams(t *testing.T) {
 	if normalized["generateAudio"] != false || normalized["watermark"] != true {
 		t.Fatalf("booleans = generateAudio %#v watermark %#v", normalized["generateAudio"], normalized["watermark"])
 	}
-	if normalized["negativePrompt"] != " kept for compatibility " {
-		t.Fatalf("unknown compatibility param changed: %#v", normalized["negativePrompt"])
+	if normalized["legacyExtra"] != " kept for compatibility " {
+		t.Fatalf("unknown compatibility param changed: %#v", normalized["legacyExtra"])
 	}
 	if source["duration"] != "10" {
 		t.Fatalf("NormalizeRouteParams() mutated source: %#v", source)
@@ -1050,88 +827,31 @@ func TestCredentialSpecsCoverRouteAuthKeys(t *testing.T) {
 }
 
 func TestRouteParamsMatchProviderCapabilities(t *testing.T) {
-	dmxSeedance := mustRoute(t, RouteDMXSeedance20Fast)
-	assertHasParams(t, dmxSeedance, "aspectRatio", "resolution", "duration", "generateAudio", "seed", "watermark", "returnLastFrame", "executionExpiresAfter")
-	assertNoParams(t, dmxSeedance, "negativePrompt")
+	officialSeedance := mustRoute(t, RouteOfficialSeedance20Fast)
+	assertHasParams(t, officialSeedance, "aspectRatio", "resolution", "duration", "generateAudio", "seed", "watermark", "returnLastFrame", "executionExpiresAfter")
+	assertHasParams(t, officialSeedance, "negativePrompt")
 
 	officialGPTImage := mustRoute(t, RouteOfficialGPTImage2)
 	assertHasParams(t, officialGPTImage, "aspectRatio", "resolution", "quality", "outputFormat", "moderation", "outputCompression", "background", "n")
 
-	dmxGPTImage := mustRoute(t, RouteDMXGPTImage2)
-	assertHasParams(t, dmxGPTImage, "aspectRatio", "resolution", "quality", "outputFormat", "moderation", "outputCompression", "n")
-	assertNoParams(t, dmxGPTImage, "background")
-	if !dmxGPTImage.SupportsReferenceURLs {
-		t.Fatal("dmx gpt image route should support reference images")
-	}
-	if dmxGPTImage.MaxReferenceURLs != 4 {
-		t.Fatalf("dmx gpt image max references = %d, want 4", dmxGPTImage.MaxReferenceURLs)
-	}
+	officialSeedream := mustRoute(t, RouteOfficialSeedream5Lite)
+	assertHasOptions(t, mustParam(t, officialSeedream, "aspectRatio"), "3:4")
 
-	mediagoGPTImage := mustRoute(t, RouteMediagoGPTImage2)
-	assertHasParams(t, mediagoGPTImage, "aspectRatio", "resolution", "quality", "outputFormat", "moderation", "outputCompression", "n", "background")
-	if !mediagoGPTImage.SupportsReferenceURLs {
-		t.Fatal("mediago gpt image route should support reference images through MediaGo input_references")
-	}
-	if mediagoGPTImage.MaxReferenceURLs != 4 {
-		t.Fatalf("mediago gpt image max references = %d, want 4", mediagoGPTImage.MaxReferenceURLs)
-	}
-	mediagoGPTImageRatio := mustParam(t, mediagoGPTImage, "aspectRatio")
-	assertHasOptions(t, mediagoGPTImageRatio, "adaptive", "1:1", "3:2", "2:3", "16:9", "9:16")
-	assertComboOutput(t, mediagoGPTImage, "aspectRatio", "resolution", "16:9|2K", "2048x1152")
-	assertComboOutput(t, mediagoGPTImage, "aspectRatio", "resolution", "16:9|4K", "3840x2160")
-	assertComboOutput(t, mediagoGPTImage, "aspectRatio", "resolution", "9:16|4K", "2160x3840")
-
-	dmxSeedream := mustRoute(t, RouteDMXSeedream5Lite)
-	assertHasOptions(t, mustParam(t, dmxSeedream, "aspectRatio"), "3:4")
-
-	nanoBanana := mustRoute(t, RouteDMXNanoBanana31)
-	if !nanoBanana.SupportsReferenceURLs {
-		t.Fatal("dmx nano banana route should support reference images")
-	}
-	if nanoBanana.MaxReferenceURLs != 4 {
-		t.Fatalf("dmx nano banana max references = %d, want 4", nanoBanana.MaxReferenceURLs)
-	}
 	officialNanoBanana := mustRoute(t, RouteOfficialNanoBanana31)
 	if !officialNanoBanana.SupportsReferenceURLs {
 		t.Fatal("official nano banana route should support reference images")
 	}
-	aspectRatio := mustParam(t, nanoBanana, "aspectRatio")
+	aspectRatio := mustParam(t, officialNanoBanana, "aspectRatio")
 	assertHasOptions(t, aspectRatio, "1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9", "9:21")
 	assertHasOptions(t, mustParam(t, officialNanoBanana, "resolution"), "512px", "1K", "2K", "4K")
-	assertHasOptions(t, mustParam(t, nanoBanana, "resolution"), "512px", "1K", "2K", "4K")
+	assertHasOptions(t, mustParam(t, officialNanoBanana, "resolution"), "512px", "1K", "2K", "4K")
 	assertComboOutput(t, officialNanoBanana, "aspectRatio", "resolution", "1:1|512px", "512x512")
-	assertComboOutput(t, nanoBanana, "aspectRatio", "resolution", "1:1|512px", "512x512")
-	assertComboOutput(t, nanoBanana, "aspectRatio", "resolution", "16:9|1K", "1376x768")
-	assertComboOutput(t, nanoBanana, "aspectRatio", "resolution", "1:4|4K", "2048x8192")
-	assertComboOutput(t, nanoBanana, "aspectRatio", "resolution", "9:21|1K", "672x1584")
-	mediagoNanoBanana := mustRoute(t, RouteMediagoNanoBanana31)
-	assertHasParams(t, mediagoNanoBanana, "aspectRatio", "resolution", "n")
-	assertNoParams(t, mediagoNanoBanana, "quality", "outputFormat", "moderation", "outputCompression", "background")
-	assertHasOptions(t, mustParam(t, mediagoNanoBanana, "aspectRatio"), "1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9")
-	assertLacksOption(t, mustParam(t, mediagoNanoBanana, "aspectRatio"), "9:21")
-	assertHasOptions(t, mustParam(t, mediagoNanoBanana, "resolution"), "1K", "2K", "4K")
-	assertLacksOption(t, mustParam(t, mediagoNanoBanana, "resolution"), "512px")
-	assertComboOutput(t, mediagoNanoBanana, "aspectRatio", "resolution", "16:9|1K", "1376x768")
-	assertComboOutput(t, mediagoNanoBanana, "aspectRatio", "resolution", "4:3|2K", "2400x1792")
-	mediagoNanoBananaPro := mustRoute(t, RouteMediagoNanoBananaPro)
-	assertHasParams(t, mediagoNanoBananaPro, "aspectRatio", "resolution", "n")
-	assertNoParams(t, mediagoNanoBananaPro, "quality", "outputFormat", "moderation", "outputCompression", "background")
-	assertHasOptions(t, mustParam(t, mediagoNanoBananaPro, "aspectRatio"), "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9")
-	assertLacksOption(t, mustParam(t, mediagoNanoBananaPro, "aspectRatio"), "1:4")
-	assertLacksOption(t, mustParam(t, mediagoNanoBananaPro, "aspectRatio"), "9:21")
-	assertHasOptions(t, mustParam(t, mediagoNanoBananaPro, "resolution"), "1K", "2K", "4K")
-	assertLacksOption(t, mustParam(t, mediagoNanoBananaPro, "resolution"), "512px")
-	assertComboOutput(t, mediagoNanoBananaPro, "aspectRatio", "resolution", "16:9|4K", "5504x3072")
-	assertComboOutput(t, mediagoNanoBananaPro, "aspectRatio", "resolution", "4:3|2K", "2400x1792")
-	mediagoNanoBanana25 := mustRoute(t, RouteMediagoNanoBanana25)
-	assertHasParams(t, mediagoNanoBanana25, "aspectRatio", "resolution", "n")
-	assertHasOptions(t, mustParam(t, mediagoNanoBanana25, "resolution"), "1K")
-	assertLacksOption(t, mustParam(t, mediagoNanoBanana25, "resolution"), "2K")
-	assertLacksOption(t, mustParam(t, mediagoNanoBanana25, "resolution"), "4K")
-	assertLacksOption(t, mustParam(t, mediagoNanoBanana25, "aspectRatio"), "1:4")
-	assertComboOutput(t, mediagoNanoBanana25, "aspectRatio", "resolution", "16:9|1K", "1344x768")
+	assertComboOutput(t, officialNanoBanana, "aspectRatio", "resolution", "1:1|512px", "512x512")
+	assertComboOutput(t, officialNanoBanana, "aspectRatio", "resolution", "16:9|1K", "1376x768")
+	assertComboOutput(t, officialNanoBanana, "aspectRatio", "resolution", "1:4|4K", "2048x8192")
+	assertComboOutput(t, officialNanoBanana, "aspectRatio", "resolution", "9:21|1K", "672x1584")
 
-	seedanceDuration := mustParam(t, dmxSeedance, "duration")
+	seedanceDuration := mustParam(t, officialSeedance, "duration")
 	assertHasOptions(t, seedanceDuration, "-1", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15")
 
 	jimengSeedream := mustRoute(t, RouteJimengSeedream50)
@@ -1191,11 +911,6 @@ func TestRouteParamsMatchProviderCapabilities(t *testing.T) {
 }
 
 func TestRouteParamsDefaultToLowestCostOptions(t *testing.T) {
-	dmxSeedance := mustRoute(t, RouteDMXSeedance20Fast)
-	assertParamDefault(t, dmxSeedance, "resolution", "480p")
-	assertParamDefault(t, dmxSeedance, "duration", "4")
-	assertParamDefault(t, dmxSeedance, "generateAudio", false)
-
 	officialSeedance := mustRoute(t, RouteOfficialSeedance20Fast)
 	assertParamDefault(t, officialSeedance, "resolution", "480p")
 	assertParamDefault(t, officialSeedance, "duration", "4")
@@ -1206,20 +921,17 @@ func TestRouteParamsDefaultToLowestCostOptions(t *testing.T) {
 	assertParamDefault(t, openRouterVideo, "duration", "3")
 	assertParamDefault(t, openRouterVideo, "generateAudio", false)
 
-	dmxGPTImage := mustRoute(t, RouteDMXGPTImage2)
-	assertParamDefault(t, dmxGPTImage, "aspectRatio", "1:1")
-	assertParamDefault(t, dmxGPTImage, "resolution", "1K")
-	assertParamDefault(t, dmxGPTImage, "quality", "auto")
-	assertParamDefault(t, dmxGPTImage, "outputFormat", "png")
-	assertParamDefault(t, dmxGPTImage, "n", float64(1))
+	officialGPTImage := mustRoute(t, RouteOfficialGPTImage2)
+	assertParamDefault(t, officialGPTImage, "aspectRatio", "1:1")
+	assertParamDefault(t, officialGPTImage, "resolution", "1K")
+	assertParamDefault(t, officialGPTImage, "quality", "auto")
+	assertParamDefault(t, officialGPTImage, "outputFormat", "png")
+	assertParamDefault(t, officialGPTImage, "n", float64(1))
 
-	dmxNanoBanana := mustRoute(t, RouteDMXNanoBanana31)
-	assertParamDefault(t, dmxNanoBanana, "resolution", "1K")
-	assertParamDefault(t, dmxNanoBanana, "n", float64(1))
+	officialNanoBanana := mustRoute(t, RouteOfficialNanoBanana31)
+	assertParamDefault(t, officialNanoBanana, "resolution", "1K")
+	assertParamDefault(t, officialNanoBanana, "n", float64(1))
 
-	mediagoNanoBananaPro := mustRoute(t, RouteMediagoNanoBananaPro)
-	assertParamDefault(t, mediagoNanoBananaPro, "resolution", "1K")
-	assertParamDefault(t, mediagoNanoBananaPro, "n", float64(1))
 }
 
 func mustRoute(t *testing.T, id string) ModelRoute {

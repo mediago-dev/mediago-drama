@@ -7,8 +7,8 @@ type AgentSessionModel struct {
 	SessionID              string     `gorm:"column:session_id;primaryKey"`
 	ProjectID              string     `gorm:"column:project_id;not null;default:'';index:agent_sessions_project_idx"`
 	Title                  string     `gorm:"column:title;not null;default:''"`
-	ACPSessionID           string     `gorm:"column:acp_session_id;not null;default:''"`
-	ACPInstructionHash     string     `gorm:"column:acp_instruction_hash;not null;default:''"`
+	CodexThreadID          string     `gorm:"column:codex_thread_id;not null;default:''"`
+	CodexInstructionHash   string     `gorm:"column:codex_instruction_hash;not null;default:''"`
 	LastStatus             string     `gorm:"column:last_status;not null;default:'';index:agent_sessions_status_idx"`
 	LastMessage            string     `gorm:"column:last_message;not null;default:''"`
 	ActiveWorkflowID       *string    `gorm:"column:active_workflow_id;index:agent_sessions_active_workflow_idx"`

@@ -41,16 +41,9 @@ func TestToolBinaryNameUsesExeOnWindows(t *testing.T) {
 	}
 }
 
-func TestCanonicalToolIDMapsXiaoyunqueToPippit(t *testing.T) {
-	got := canonicalToolID(" Xiaoyunque ")
-	if got != "pippit" {
-		t.Fatalf("canonicalToolID() = %q, want pippit", got)
-	}
-}
-
 func TestGenerationToolIDsNormalizesList(t *testing.T) {
-	got := generationToolIDs(" Dreamina, LIBTV, none, , xiaoyunque, pippit-tool-cli ")
-	want := []string{"dreamina", "libtv", "pippit"}
+	got := generationToolIDs(" Dreamina, LIBTV, none, , dreamina ")
+	want := []string{"dreamina", "libtv"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("generationToolIDs() = %#v, want %#v", got, want)
 	}
@@ -77,7 +70,6 @@ func TestToolsJSONIncludesWindowsX64Assets(t *testing.T) {
 		{id: "ffmpeg", asset: "ffmpeg-win32-x64", wantBin: "ffmpeg.exe"},
 		{id: "ffprobe", asset: "ffprobe-win32-x64", wantBin: "ffprobe.exe"},
 		{id: "libtv", asset: "libtv-windows-amd64.zip", wantBin: "libtv.exe", wantArchivePath: "libtv-win-x64/libtv.exe"},
-		{id: "pippit", asset: "pippit-tool-cli-1.0.10-windows-amd64.zip", wantBin: "pippit-tool-cli.exe", wantArchivePath: "pippit-tool-cli.exe"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.id, func(t *testing.T) {
@@ -278,5 +270,20 @@ func assertPreparedBinary(t *testing.T, path string, want string) {
 	}
 	if err := ensureExecutable(path); err != nil {
 		t.Fatalf("ensureExecutable() error = %v", err)
+	}
+}
+
+func TestRemovedGenerationToolIsNotPackaged(t *testing.T) {
+	specs, err := loadToolSpecs(filepath.Join("..", "..", "tools.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := specs["pippit"]; ok {
+		t.Fatal("removed CLI remains in tool manifest")
+	}
+	for _, platform := range specs["dreamina"].Platforms {
+		if platform.SizeBytes == 0 || len(platform.SHA256) != 64 {
+			t.Fatalf("unverified Dreamina asset: %#v", platform)
+		}
 	}
 }

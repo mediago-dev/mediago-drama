@@ -15,10 +15,6 @@ func gptImageParamsWithBackground() RouteParamConfig {
 	return routeParamConfig(params, translation)
 }
 
-func dmxGPTImageParams() RouteParamConfig {
-	return gptImageParams()
-}
-
 func gptImageParams() RouteParamConfig {
 	params := []RouteParam{
 		selectRouteParam(ParamAspectRatio, "1:1", []ParamOption{

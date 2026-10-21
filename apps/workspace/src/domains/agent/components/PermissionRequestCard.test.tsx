@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	decideAgentPermission,
-	type AgentRuntimeACPPermissionRequest,
+	type AgentRuntimePermissionRequest,
 } from "@/domains/agent/api/agent";
 import { PermissionRequestCard } from "@/domains/agent/components/PermissionRequestCard";
 import { useProjectStore } from "@/domains/projects/stores";
@@ -21,7 +21,7 @@ vi.mock("@/domains/agent/api/agent", () => ({
 	decideAgentPermission: vi.fn(),
 }));
 
-const request: AgentRuntimeACPPermissionRequest = {
+const request: AgentRuntimePermissionRequest = {
 	requestId: "permission-1",
 	toolCall: {
 		id: "call-1",
@@ -70,7 +70,7 @@ describe("PermissionRequestCard", () => {
 	});
 
 	it("contains long tool titles inside a scrollable command summary", () => {
-		const longCommandRequest: AgentRuntimeACPPermissionRequest = {
+		const longCommandRequest: AgentRuntimePermissionRequest = {
 			...request,
 			toolCall: {
 				id: "call-long",
@@ -120,5 +120,35 @@ describe("PermissionRequestCard", () => {
 			});
 			expect(onDecided).toHaveBeenCalledTimes(1);
 		});
+	});
+	it("submits structured Codex answers only after required questions are answered", async () => {
+		vi.mocked(decideAgentPermission).mockResolvedValue({ running: true, sessionId: "session-1" });
+		useProjectStore.setState({ activeProjectId: "project-1" });
+		render(
+			<PermissionRequestCard
+				request={{
+					...request,
+					questions: [
+						{
+							id: "language",
+							question: "使用哪种语言？",
+							required: true,
+							options: [{ label: "中文" }],
+						},
+					],
+					options: [{ optionId: "accept", kind: "allow_once", name: "提交回答" }],
+				}}
+				sessionId="session-1"
+				onDecided={vi.fn()}
+			/>,
+		);
+		expect(screen.getByRole("button", { name: "提交回答" })).toBeDisabled();
+		fireEvent.click(screen.getByRole("radio"));
+		fireEvent.click(screen.getByRole("button", { name: "提交回答" }));
+		await waitFor(() =>
+			expect(decideAgentPermission).toHaveBeenCalledWith(
+				expect.objectContaining({ answers: { language: ["中文"] } }),
+			),
+		);
 	});
 });

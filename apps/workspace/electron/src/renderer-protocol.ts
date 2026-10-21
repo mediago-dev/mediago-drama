@@ -18,10 +18,20 @@ export const rendererContentSecurityPolicy = [
 	"font-src 'self' data: https:",
 	"img-src 'self' data: blob: http: https:",
 	"media-src 'self' data: blob: http: https:",
-	"connect-src 'self' http://127.0.0.1:48273 https: wss:",
+	"connect-src 'self' https: wss:",
 	"worker-src 'self' blob:",
 	"manifest-src 'self'",
 ].join("; ");
+
+export const rendererPolicyForServer = (origin?: string): string => {
+	if (!origin) return rendererContentSecurityPolicy;
+	if (!/^http:\/\/127\.0\.0\.1:[1-9]\d{0,4}$/.test(origin) || Number(new URL(origin).port) > 65535)
+		throw new Error("Invalid sidecar origin");
+	return rendererContentSecurityPolicy.replace(
+		"connect-src 'self'",
+		`connect-src 'self' ${origin}`,
+	);
+};
 
 export const resolveRendererAssetPath = (
 	requestURL: string,

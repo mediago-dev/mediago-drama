@@ -2,31 +2,23 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/url"
-	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
-	"unicode/utf16"
 
-	corepricing "github.com/mediago-dev/mediago-drama/packages/core/pkg/pricing"
 	draftlib "github.com/mediago-dev/mediago-drama/packages/jianyingdraft/pkg/jianyingdraft"
 	appagent "github.com/mediago-dev/mediago-drama/services/server/internal/app/agent"
 	appevents "github.com/mediago-dev/mediago-drama/services/server/internal/app/events"
 	appworkspace "github.com/mediago-dev/mediago-drama/services/server/internal/app/workspace"
 	corecapability "github.com/mediago-dev/mediago-drama/services/server/internal/capability"
-	platformprotectedpack "github.com/mediago-dev/mediago-drama/services/server/internal/platform/protectedpack"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
-	serviceacp "github.com/mediago-dev/mediago-drama/services/server/internal/service/acp"
 	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
-	servicebilling "github.com/mediago-dev/mediago-drama/services/server/internal/service/billing"
 	servicecapability "github.com/mediago-dev/mediago-drama/services/server/internal/service/capability"
+	serviceruntime "github.com/mediago-dev/mediago-drama/services/server/internal/service/codex"
 	servicecodexskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/codexskill"
 	servicegeneration "github.com/mediago-dev/mediago-drama/services/server/internal/service/generation"
 	servicejianyingdraft "github.com/mediago-dev/mediago-drama/services/server/internal/service/jianyingdraft"
@@ -40,6 +32,7 @@ import (
 	servicesettings "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 	servicetextcompletion "github.com/mediago-dev/mediago-drama/services/server/internal/service/textcompletion"
+	serviceusage "github.com/mediago-dev/mediago-drama/services/server/internal/service/usage"
 	serviceworkspaceevent "github.com/mediago-dev/mediago-drama/services/server/internal/service/workspaceevent"
 )
 
@@ -56,14 +49,14 @@ func newAPIHandler(config Config) *apiHandler {
 		mediaDir = workspaceState.LibraryAssetsDir()
 	}
 
-	backendService := serviceagent.NewAgentBackendServiceWithBinDir(config.ACPCommand, config.AgentBinDir, config.AgentID)
+	backendService := serviceagent.NewAgentBackendServiceWithBinDir(config.CodexPath, config.AgentBinDir, config.AgentID)
 	buildPrompt := func(request agentRunRequest) string {
-		return buildACPPromptWithMaxSectionChars(request, config.PromptMaxSectionChars)
+		return buildRuntimePromptWithMaxSectionChars(request, config.PromptMaxSectionChars)
 	}
 	runner := config.agentRunner
 	if runner == nil {
-		runner = appagent.NewACPRunnerWithDocumentMCPConfigPathAndArgv(
-			config.ACPCommand,
+		runner = appagent.NewRuntimeRunnerWithDocumentMCPConfigPathAndArgv(
+			config.CodexPath,
 			config.WorkspaceDir,
 			config.DocumentMCPConfigPath,
 			buildPrompt,
@@ -71,7 +64,7 @@ func newAPIHandler(config Config) *apiHandler {
 			backendService.ActiveArgv,
 		)
 	}
-	// 会话回顾数据源：续接对话的 ACP 会话无法复用（换模型/上游会话失效）时，
+	// 会话回顾数据源：续接对话的 Runtime 会话无法复用（换模型/上游会话失效）时，
 	// runner 用它取本会话聊天记录和已确认的选择决定，回放进重建会话的 prompt。
 	buildSessionRecap := func(ctx context.Context, request agentRunRequest) string {
 		if ctx.Err() != nil {
@@ -91,10 +84,10 @@ func newAPIHandler(config Config) *apiHandler {
 				}
 			}
 		}
-		return serviceacp.BuildACPSessionRecap(chat.Messages, request.Prompt, decisionLines)
+		return serviceruntime.BuildRuntimeSessionRecap(chat.Messages, request.Prompt, decisionLines)
 	}
 	if recapAware, ok := runner.(interface {
-		SetSessionRecapBuilder(serviceacp.SessionRecapBuilder)
+		SetSessionRecapBuilder(serviceruntime.SessionRecapBuilder)
 	}); ok {
 		recapAware.SetSessionRecapBuilder(buildSessionRecap)
 	} else {
@@ -131,15 +124,16 @@ func newAPIHandler(config Config) *apiHandler {
 	)
 	settings.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)
 	settings.SetLibTVCLIPaths(config.LibTVBinPath, config.LibTVBinDir)
-	settings.SetPippitCLIPaths(config.PippitBinPath, config.PippitBinDir)
+
 	codexPath := ""
 	if resolvedCodexPath, err := backendService.CodexExecutable(); err == nil {
 		codexPath = resolvedCodexPath
 		settings.SetCodexCLIPath(codexPath)
+		settings.SetCodexRuntimeHome(filepath.Join(workspaceState.Dir(), ".mediago-drama", "runtime", "agents", "codex", "account-home"))
 	}
 	settings.SetModelPlatforms(config.ModelPlatforms)
 	settings.SetGenerationCLIs(config.GenerationCLIs)
-	settings.SetMediagoBaseURL(config.MediagoBaseURL)
+
 	codexSkills := servicecodexskill.NewService(
 		workspaceState.Dir(),
 		func(ctx context.Context) (servicecodexskill.RuntimeHomeDescriptor, error) {
@@ -158,69 +152,27 @@ func newAPIHandler(config Config) *apiHandler {
 		agentBridgeURL = defaultAgentBridgeURL(config.Host, config.Port)
 	}
 	if configurableRunner, ok := runner.(interface {
-		SetProcessConfigProvider(serviceacp.ProcessConfigProvider)
+		SetProcessConfigProvider(serviceruntime.ProcessConfigProvider)
 	}); ok {
-		configurableRunner.SetProcessConfigProvider(serviceacp.ProcessConfigProviderFunc(func(ctx context.Context, request serviceacp.ProcessConfigRequest) (serviceacp.ProcessConfig, error) {
-			nativeInstructions := useNativeACPInstructions(config.PromptDelivery)
-			if request.AgentID == "codex" {
-				codexConfig, err := settings.PrepareCodexRelayRuntimeConfig(
-					ctx,
-					request.WorkspaceDir,
-					codexRelayBridgeBaseURL(agentBridgeURL)+"/api/v1/codex-relay",
-				)
-				if err != nil {
-					return serviceacp.ProcessConfig{}, err
-				}
-				env := mergeACPProcessEnv(codexConfig.Env, backendService.ActiveEnv())
-				if nativeInstructions {
-					env, err = withCodexDeveloperInstructions(env, request.FixedInstructions)
-					if err != nil {
-						return serviceacp.ProcessConfig{}, err
-					}
-				}
-				processConfig := serviceacp.ProcessConfig{
-					ConfigDir:                  codexConfig.ConfigDir,
-					Env:                        env,
-					NativeInstructionsInjected: nativeInstructions,
-				}
-				if strings.TrimSpace(request.PreferredModel) == "" {
-					check, checkErr := settings.CheckCodexRelay(ctx, servicesettings.CodexRelayCheckRequest{})
-					if checkErr == nil && len(check.Models) > 0 {
-						processConfig.RestrictModelValues = true
-						processConfig.AllowedModelValues = append([]string(nil), check.Models...)
-						processConfig.DiscoveredModelValues = append([]string(nil), check.Models...)
-					}
-				}
-				return processConfig, nil
-			}
-			if request.AgentID != "opencode" {
-				return serviceacp.ProcessConfig{}, nil
-			}
-			var openCodeConfig servicesettings.OpenCodeRuntimeConfig
-			var err error
-			if nativeInstructions {
-				openCodeConfig, err = settings.PrepareOpenCodeRuntimeConfigForModelAndInstructions(
-					ctx,
-					request.WorkspaceDir,
-					request.PreferredModel,
-					request.FixedInstructions,
-				)
-			} else {
-				openCodeConfig, err = settings.PrepareOpenCodeRuntimeConfigForModel(ctx, request.WorkspaceDir, request.PreferredModel)
-			}
+		configurableRunner.SetProcessConfigProvider(serviceruntime.ProcessConfigProviderFunc(func(ctx context.Context, request serviceruntime.ProcessConfigRequest) (serviceruntime.ProcessConfig, error) {
+			profile, err := settings.PrepareCodexRelayRuntimeConfig(ctx, request.WorkspaceDir, codexRelayBridgeBaseURL(agentBridgeURL)+"/api/v1/codex-relay")
 			if err != nil {
-				return serviceacp.ProcessConfig{}, err
+				return serviceruntime.ProcessConfig{}, err
 			}
-			return serviceacp.ProcessConfig{
-				ConfigDir:                  openCodeConfig.ConfigDir,
-				Env:                        openCodeConfig.Env,
-				ProfileCount:               openCodeConfig.ProfileCount,
-				DefaultProfileID:           openCodeConfig.DefaultProfileID,
-				RestrictModelValues:        openCodeConfig.RestrictModelValues,
-				AllowedModelValues:         openCodeConfig.AllowedModelValues,
-				AllowedModelProviders:      openCodeConfig.AllowedModelProviders,
-				NativeInstructionsInjected: nativeInstructions,
-			}, nil
+			env := mergeRuntimeProcessEnv(profile.Env, backendService.ActiveEnv())
+			if env["CODEX_HOME"] == "" {
+				env["CODEX_HOME"] = filepath.Join(request.WorkspaceDir, ".mediago-drama", "runtime", "agents", "codex", "account-home")
+			}
+			prepared := serviceruntime.ProcessConfig{ConfigDir: profile.ConfigDir, Env: env, NativeInstructionsInjected: true}
+			if profile.Configured && request.PreferredModel == "" {
+				check, err := settings.CheckCodexRelay(ctx, servicesettings.CodexRelayCheckRequest{})
+				if err == nil && len(check.Models) > 0 {
+					prepared.RestrictModelValues = true
+					prepared.AllowedModelValues = check.Models
+					prepared.DiscoveredModelValues = check.Models
+				}
+			}
+			return prepared, nil
 		}))
 	}
 	generationPreferences := servicegeneration.NewGenerationPreferenceServiceFromRepository(settingsRepos.GenerationPreferences, settingsReposErr)
@@ -247,8 +199,7 @@ func newAPIHandler(config Config) *apiHandler {
 	}
 	generationService.SetJimengCLIPaths(config.JimengBinPath, config.JimengBinDir)
 	generationService.SetLibTVCLIConfig(config.LibTVBinPath, config.LibTVBinDir, config.LibTVProjectID)
-	generationService.SetPippitCLIPaths(config.PippitBinPath, config.PippitBinDir)
-	generationService.SetMediagoBaseURL(config.MediagoBaseURL)
+
 	generationService.SetGenerationNotifications(generationNotifications)
 	generationService.SetDocumentResolver(workspaceState.StateService().Documents)
 	workspaceState.StateService().Documents.SetGeneratedAssetCounter(generationTasks)
@@ -260,38 +211,13 @@ func newAPIHandler(config Config) *apiHandler {
 		settingsReposErr,
 		filepath.Join(filepath.Dir(settingsDBPath), "packs"),
 	)
-	promptPack.SetUnprotectedImportAllowed(config.AllowUnprotectedPackImport)
-	var protectedPackImporterErr error
-	if importerPath := strings.TrimSpace(config.ProtectedPackImporterPath); importerPath != "" {
-		var importer *platformprotectedpack.Importer
-		importer, protectedPackImporterErr = platformprotectedpack.New(importerPath)
-		if protectedPackImporterErr == nil {
-			promptPack.SetProtectedImporter(importer)
-		} else {
-			slog.Error(
-				"protected prompt pack importer initialization failed",
-				"path", importerPath,
-				"error", protectedPackImporterErr,
-			)
-			promptPack.SetProtectedImporterUnavailable(protectedPackImporterErr)
-		}
-	}
 	serviceskill.SetPromptPackStore(promptPack)
 	skillRegistry := serviceskill.NewRegistryWithStore(promptPack)
 	promptLibrary := servicepromptlibrary.NewServiceFromPromptPack(promptPack, settingsReposErr)
 	generationService.SetStylePromptLibrary(promptLibrary)
-	for _, extension := range config.RuntimeExtensions {
-		if extension != nil && extension.ContentUseAuthorizer() != nil {
-			generationService.SetContentUseAuthorizer(extension.ContentUseAuthorizer())
-		}
-	}
 	capabilityRegistry := corecapability.Default()
 	capabilityService := servicecapability.NewService(capabilityRegistry, generationService.RouteConfigured)
-	billingPrices := config.BillingPrices
-	if billingPrices == nil {
-		billingPrices = corepricing.Default()
-	}
-	billingService := servicebilling.NewService(workspaceRepos.Billing, billingPrices, capabilityRegistry)
+	usageService := serviceusage.NewService(workspaceRepos.Usage, capabilityRegistry)
 	projectAssets := serviceprojectasset.NewProjectAssetsFromRepository(workspaceRepos.ProjectAssets, mediaDir, workspaceState.Dir(), workspaceRepos.Workspace, workspaceReposErr)
 	selectionService := serviceselection.NewService(workspaceRepos.Selections, workspaceReposErr)
 	events := appevents.NewBroker(workspaceState.AppendAgentEvent)
@@ -308,35 +234,33 @@ func newAPIHandler(config Config) *apiHandler {
 			settingsReposErr,
 			settingsMigrationErr,
 			workspaceReposErr,
-			protectedPackImporterErr,
 		),
-		workspaceState:    workspaceState,
-		events:            events,
-		workspaceEvents:   workspaceEvents,
-		agentSessions:     agentSessions,
-		agentRunner:       runner,
-		documentRunner:    documentRunner,
-		agentRunTimeout:   agentRunTimeout,
-		agentBridgeURL:    agentBridgeURL,
-		agentBridgeToken:  agentBridgeToken,
-		settings:          settings,
-		capability:        capabilityService,
-		billing:           billingService,
-		backendService:    backendService,
-		generation:        generationService,
-		selection:         selectionService,
-		jianyingDraft:     jianyingDraft,
-		mediaAssets:       mediaAssets,
-		previewStreamer:   previewStreamer,
-		projectAssets:     projectAssets,
-		promptPack:        promptPack,
-		promptTemplates:   promptTemplates,
-		promptLibrary:     promptLibrary,
-		skillRegistry:     skillRegistry,
-		codexSkills:       codexSkills,
-		runtimeExtensions: append([]RuntimeExtension(nil), config.RuntimeExtensions...),
-		shutdownCtx:       shutdownCtx,
-		shutdownCancel:    shutdownCancel,
+		workspaceState:   workspaceState,
+		events:           events,
+		workspaceEvents:  workspaceEvents,
+		agentSessions:    agentSessions,
+		agentRunner:      runner,
+		documentRunner:   documentRunner,
+		agentRunTimeout:  agentRunTimeout,
+		agentBridgeURL:   agentBridgeURL,
+		agentBridgeToken: agentBridgeToken,
+		settings:         settings,
+		capability:       capabilityService,
+		usage:            usageService,
+		backendService:   backendService,
+		generation:       generationService,
+		selection:        selectionService,
+		jianyingDraft:    jianyingDraft,
+		mediaAssets:      mediaAssets,
+		previewStreamer:  previewStreamer,
+		projectAssets:    projectAssets,
+		promptPack:       promptPack,
+		promptTemplates:  promptTemplates,
+		promptLibrary:    promptLibrary,
+		skillRegistry:    skillRegistry,
+		codexSkills:      codexSkills,
+		shutdownCtx:      shutdownCtx,
+		shutdownCancel:   shutdownCancel,
 	}
 	handler.agentRuntime = serviceagent.NewAgentRuntime(
 		workspaceState.StateService().Documents,
@@ -407,7 +331,7 @@ func newAPIHandler(config Config) *apiHandler {
 	return handler
 }
 
-func mergeACPProcessEnv(base map[string]string, overrides map[string]string) map[string]string {
+func mergeRuntimeProcessEnv(base map[string]string, overrides map[string]string) map[string]string {
 	merged := make(map[string]string, len(base)+len(overrides))
 	for key, value := range base {
 		merged[key] = value
@@ -419,80 +343,6 @@ func mergeACPProcessEnv(base map[string]string, overrides map[string]string) map
 		merged["DEFAULT_AUTH_REQUEST"] = `{"methodId":"api-key"}`
 	}
 	return merged
-}
-
-func useNativeACPInstructions(delivery string) bool {
-	return !strings.EqualFold(strings.TrimSpace(delivery), "inline")
-}
-
-func withCodexDeveloperInstructions(env map[string]string, instructions string) (map[string]string, error) {
-	return withCodexDeveloperInstructionsForGOOS(env, instructions, runtime.GOOS)
-}
-
-const windowsEnvironmentVariableMaxUTF16CodeUnits = 32767
-
-func withCodexDeveloperInstructionsForGOOS(env map[string]string, instructions string, targetGOOS string) (map[string]string, error) {
-	result := make(map[string]string, len(env)+1)
-	for key, value := range env {
-		result[key] = value
-	}
-	rawConfig, exists := result["CODEX_CONFIG"]
-	if !exists {
-		rawConfig = os.Getenv("CODEX_CONFIG")
-	}
-	mergedConfig, err := mergeCodexConfigWithDeveloperInstructions(rawConfig, instructions)
-	if err != nil {
-		return nil, err
-	}
-	if err := validateCodexConfigEnvironmentSize(mergedConfig, targetGOOS); err != nil {
-		return nil, err
-	}
-	result["CODEX_CONFIG"] = mergedConfig
-	return result, nil
-}
-
-func validateCodexConfigEnvironmentSize(config string, targetGOOS string) error {
-	if targetGOOS != "windows" {
-		return nil
-	}
-	jsonCodeUnits := utf16CodeUnitCount(config)
-	// A Windows environment entry contains NAME=VALUE followed by a terminating NUL.
-	entryCodeUnits := utf16CodeUnitCount("CODEX_CONFIG="+config) + 1
-	if entryCodeUnits <= windowsEnvironmentVariableMaxUTF16CodeUnits {
-		return nil
-	}
-	return fmt.Errorf(
-		"injecting native Codex developer instructions: CODEX_CONFIG JSON requires %d UTF-16 code units (%d including environment entry overhead) on Windows, exceeding the %d-unit limit; shorten the fixed Agent instructions or set prompt.instruction_delivery to inline",
-		jsonCodeUnits,
-		entryCodeUnits,
-		windowsEnvironmentVariableMaxUTF16CodeUnits,
-	)
-}
-
-func utf16CodeUnitCount(value string) int {
-	return len(utf16.Encode([]rune(value)))
-}
-
-func mergeCodexConfigWithDeveloperInstructions(rawConfig string, instructions string) (string, error) {
-	config := map[string]json.RawMessage{}
-	if strings.TrimSpace(rawConfig) != "" {
-		if err := json.Unmarshal([]byte(rawConfig), &config); err != nil {
-			return "", fmt.Errorf("parsing CODEX_CONFIG as a JSON object: %w", err)
-		}
-		if config == nil {
-			return "", fmt.Errorf("parsing CODEX_CONFIG as a JSON object: value must not be null")
-		}
-	}
-	rawInstructions, err := json.Marshal(instructions)
-	if err != nil {
-		return "", fmt.Errorf("encoding Codex developer instructions: %w", err)
-	}
-	config["developer_instructions"] = rawInstructions
-	encoded, err := json.Marshal(config)
-	if err != nil {
-		return "", fmt.Errorf("encoding CODEX_CONFIG: %w", err)
-	}
-	return string(encoded), nil
 }
 
 func defaultAgentBridgeURL(host string, port int) string {

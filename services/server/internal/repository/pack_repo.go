@@ -86,30 +86,6 @@ func (repo *PackRepository) SetPackEnabled(id string, enabled bool) error {
 	return nil
 }
 
-// SetPackRelease records the formal release provenance for a pack.
-func (repo *PackRepository) SetPackRelease(id string, releaseID string) error {
-	if err := repo.db.Model(&domain.PackModel{}).
-		Where("id = ?", strings.TrimSpace(id)).
-		Update("release_id", strings.TrimSpace(releaseID)).
-		Error; err != nil {
-		return fmt.Errorf("setting pack release: %w", err)
-	}
-	return nil
-}
-
-// SetPackReleaseVersion records the latest submitted release and its version.
-func (repo *PackRepository) SetPackReleaseVersion(id string, releaseID string, version string) error {
-	if err := repo.db.Model(&domain.PackModel{}).
-		Where("id = ?", strings.TrimSpace(id)).
-		Updates(map[string]any{
-			"release_id": strings.TrimSpace(releaseID),
-			"version":    strings.TrimSpace(version),
-		}).Error; err != nil {
-		return fmt.Errorf("setting pack release version: %w", err)
-	}
-	return nil
-}
-
 // DeletePack removes an installed prompt pack and its entries.
 func (repo *PackRepository) DeletePack(id string) error {
 	err := repo.db.Delete(&domain.PackModel{}, "id = ?", strings.TrimSpace(id)).Error

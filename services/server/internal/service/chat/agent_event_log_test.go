@@ -303,63 +303,63 @@ func TestAgentChatSnapshotCanLoadRequestedProjectSession(t *testing.T) {
 	}
 }
 
-func TestAgentChatSnapshotProjectsStructuredACPEvents(t *testing.T) {
+func TestAgentChatSnapshotProjectsStructuredRuntimeEvents(t *testing.T) {
 	store := newTestChatStore(t)
-	projectID := "project-acp-history"
+	projectID := "project-runtime-history"
 	events := []AgentEvent{
 		{
-			ID:        "acp-user",
-			SessionID: "session-acp",
+			ID:        "runtime-user",
+			SessionID: "session-runtime",
 			ProjectID: projectID,
-			RunID:     "run-acp",
+			RunID:     "run-runtime",
 			Type:      "agent.user.message",
 			Message:   "改 README",
 			CreatedAt: "2026-05-22T01:00:00Z",
 		},
 		{
-			ID:        "acp-message-delta",
-			SessionID: "session-acp",
+			ID:        "runtime-message-delta",
+			SessionID: "session-runtime",
 			ProjectID: projectID,
-			RunID:     "run-acp",
+			RunID:     "run-runtime",
 			Type:      "agent.message.delta",
 			Message:   "我会先读取 README。",
 			Delta:     "我会先读取 README。",
 			CreatedAt: "2026-05-22T01:00:00.500Z",
 		},
 		{
-			ID:        "acp-tool-start",
-			SessionID: "session-acp",
+			ID:        "runtime-tool-start",
+			SessionID: "session-runtime",
 			ProjectID: projectID,
-			RunID:     "run-acp",
-			Type:      "agent.acp",
+			RunID:     "run-runtime",
+			Type:      "agent.runtime",
 			Message:   "工具调用：编辑 README（运行中）",
 			CreatedAt: "2026-05-22T01:00:01Z",
-			ACP: &AgentACPEvent{
+			Runtime: &AgentRuntimeEvent{
 				Kind:       "toolCall",
 				ToolCallID: "call-edit",
 				ToolKind:   "edit",
 				Title:      "编辑 README",
 				Status:     "in_progress",
 				RawInput:   json.RawMessage(`{"path":"README.md"}`),
-				Locations:  []AgentACPLocation{{Path: "README.md"}},
+				Locations:  []AgentRuntimeLocation{{Path: "README.md"}},
 			},
 		},
 		{
-			ID:        "acp-tool-done",
-			SessionID: "session-acp",
+			ID:        "runtime-tool-done",
+			SessionID: "session-runtime",
 			ProjectID: projectID,
-			RunID:     "run-acp",
-			Type:      "agent.acp",
+			RunID:     "run-runtime",
+			Type:      "agent.runtime",
 			Message:   "工具调用：编辑 README（完成）",
 			CreatedAt: "2026-05-22T01:00:02Z",
-			ACP: &AgentACPEvent{
+			Runtime: &AgentRuntimeEvent{
 				Kind:       "toolCallUpdate",
 				ToolCallID: "call-edit",
 				ToolKind:   "edit",
 				Title:      "编辑 README",
 				Status:     "completed",
 				RawOutput:  json.RawMessage(`{"ok":true}`),
-				Content: []AgentACPContentBlock{{
+				Content: []AgentRuntimeContentBlock{{
 					Type:    "diff",
 					Path:    "README.md",
 					OldText: "old\n",
@@ -368,10 +368,10 @@ func TestAgentChatSnapshotProjectsStructuredACPEvents(t *testing.T) {
 			},
 		},
 		{
-			ID:        "acp-message-completed",
-			SessionID: "session-acp",
+			ID:        "runtime-message-completed",
+			SessionID: "session-runtime",
 			ProjectID: projectID,
-			RunID:     "run-acp",
+			RunID:     "run-runtime",
 			Type:      "agent.message.completed",
 			Message:   "README 已更新。",
 			Content:   "README 已更新。",
@@ -406,12 +406,12 @@ func TestAgentChatSnapshotProjectsStructuredACPEvents(t *testing.T) {
 		}
 	}
 	if toolMessage == nil {
-		t.Fatalf("messages = %#v, want projected ACP tool", messages)
+		t.Fatalf("messages = %#v, want projected Runtime tool", messages)
 	}
-	if toolMessage.Metadata["toolCallId"] != "call-edit" || toolMessage.Metadata["acpKind"] != "edit" {
-		t.Fatalf("metadata = %#v, want ACP tool identifiers", toolMessage.Metadata)
+	if toolMessage.Metadata["toolCallId"] != "call-edit" || toolMessage.Metadata["runtimeKind"] != "edit" {
+		t.Fatalf("metadata = %#v, want Runtime tool identifiers", toolMessage.Metadata)
 	}
-	blocks, ok := toolMessage.Metadata["outputBlocks"].([]AgentACPContentBlock)
+	blocks, ok := toolMessage.Metadata["outputBlocks"].([]AgentRuntimeContentBlock)
 	if !ok || len(blocks) != 1 || blocks[0].Type != "diff" {
 		t.Fatalf("outputBlocks = %#v, want diff block", toolMessage.Metadata["outputBlocks"])
 	}
@@ -429,15 +429,15 @@ func TestAgentChatSnapshotProjectsLegacyRuntimeLogToolUpdate(t *testing.T) {
 		SessionID: "session-runtime-log",
 		ProjectID: projectID,
 		RunID:     "run-runtime-log",
-		Type:      "agent.acp",
+		Type:      "agent.runtime",
 		Message:   "工具调用：2026-06-03T09:43:13Z（失败）",
 		CreatedAt: "2026-06-03T09:43:13Z",
-		ACP: &AgentACPEvent{
+		Runtime: &AgentRuntimeEvent{
 			Kind:       "toolCallUpdate",
 			ToolCallID: "2026-06-03T09:43:13Z",
 			ToolKind:   "other",
 			Status:     "failed",
-			Content: []AgentACPContentBlock{{
+			Content: []AgentRuntimeContentBlock{{
 				Type: "text",
 				Text: logText,
 			}},
@@ -492,10 +492,10 @@ func TestAgentChatSnapshotKeepsAssistantTextInterleavedWithTools(t *testing.T) {
 			SessionID: "session-interleaved",
 			ProjectID: projectID,
 			RunID:     "run-interleaved",
-			Type:      "agent.acp",
+			Type:      "agent.runtime",
 			Message:   "工具调用：Read SKILL.md（运行中）",
 			CreatedAt: "2026-05-22T02:00:02Z",
-			ACP: &AgentACPEvent{
+			Runtime: &AgentRuntimeEvent{
 				Kind:       "toolCall",
 				ToolCallID: "call-read",
 				ToolKind:   "read",
@@ -508,10 +508,10 @@ func TestAgentChatSnapshotKeepsAssistantTextInterleavedWithTools(t *testing.T) {
 			SessionID: "session-interleaved",
 			ProjectID: projectID,
 			RunID:     "run-interleaved",
-			Type:      "agent.acp",
+			Type:      "agent.runtime",
 			Message:   "工具调用：Read SKILL.md（完成）",
 			CreatedAt: "2026-05-22T02:00:03Z",
-			ACP: &AgentACPEvent{
+			Runtime: &AgentRuntimeEvent{
 				Kind:       "toolCallUpdate",
 				ToolCallID: "call-read",
 				ToolKind:   "read",
@@ -534,10 +534,10 @@ func TestAgentChatSnapshotKeepsAssistantTextInterleavedWithTools(t *testing.T) {
 			SessionID: "session-interleaved",
 			ProjectID: projectID,
 			RunID:     "run-interleaved",
-			Type:      "agent.acp",
+			Type:      "agent.runtime",
 			Message:   "工具调用：Write document（运行中）",
 			CreatedAt: "2026-05-22T02:00:05Z",
-			ACP: &AgentACPEvent{
+			Runtime: &AgentRuntimeEvent{
 				Kind:       "toolCall",
 				ToolCallID: "call-write",
 				ToolKind:   "edit",
@@ -550,10 +550,10 @@ func TestAgentChatSnapshotKeepsAssistantTextInterleavedWithTools(t *testing.T) {
 			SessionID: "session-interleaved",
 			ProjectID: projectID,
 			RunID:     "run-interleaved",
-			Type:      "agent.acp",
+			Type:      "agent.runtime",
 			Message:   "工具调用：Write document（完成）",
 			CreatedAt: "2026-05-22T02:00:06Z",
-			ACP: &AgentACPEvent{
+			Runtime: &AgentRuntimeEvent{
 				Kind:       "toolCallUpdate",
 				ToolCallID: "call-write",
 				ToolKind:   "edit",

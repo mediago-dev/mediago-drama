@@ -1,5 +1,4 @@
 import {
-	ArrowRight,
 	Check,
 	ChevronDown,
 	Clapperboard,
@@ -13,7 +12,6 @@ import {
 	Pencil,
 	Save,
 	SlidersHorizontal,
-	Sparkles,
 	Trash2,
 } from "lucide-react";
 import type React from "react";
@@ -24,7 +22,6 @@ import {
 	type APIKeyLoginChallenge,
 	type APIKeyProvider,
 	type ModelPlatform,
-	type ModelPlatformModelGroup,
 	apiKeysKey,
 	beginProviderLogin,
 	clearAPIKey,
@@ -37,16 +34,12 @@ import {
 	saveAPIKey,
 	saveJianyingDraftSettings,
 } from "@/domains/settings/api/settings";
-import {
-	agentBackendsKey,
-	getAgentBackends,
-	isAgentRuntimeConfigKey,
-} from "@/domains/agent/api/agent";
+import { isAgentRuntimeConfigKey } from "@/domains/agent/api/agent";
 import { generationModelsKey } from "@/domains/generation/api/generation";
 import { CodexAccessPanel } from "@/domains/settings/components/CodexAccessPanel";
 import { CodexSkillsPanel } from "@/domains/settings/components/CodexSkillsPanel";
 import { ShortcutKeysPanel } from "@/domains/settings/components/ShortcutKeysPanel";
-import { BillingPanel } from "@/domains/billing/components/BillingPanel";
+import { UsagePanel } from "@/domains/usage/components/UsagePanel";
 import { Button } from "@/shared/components/ui/button";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
@@ -76,11 +69,9 @@ import { UpdatesPanel } from "@/domains/settings/components/UpdatesPanel";
 
 const jianyingDraftSettingsEnabled: boolean = false;
 const customProvidersEnabled = import.meta.env.VITE_ENABLE_CUSTOM_PROVIDERS !== "false";
-const mediagoProviderID = "mediago";
-const mediagoAPIKeyURL =
-	import.meta.env.VITE_MEDIAGO_APIKEY_URL || "http://localhost:4321/account#apiKeys";
-const fallbackCLIProviderIDs = new Set(["jimeng", "libtv", "xiaoyunque"]);
-const knownPlatformProviderIDs = new Set(["mediago", "openrouter", "dmx"]);
+const fallbackCLIProviderIDs = new Set(["jimeng", "libtv"]);
+const knownPlatformProviderIDs = new Set(["openrouter"]);
+const removedProviderIDs = new Set(["mediago", "dmx", "dmxapi", "xiaoyunque", "pippit"]);
 const cliProviderHints: Record<string, string> = {
 	jimeng: "已开通即梦高级会员？可直接登录即梦账号接入，无需 API Key。",
 	libtv: "已开通 LibTV 会员？可直接登录 LibTV 账号接入本地 CLI。",
@@ -90,7 +81,7 @@ const providerRowClassName = settingsInsetRowClassName;
 type SettingsTabValue =
 	| "appearance"
 	| "api-keys"
-	| "billing"
+	| "usage"
 	| "codex-access"
 	| "codex-skills"
 	| "jianying-draft"
@@ -101,7 +92,7 @@ type SettingsTabValue =
 const isSettingsTabValue = (value: string): value is SettingsTabValue =>
 	value === "appearance" ||
 	value === "api-keys" ||
-	value === "billing" ||
+	value === "usage" ||
 	value === "codex-access" ||
 	value === "codex-skills" ||
 	value === "updates" ||
@@ -110,15 +101,17 @@ const isSettingsTabValue = (value: string): value is SettingsTabValue =>
 	debugTabs.some((tab) => tab.value === value);
 
 const normalizeSettingsTab = (value: string) =>
-	value === "codex-relay"
-		? "codex-access"
-		: value === "agent-model-profiles"
-			? "api-keys"
-			: value === "prompt-templates" || value === "instructions"
-				? "instructions"
-				: value === "prompts" || value === "skills" || value === "prompt-library"
-					? "prompt-packs"
-					: value;
+	value === "billing"
+		? "usage"
+		: value === "codex-relay"
+			? "codex-access"
+			: value === "agent-model-profiles"
+				? "api-keys"
+				: value === "prompt-templates" || value === "instructions"
+					? "instructions"
+					: value === "prompts" || value === "skills" || value === "prompt-library"
+						? "prompt-packs"
+						: value;
 
 export const Settings: React.FC = () => {
 	const location = useLocation();
@@ -127,12 +120,7 @@ export const Settings: React.FC = () => {
 	const setThemeMode = useThemeStore((state) => state.setMode);
 	const activeTab = useSettingsNavigationStore((state) => state.activeTab);
 	const normalizedTab = normalizeSettingsTab(activeTab);
-	const { data: agentBackends } = useSWR(agentBackendsKey, getAgentBackends);
-	const isCodexActive = (agentBackends?.activeId ?? "codex") === "codex";
-	const visibleTab =
-		isSettingsTabValue(normalizedTab) && (normalizedTab !== "codex-access" || isCodexActive)
-			? normalizedTab
-			: "appearance";
+	const visibleTab = isSettingsTabValue(normalizedTab) ? normalizedTab : "appearance";
 
 	if (projectId && normalizedTab === projectSettingsGeneralTab) return <ProjectSettings />;
 
@@ -146,7 +134,7 @@ export const Settings: React.FC = () => {
 				<JianyingDraftPanel />
 			) : null}
 			{visibleTab === "api-keys" ? <APIKeysPanel /> : null}
-			{visibleTab === "billing" ? <BillingPanel /> : null}
+			{visibleTab === "usage" ? <UsagePanel /> : null}
 			{visibleTab === "codex-access" ? <CodexAccessPanel /> : null}
 			{visibleTab === "codex-skills" ? <CodexSkillsPanel /> : null}
 			{visibleTab === "updates" ? <UpdatesPanel /> : null}
@@ -167,16 +155,11 @@ const APIKeysPanel: React.FC = () => {
 		modelPlatformsKey,
 		getModelPlatforms,
 	);
-	const providers = data?.providers ?? [];
+	const providers = (data?.providers ?? []).filter(
+		(provider) => !removedProviderIDs.has(provider.id),
+	);
 	const modelPlatforms = modelPlatformsData?.platforms ?? [];
 	const providersByID = new Map(providers.map((provider) => [provider.id, provider]));
-	const unifiedProviders = platformProviders(modelPlatforms, providersByID, "unified");
-	const mediagoProvider = platformProvider(modelPlatforms, providersByID, mediagoProviderID);
-	const mediagoModelGroups =
-		modelPlatforms.find((platform) => platform.id === mediagoProviderID)?.modelGroups ?? [];
-	const visibleUnifiedProviders = unifiedProviders.filter(
-		(provider) => provider.id !== mediagoProviderID,
-	);
 	const cliProviders =
 		modelPlatforms.length > 0
 			? platformProviders(modelPlatforms, providersByID, "cli")
@@ -186,7 +169,6 @@ const APIKeysPanel: React.FC = () => {
 		: [];
 	const officialProviders = officialAPIKeyProviders(providers, modelPlatforms);
 	const [otherProvidersExpanded, setOtherProvidersExpanded] = useState(false);
-	const [mediagoDialogOpen, setMediagoDialogOpen] = useState(false);
 	const [apiKeys, setAPIKeys] = useState<Record<string, string>>({});
 	const [savingID, setSavingID] = useState<string>();
 	const [clearingID, setClearingID] = useState<string>();
@@ -314,12 +296,6 @@ const APIKeysPanel: React.FC = () => {
 		});
 	};
 
-	const saveMediagoQuickSetup = async () => {
-		if (!mediagoProvider) return;
-		const saved = await save(mediagoProvider);
-		if (saved) setMediagoDialogOpen(false);
-	};
-
 	const login = async (provider: APIKeyProvider) => {
 		setLoggingInID(provider.id);
 		try {
@@ -389,7 +365,7 @@ const APIKeysPanel: React.FC = () => {
 		const isClearing = clearingID === provider.id;
 		const isLoggingIn = loggingInID === provider.id;
 		const isCheckingLogin = checkingLoginID === provider.id;
-		const isMediago = provider.id === mediagoProviderID;
+
 		return (
 			<APIKeyProviderRow
 				key={provider.id}
@@ -406,7 +382,6 @@ const APIKeysPanel: React.FC = () => {
 				onConfirmLogin={() => void completeLogin(provider)}
 				onLogin={() => void login(provider)}
 				onOpenLogin={() => void openLoginChallenge(provider)}
-				onRegister={isMediago ? () => void openMediagoAPIKeyPage() : undefined}
 				onSave={() => void save(provider)}
 			/>
 		);
@@ -450,7 +425,7 @@ const APIKeysPanel: React.FC = () => {
 	return (
 		<SettingsPanelLayout
 			title="API 密钥"
-			description="优先使用 MediaGo 聚合平台，也可通过会员 CLI 登录或供应商凭据接入。"
+			description="通过会员 CLI 登录、官方供应商密钥或 OpenRouter 接入。"
 			icon={<KeyRound className="size-4" />}
 		>
 			<div className="mx-auto w-full max-w-5xl divide-y divide-border">
@@ -460,46 +435,11 @@ const APIKeysPanel: React.FC = () => {
 						<span>加载中</span>
 					</div>
 				) : null}
-				{!isLoading && !mediagoProvider ? (
-					<section className="rounded-lg bg-background px-5 py-6">
-						<h3 className="text-sm font-semibold text-foreground">当前版本未启用 MediaGo</h3>
-						<p className="mt-2 text-sm leading-6 text-muted-foreground">
-							没有找到 MediaGo 凭据槽。请确认后端已返回 MediaGo API Key provider。
-						</p>
-					</section>
-				) : null}
-				{mediagoProvider ? (
-					<>
-						<MediagoCredentialPanel
-							modelGroups={mediagoModelGroups}
-							onConfigure={() => setMediagoDialogOpen(true)}
-							provider={mediagoProvider}
-						>
-							{visibleUnifiedProviders.length > 0 ? (
-								<div className="mt-4 space-y-3">
-									{visibleUnifiedProviders.map((provider) => renderProvider(provider))}
-								</div>
-							) : null}
-						</MediagoCredentialPanel>
-						<MediagoConfigDialog
-							apiKey={apiKeys[mediagoProvider.id] ?? ""}
-							isClearing={clearingID === mediagoProvider.id}
-							isSaving={savingID === mediagoProvider.id}
-							onAPIKeyChange={(value) => updateAPIKey(mediagoProvider.id, value)}
-							onClear={() => confirmClear(mediagoProvider)}
-							onOpenChange={setMediagoDialogOpen}
-							onRegister={() => void openMediagoAPIKeyPage()}
-							onSave={() => void saveMediagoQuickSetup()}
-							open={mediagoDialogOpen}
-							provider={mediagoProvider}
-						/>
-					</>
-				) : null}
 				{cliProviders.length > 0 ? (
 					<CredentialCategorySection
 						className="py-8"
 						title="会员 CLI 接入"
-						description="使用本地 CLI 登录或配置对应 Access Key 接入。"
+						description="使用本地 CLI 登录对应会员账号。"
 					>
 						{cliProviders.map(renderCLIProvider)}
 					</CredentialCategorySection>
@@ -548,25 +488,6 @@ const APIKeysPanel: React.FC = () => {
 			</div>
 		</SettingsPanelLayout>
 	);
-};
-
-const platformProvider = (
-	platforms: ModelPlatform[],
-	providersByID: Map<string, APIKeyProvider>,
-	platformID: string,
-) => {
-	const platform = platforms.find((item) => item.id === platformID);
-	if (!platform) return undefined;
-	const provider = providersByID.get(platform.apiKeyProviderId);
-	if (!provider) return undefined;
-	return {
-		...provider,
-		label: platform.label || provider.label,
-		description: platform.description || provider.description,
-		credentialLabel: undefined,
-		help: undefined,
-		placeholder: undefined,
-	};
 };
 
 const platformProviders = (
@@ -628,236 +549,6 @@ const CredentialCategorySection: React.FC<{
 		<div className="mt-3 space-y-3">{children}</div>
 	</section>
 );
-
-const MediagoCredentialPanel: React.FC<{
-	children?: React.ReactNode;
-	modelGroups?: ModelPlatformModelGroup[];
-	onConfigure: () => void;
-	provider: APIKeyProvider;
-}> = ({ children, modelGroups, onConfigure, provider }) => {
-	const savedCredential = provider.configured ? providerSavedCredentialLabel(provider) : "";
-
-	return (
-		<section className="pb-12 pt-4">
-			<div className="flex flex-wrap items-center gap-2">
-				<h3 className="text-sm font-semibold text-foreground">统一接口</h3>
-				<span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">
-					推荐
-				</span>
-			</div>
-			<p className="mt-5 text-2xl font-semibold leading-tight text-foreground">
-				一个 API Key，通用全部生成模型
-			</p>
-			<p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-				MediaGo 聚合平台统一接入图像、视频、音频与文本模型，免去多平台分别注册。
-			</p>
-
-			<div className="mt-6 flex flex-wrap items-center gap-3">
-				<Button
-					type="button"
-					onClick={onConfigure}
-					className="h-10 rounded-md px-5 text-sm"
-					title="配置 MediaGo API Key"
-				>
-					{provider.configured ? <Pencil /> : <Sparkles />}
-					<span>{provider.configured ? "管理 API Key" : "配置 API Key"}</span>
-				</Button>
-				{provider.configured ? (
-					<span className="inline-flex items-center gap-1.5 text-xs text-success-foreground">
-						<Check className="size-3.5" />
-						已连接
-						{savedCredential ? (
-							<span className="font-mono text-muted-foreground">{savedCredential}</span>
-						) : null}
-					</span>
-				) : (
-					<span className="text-xs text-muted-foreground">
-						已有 Key 可直接粘贴保存，没有账号可先免费注册。
-					</span>
-				)}
-			</div>
-
-			<div className="mt-8">
-				<MediagoModelChips modelGroups={modelGroups} />
-			</div>
-			{children}
-		</section>
-	);
-};
-
-const MediagoConfigDialog: React.FC<{
-	apiKey: string;
-	isClearing: boolean;
-	isSaving: boolean;
-	onAPIKeyChange: (value: string) => void;
-	onClear: () => void;
-	onOpenChange: (open: boolean) => void;
-	onRegister: () => void;
-	onSave: () => void;
-	open: boolean;
-	provider: APIKeyProvider;
-}> = ({
-	apiKey,
-	isClearing,
-	isSaving,
-	onAPIKeyChange,
-	onClear,
-	onOpenChange,
-	onRegister,
-	onSave,
-	open,
-	provider,
-}) => {
-	if (!open) return null;
-
-	const helperText = mediaGoKeyHelperText(provider, apiKey, isSaving);
-
-	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6">
-			<div
-				aria-labelledby="mediago-config-dialog-title"
-				aria-modal="true"
-				className="max-h-[calc(100vh-3rem)] w-full max-w-xl overflow-auto rounded-md border border-border bg-background p-6 shadow-xl"
-				role="dialog"
-			>
-				<div className="text-xs font-semibold text-muted-foreground">统一接口</div>
-				<h3 id="mediago-config-dialog-title" className="mt-2 text-lg font-semibold text-foreground">
-					配置 MediaGo API Key
-				</h3>
-				<p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-					粘贴已有的 API Key 完成接入；还没有账号可先去官网注册获取。
-				</p>
-
-				<div className="mt-6 grid gap-2">
-					<Label htmlFor="mediago-api-key" className="text-sm font-medium text-foreground">
-						API Key
-					</Label>
-					<MaskedAPIKeyInput
-						id="mediago-api-key"
-						aria-label="MediaGo API Key"
-						className="h-10 rounded-md bg-ide-editor font-mono text-sm text-foreground"
-						onChange={onAPIKeyChange}
-						placeholder="粘贴 MediaGo API Key"
-						provider={provider}
-						value={apiKey}
-					/>
-					<p className="text-xs leading-5 text-muted-foreground">{helperText}</p>
-				</div>
-
-				<button
-					type="button"
-					onClick={onRegister}
-					className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
-				>
-					<span>还没有账号？免费注册获取</span>
-					<ArrowRight className="size-3.5" />
-				</button>
-
-				<div className="mt-6 flex flex-wrap items-center justify-between gap-2">
-					{provider.configured ? (
-						<Button
-							type="button"
-							variant="ghost"
-							disabled={isClearing}
-							onClick={onClear}
-							className="rounded-md text-muted-foreground"
-						>
-							{isClearing ? <Loader2 className="animate-spin" /> : <Trash2 />}
-							<span>清除当前 Key</span>
-						</Button>
-					) : (
-						<span />
-					)}
-					<div className="flex gap-2">
-						<DialogDismissButton
-							type="button"
-							variant="outline"
-							onClick={() => onOpenChange(false)}
-							className="w-24 rounded-md"
-						>
-							取消
-						</DialogDismissButton>
-						<Button
-							type="button"
-							disabled={!apiKey.trim() || isSaving}
-							onClick={onSave}
-							className="rounded-md px-4"
-						>
-							{isSaving ? <Loader2 className="animate-spin" /> : <Sparkles />}
-							<span>一键配置</span>
-						</Button>
-					</div>
-				</div>
-			</div>
-		</div>
-	);
-};
-
-const maxVisibleModelChips = 8;
-const pinnedMediagoModelChips = [
-	"Wan 2.7 Image",
-	"Wan 2.7 Image Pro",
-	"HappyHorse 1.1 Text to Video",
-	"HappyHorse 1.1 Reference to Video",
-];
-
-const visibleMediagoModelChips = (models: string[]) => {
-	const visibleModels = models.slice(0, maxVisibleModelChips);
-	const visibleSet = new Set(visibleModels);
-
-	for (const pinnedModel of pinnedMediagoModelChips) {
-		if (models.includes(pinnedModel) && !visibleSet.has(pinnedModel)) {
-			visibleModels.push(pinnedModel);
-			visibleSet.add(pinnedModel);
-		}
-	}
-
-	return visibleModels;
-};
-
-const MediagoModelChips: React.FC<{ modelGroups?: ModelPlatformModelGroup[] }> = ({
-	modelGroups,
-}) => {
-	const models = (modelGroups ?? []).flatMap((group) => group.models);
-	if (models.length === 0) return null;
-
-	const visibleModels = visibleMediagoModelChips(models);
-	const hiddenCount = models.length - visibleModels.length;
-
-	return (
-		<div className="flex flex-wrap items-center gap-1.5 pt-1">
-			<span className="mr-1 text-xs text-muted-foreground">支持模型</span>
-			{visibleModels.map((model) => (
-				<span
-					key={model}
-					className="rounded-full bg-background px-2.5 py-0.5 text-xs text-muted-foreground"
-				>
-					{model}
-				</span>
-			))}
-			{hiddenCount > 0 ? (
-				<span className="text-xs text-muted-foreground">等 {models.length} 个模型</span>
-			) : null}
-		</div>
-	);
-};
-
-const mediaGoKeyHelperText = (provider: APIKeyProvider, apiKey: string, isSaving: boolean) => {
-	const trimmedKey = apiKey.trim();
-	if (isSaving) {
-		return "正在保存并刷新本地运行时配置。";
-	}
-	if (trimmedKey.length >= 12) {
-		return "API Key 已输入，可以点击一键配置完成保存。";
-	}
-	if (trimmedKey.length > 0) {
-		return "当前 API Key 长度偏短，请确认完整复制后再保存。";
-	}
-	if (provider.configured) {
-		return `当前已保存 ${providerSavedCredentialLabel(provider)}，输入新的 Key 可替换。`;
-	}
-	return "输入后可一键配置并刷新生成与 Agent 配置。";
-};
 
 const ProviderStatusLabel: React.FC<{
 	active: boolean;
@@ -1147,10 +838,6 @@ const openExternalURL = async (url: string) => {
 	await openExternalUrl(url);
 };
 
-const openMediagoAPIKeyPage = async () => {
-	await openExternalURL(mediagoAPIKeyURL);
-};
-
 const JianyingDraftPanel: React.FC = () => {
 	const toast = useToast();
 	const { data, mutate, isLoading } = useSWR(jianyingDraftSettingsKey, getJianyingDraftSettings);
@@ -1400,7 +1087,6 @@ const APIKeyProviderRow: React.FC<{
 	onConfirmLogin: () => void;
 	onLogin: () => void;
 	onOpenLogin: () => void;
-	onRegister?: () => void;
 	onSave: () => void;
 	provider: APIKeyProvider;
 }> = ({
@@ -1416,7 +1102,6 @@ const APIKeyProviderRow: React.FC<{
 	onConfirmLogin,
 	onLogin,
 	onOpenLogin,
-	onRegister,
 	onSave,
 	provider,
 }) => {
@@ -1424,7 +1109,6 @@ const APIKeyProviderRow: React.FC<{
 	const isOAuthProvider = provider.credentialKind === "oauth";
 	const isLoginPending = loginChallenge?.status === "pending";
 	const canConfirmLogin = isLoginPending && Boolean(loginChallenge?.deviceCode);
-	const isMediago = provider.id === mediagoProviderID;
 
 	return (
 		<section
@@ -1484,15 +1168,6 @@ const APIKeyProviderRow: React.FC<{
 							</div>
 						) : null}
 					</div>
-				) : null}
-				{isMediago && onRegister ? (
-					<button
-						type="button"
-						onClick={onRegister}
-						className="mt-1 inline-flex text-xs font-medium leading-4 text-primary transition-colors hover:text-primary/80"
-					>
-						还没有账号？立即注册
-					</button>
 				) : null}
 			</div>
 

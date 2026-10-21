@@ -15,7 +15,10 @@ const clearDesktopRuntime = () => {
 };
 
 const enableDesktopRuntime = () => {
-	window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
+	window.mediagoDesktop = {
+		isElectron: true,
+		serverOrigin: "http://127.0.0.1:49157",
+	} as typeof window.mediagoDesktop;
 };
 
 describe("project asset preview helpers", () => {
@@ -35,7 +38,7 @@ describe("project asset preview helpers", () => {
 				projectId: "project-1",
 				url: "",
 			}),
-		).toBe("http://127.0.0.1:48273/api/v1/projects/project-1/assets/asset-1/content");
+		).toBe("http://127.0.0.1:49157/api/v1/projects/project-1/assets/asset-1/content");
 	});
 
 	it("normalizes project asset API URLs before text fetches in packaged builds", () => {
@@ -48,7 +51,7 @@ describe("project asset preview helpers", () => {
 				projectId: "project-1",
 				url: "/api/v1/projects/project-1/assets/asset-1/content",
 			}),
-		).toBe("http://127.0.0.1:48273/api/v1/projects/project-1/assets/asset-1/content");
+		).toBe("http://127.0.0.1:49157/api/v1/projects/project-1/assets/asset-1/content");
 	});
 
 	it("keeps text previews at or below the cap untouched", () => {

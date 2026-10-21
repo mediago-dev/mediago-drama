@@ -31,18 +31,15 @@ type GenerationService struct {
 	voicePreviews                 *VoicePreviewStore
 	stylePreviews                 *StylePreviewStore
 	stylePrompts                  StylePromptSource
-	contentUseAuthorizer          ContentUseAuthorizer
 	textCompletion                *textcompletion.Service
-	mediagoBaseURL                string
-	mediagoModelCatalog           mediagoModelCatalogCache
-	jimengBinPath                 string
-	jimengBinDir                  string
-	libTVBinPath                  string
-	libTVBinDir                   string
-	libTVProjectID                string
-	pippitBinPath                 string
-	pippitBinDir                  string
-	jimengSeedanceQueueMu         sync.Mutex
+
+	jimengBinPath  string
+	jimengBinDir   string
+	libTVBinPath   string
+	libTVBinDir    string
+	libTVProjectID string
+
+	jimengSeedanceQueueMu sync.Mutex
 }
 
 // SetTextCompletionService configures executor-neutral internal text completion.
@@ -78,11 +75,6 @@ func (workflow *GenerationService) SetStylePromptLibrary(source StylePromptSourc
 	workflow.stylePrompts = source
 }
 
-// SetContentUseAuthorizer installs the edition-specific formal-content gate.
-func (workflow *GenerationService) SetContentUseAuthorizer(authorizer ContentUseAuthorizer) {
-	workflow.contentUseAuthorizer = authorizer
-}
-
 // SetJimengCLIPaths configures the local Jimeng CLI lookup paths.
 func (workflow *GenerationService) SetJimengCLIPaths(binPath string, binDir string) {
 	workflow.jimengBinPath = strings.TrimSpace(binPath)
@@ -94,17 +86,6 @@ func (workflow *GenerationService) SetLibTVCLIConfig(binPath string, binDir stri
 	workflow.libTVBinPath = strings.TrimSpace(binPath)
 	workflow.libTVBinDir = strings.TrimSpace(binDir)
 	workflow.libTVProjectID = strings.TrimSpace(projectID)
-}
-
-// SetPippitCLIPaths configures the local Pippit / Xiaoyunque CLI lookup paths.
-func (workflow *GenerationService) SetPippitCLIPaths(binPath string, binDir string) {
-	workflow.pippitBinPath = strings.TrimSpace(binPath)
-	workflow.pippitBinDir = strings.TrimSpace(binDir)
-}
-
-// SetMediagoBaseURL configures the MediaGo OpenAI-compatible generation endpoint.
-func (workflow *GenerationService) SetMediagoBaseURL(baseURL string) {
-	workflow.mediagoBaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 }
 
 // SetGenerationNotifications sets the notification service used by generation
@@ -125,13 +106,8 @@ func (workflow *GenerationService) SetDocumentResolver(documents GenerationDocum
 // ListGenerationModels returns the generation model catalog for HTTP handlers.
 func (workflow *GenerationService) ListGenerationModels() generationModelsResponse {
 	catalog := coregeneration.Catalog()
-	mediagoModels, hasMediagoCatalog := workflow.mediagoAvailableModelsForCatalog(context.Background())
 	for index := range catalog.Routes {
-		catalog.Routes[index].Configured = workflow.generationRouteConfiguredWithMediagoModels(
-			catalog.Routes[index],
-			mediagoModels,
-			hasMediagoCatalog,
-		)
+		catalog.Routes[index].Configured = workflow.generationRouteConfigured(catalog.Routes[index])
 	}
 
 	return generationModelsResponse{
@@ -170,11 +146,7 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	payload.ReferenceURLs = CompactStrings(payload.ReferenceURLs)
 	payload.ReferenceAssetIDs = CompactStrings(payload.ReferenceAssetIDs)
 	payload.ReferenceBindings = normalizeGenerationReferenceBindings(payload.ReferenceBindings)
-	var sourceRefsErr error
-	payload.SourceRefs, sourceRefsErr = normalizeContentSourceRefs(payload.SourceRefs)
-	if sourceRefsErr != nil {
-		return generationMessageResponse{}, http.StatusForbidden, sourceRefsErr
-	}
+	payload.SourceRefs = normalizeContentSourceRefs(payload.SourceRefs)
 	// Prompt optimization is handled exclusively by CreatePromptOptimizedGenerationMessage
 	// (the optimize-and-generate endpoint); plain generation ignores this field.
 	payload.PromptOptimization = nil
@@ -194,9 +166,6 @@ func (workflow *GenerationService) CreateGenerationMessage(ctx context.Context, 
 	payload.Params = NormalizeGenerationParams(payload.Params)
 	if payload.Prompt == "" {
 		return generationMessageResponse{}, http.StatusBadRequest, fmt.Errorf("缺少 prompt")
-	}
-	if status, err := workflow.authorizeContentUse(ctx, "call", payload.SourceRefs); err != nil {
-		return generationMessageResponse{}, status, err
 	}
 	route, err := ResolveGenerationRoute(payload)
 	if err != nil {

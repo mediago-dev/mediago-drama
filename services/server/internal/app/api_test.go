@@ -53,6 +53,7 @@ func TestAPIHandler(t *testing.T) {
 	t.Run("Codex skill inventory is read only and separate from prompt pack skills", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
+		t.Setenv("USERPROFILE", home)
 		t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 		skillDir := filepath.Join(home, ".agents", "skills", "route-check")
 		if err := os.MkdirAll(skillDir, 0o755); err != nil {
@@ -187,8 +188,8 @@ func TestAPIHandler(t *testing.T) {
 		}
 		listBody := readBody(t, list.Body)
 		if !strings.Contains(listBody, `"activeId":"codex"`) ||
-			!strings.Contains(listBody, `"id":"opencode"`) ||
-			!strings.Contains(listBody, `"command":"opencode acp"`) ||
+			strings.Contains(listBody, `"id":"opencode"`) ||
+			!strings.Contains(listBody, `"command":"codex app-server"`) ||
 			strings.Contains(listBody, `"id":"claude-code"`) {
 			t.Fatalf("body = %s, want builtin agent backends", listBody)
 		}
@@ -1809,7 +1810,7 @@ func TestAPIHandler(t *testing.T) {
 	})
 
 	t.Run("api key settings configure generation routes", func(t *testing.T) {
-		save := requestJSON(t, handler, http.MethodPut, "/api/v1/settings/api-keys/dmx", `{"apiKey":"sk-settings"}`)
+		save := requestJSON(t, handler, http.MethodPut, "/api/v1/settings/api-keys/volcengine", `{"apiKey":"sk-settings"}`)
 		defer save.Body.Close()
 
 		if save.StatusCode != http.StatusOK {
@@ -1824,8 +1825,8 @@ func TestAPIHandler(t *testing.T) {
 		defer models.Body.Close()
 
 		modelsBody := readBody(t, models.Body)
-		if !strings.Contains(modelsBody, `"id":"dmx.seedream-5-lite"`) || !strings.Contains(modelsBody, `"configured":true`) {
-			t.Fatalf("body = %s, want configured dmx generation route", modelsBody)
+		if !strings.Contains(modelsBody, `"id":"official.seedream-5-lite"`) || !strings.Contains(modelsBody, `"configured":true`) {
+			t.Fatalf("body = %s, want configured official generation route", modelsBody)
 		}
 	})
 
@@ -2158,8 +2159,8 @@ func (fakeAgentRunner) Run(_ context.Context, request agentRunRequest, publish f
 	})
 
 	return agentRunResult{
-		ACPSessionID: "acp-test-session",
-		Message:      "fake response to " + request.Prompt,
+		CodexThreadID: "runtime-test-session",
+		Message:       "fake response to " + request.Prompt,
 	}, nil
 }
 

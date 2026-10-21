@@ -593,7 +593,7 @@ export const isPersistentAgentMessage = (message: AgentMessage) => {
 };
 
 export const runtimeLabel = (runtime: string) => {
-	if (runtime === "acp") return "ACP";
+	if (runtime === "runtime") return "Runtime";
 	if (runtime === "mock" || runtime === "frontend-mock") return "模拟运行时";
 	return "未知";
 };

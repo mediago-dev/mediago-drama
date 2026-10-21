@@ -36,18 +36,18 @@ func TestDecodeInternalAgentEventAllowsDocumentBridgeEvents(t *testing.T) {
 	}
 }
 
-func TestIsGuaranteedAgentEventPayloadOnlyGuaranteesACPPermissionRequests(t *testing.T) {
+func TestIsGuaranteedAgentEventPayloadOnlyGuaranteesRuntimePermissionRequests(t *testing.T) {
 	if !IsGuaranteedAgentEventPayload(AgentEvent{
-		Type: "agent.acp",
-		ACP:  &serviceagent.AgentACPEvent{Kind: "permissionRequest"},
+		Type:    "agent.runtime",
+		Runtime: &serviceagent.AgentRuntimeEvent{Kind: "permissionRequest"},
 	}) {
-		t.Fatal("ACP permission request should be guaranteed")
+		t.Fatal("Runtime permission request should be guaranteed")
 	}
 
 	if IsGuaranteedAgentEventPayload(AgentEvent{
-		Type: "agent.acp",
-		ACP:  &serviceagent.AgentACPEvent{Kind: "toolCall"},
+		Type:    "agent.runtime",
+		Runtime: &serviceagent.AgentRuntimeEvent{Kind: "toolCall"},
 	}) {
-		t.Fatal("ACP tool calls should remain best-effort")
+		t.Fatal("Runtime tool calls should remain best-effort")
 	}
 }

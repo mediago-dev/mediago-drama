@@ -56,7 +56,7 @@ type APIKeyStore interface {
 	Clear(keyName string) error
 }
 
-// AgentModelProfileStore persists global ACP model profiles.
+// AgentModelProfileStore persists global Runtime model profiles.
 type AgentModelProfileStore interface {
 	ListAgentModelProfiles() ([]domainAgentModelProfile, error)
 	GetAgentModelProfile(id string) (domainAgentModelProfile, error)
@@ -128,18 +128,17 @@ type Settings struct {
 	modelPlatformIDs         []string
 	modelPlatformsConfigured bool
 	generationCLIProviderIDs []string
-	mediagoBaseURL           string
-	jimengBinPath            string
-	jimengBinDir             string
-	libTVBinPath             string
-	libTVBinDir              string
-	pippitBinPath            string
-	pippitBinDir             string
-	libTVLoginOperationMu    sync.Mutex
-	providerLoginMu          sync.Mutex
-	providerLoginSequence    uint64
-	activeProviderLogins     map[string]activeProviderLogin
-	codexAccount             *CodexAccountManager
+
+	jimengBinPath string
+	jimengBinDir  string
+	libTVBinPath  string
+	libTVBinDir   string
+
+	libTVLoginOperationMu sync.Mutex
+	providerLoginMu       sync.Mutex
+	providerLoginSequence uint64
+	activeProviderLogins  map[string]activeProviderLogin
+	codexAccount          *CodexAccountManager
 }
 
 // NewSettings creates a settings service.
@@ -167,12 +166,6 @@ func (service *Settings) SetJimengCLIPaths(binPath string, binDir string) {
 func (service *Settings) SetLibTVCLIPaths(binPath string, binDir string) {
 	service.libTVBinPath = strings.TrimSpace(binPath)
 	service.libTVBinDir = strings.TrimSpace(binDir)
-}
-
-// SetPippitCLIPaths configures the local Pippit / Xiaoyunque CLI lookup paths.
-func (service *Settings) SetPippitCLIPaths(binPath string, binDir string) {
-	service.pippitBinPath = strings.TrimSpace(binPath)
-	service.pippitBinDir = strings.TrimSpace(binDir)
 }
 
 // SetCodexCLIPath configures the bundled Codex executable used for account operations.
@@ -869,4 +862,11 @@ func maskAPIKey(value string) string {
 	}
 
 	return value[:4] + strings.Repeat("•", 8) + value[len(value)-4:]
+}
+
+// SetCodexRuntimeHome selects the edition-specific account and session store.
+func (service *Settings) SetCodexRuntimeHome(home string) {
+	if service.codexAccount != nil {
+		service.codexAccount.home = home
+	}
 }

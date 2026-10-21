@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/codexapp"
@@ -29,7 +30,11 @@ func NewCodexBackend(binPath string, workingDir string) *CodexBackend {
 		binPath:    strings.TrimSpace(binPath),
 		workingDir: strings.TrimSpace(workingDir),
 		sessionFactory: func(ctx context.Context, binPath string) (codexapp.Client, error) {
-			return codexapp.Start(ctx, binPath)
+			home := filepath.Join(workingDir, ".mediago-drama", "runtime", "agents", "codex", "account-home")
+			if err := os.MkdirAll(home, 0700); err != nil {
+				return nil, err
+			}
+			return codexapp.StartWithOptions(ctx, binPath, codexapp.Options{Env: map[string]string{"CODEX_HOME": filepath.Join(workingDir, ".mediago-drama", "runtime", "agents", "codex", "account-home")}})
 		},
 	}
 }

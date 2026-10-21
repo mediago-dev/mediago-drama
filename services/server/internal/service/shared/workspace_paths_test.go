@@ -21,7 +21,7 @@ func TestResolveWorkspaceDirUsesAppDataWorkspaceByDefault(t *testing.T) {
 	}
 
 	got := ResolveWorkspaceDir("")
-	want := filepath.Join(configDir, userDataDirName, "workspace")
+	want := filepath.Join(configDir, "mediago-drama-oss", "workspace")
 	if got != want {
 		t.Fatalf("ResolveWorkspaceDir(empty) = %q, want %q", got, want)
 	}
@@ -56,7 +56,7 @@ func TestDefaultUserDataDirFallsBackToWorkingDirectory(t *testing.T) {
 	t.Setenv("APPDATA", "")
 
 	got := DefaultUserDataDir()
-	want := filepath.Join(cwd, metadataDirName)
+	want := filepath.Join(cwd, ".mediago-drama-oss")
 	if got != want {
 		t.Fatalf("DefaultUserDataDir() = %q, want %q", got, want)
 	}
@@ -65,11 +65,42 @@ func TestDefaultUserDataDirFallsBackToWorkingDirectory(t *testing.T) {
 func TestResolveWorkspaceDirExpandsHomePath(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 
 	got := ResolveWorkspaceDir("~/MediaGo Workspace")
 	want := filepath.Join(homeDir, "MediaGo Workspace")
 	if got != want {
 		t.Fatalf("ResolveWorkspaceDir(home path) = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultWorkspaceDoesNotImportOfficialDatabase(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("HOME", configDir)
+	t.Setenv("USERPROFILE", configDir)
+	t.Setenv("XDG_CONFIG_HOME", configDir)
+	t.Setenv("APPDATA", configDir)
+	actualConfigDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyDB := filepath.Join(actualConfigDir, "mediago-drama", "workspace", ".mediago-drama", "db", "app.db")
+	if err := os.MkdirAll(filepath.Dir(legacyDB), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyDB, []byte("legacy database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := ResolveWorkspaceDir("")
+	if err := EnsureWorkspaceLayout(root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(WorkspacePathsFor(root).DatabasePath()); !os.IsNotExist(err) {
+		t.Fatalf("new workspace must not copy the legacy database: %v", err)
+	}
+	contents, err := os.ReadFile(legacyDB)
+	if err != nil || string(contents) != "legacy database" {
+		t.Fatalf("legacy database changed: %q, %v", contents, err)
 	}
 }
 

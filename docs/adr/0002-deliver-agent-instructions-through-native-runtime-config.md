@@ -1,5 +1,7 @@
 # ADR-0002: Deliver Agent Instructions Through Native Runtime Configuration
 
+> 已由 [开源版隔离与 Codex app-server](0003-oss-isolation-and-codex-app-server.md) 取代。
+
 ## Status
 
 Accepted

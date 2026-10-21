@@ -1,6 +1,10 @@
 version: "3"
 
 tasks:
+  build:
+    cmds:
+      - go build ./...
+
   fmt:
     cmds:
       - gofmt -w .

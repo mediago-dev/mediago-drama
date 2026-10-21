@@ -18,28 +18,28 @@ type SessionService struct {
 }
 
 type agentSession struct {
-	projectID          string
-	title              string
-	ACPSessionID       string
-	ACPInstructionHash string
-	runs               map[string]*AgentRun
-	lastRootRunID      string
-	lastStatus         string
-	lastMessage        string
+	projectID            string
+	title                string
+	CodexThreadID        string
+	CodexInstructionHash string
+	runs                 map[string]*AgentRun
+	lastRootRunID        string
+	lastStatus           string
+	lastMessage          string
 }
 
 type AgentRun struct {
-	RunID              string
-	ACPSessionID       string
-	ACPInstructionHash string
-	Cancel             context.CancelFunc
-	Status             string
-	Message            string
-	AgentTag           string
+	RunID                string
+	CodexThreadID        string
+	CodexInstructionHash string
+	Cancel               context.CancelFunc
+	Status               string
+	Message              string
+	AgentTag             string
 }
 
-// ACPSessionState identifies reusable Agent state and the instructions it uses.
-type ACPSessionState struct {
+// CodexSessionState identifies reusable Agent state and the instructions it uses.
+type CodexSessionState struct {
 	SessionID       string
 	InstructionHash string
 }
@@ -261,7 +261,7 @@ func (store *SessionService) StartRun(
 	RunID string,
 	Cancel context.CancelFunc,
 	options AgentRunStartOptions,
-) (ACPSessionState, bool) {
+) (CodexSessionState, bool) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
@@ -272,13 +272,13 @@ func (store *SessionService) StartRun(
 	}
 	session, ok := store.sessions[sessionID]
 	if !ok || session.projectID != strings.TrimSpace(projectID) {
-		return ACPSessionState{}, false
+		return CodexSessionState{}, false
 	}
 
 	if session.hasActiveRuns() {
-		return ACPSessionState{
-			SessionID:       session.ACPSessionID,
-			InstructionHash: session.ACPInstructionHash,
+		return CodexSessionState{
+			SessionID:       session.CodexThreadID,
+			InstructionHash: session.CodexInstructionHash,
 		}, false
 	}
 	session.lastRootRunID = RunID
@@ -294,9 +294,9 @@ func (store *SessionService) StartRun(
 	session.runs[RunID] = run
 	store.persistSessionUnlocked(sessionID, session)
 	store.persistRunUnlocked(sessionID, run, false)
-	return ACPSessionState{
-		SessionID:       session.ACPSessionID,
-		InstructionHash: session.ACPInstructionHash,
+	return CodexSessionState{
+		SessionID:       session.CodexThreadID,
+		InstructionHash: session.CodexInstructionHash,
 	}, true
 }
 
@@ -421,9 +421,9 @@ func (store *SessionService) FinishRun(sessionID string, RunID string, Status st
 	run.Cancel = nil
 	run.Message = Message
 	run.Status = normalizeRunStatus(Status)
-	if run.ACPSessionID != "" {
-		session.ACPSessionID = run.ACPSessionID
-		session.ACPInstructionHash = run.ACPInstructionHash
+	if run.CodexThreadID != "" {
+		session.CodexThreadID = run.CodexThreadID
+		session.CodexInstructionHash = run.CodexInstructionHash
 	}
 	session.lastStatus = run.Status
 	session.lastMessage = Message
@@ -436,8 +436,8 @@ func (store *SessionService) FinishRun(sessionID string, RunID string, Status st
 	}
 }
 
-// SetACPSessionState records reusable ACP state for a run.
-func (store *SessionService) SetACPSessionState(sessionID string, RunID string, state ACPSessionState) {
+// SetCodexSessionState records reusable Runtime state for a run.
+func (store *SessionService) SetCodexSessionState(sessionID string, RunID string, state CodexSessionState) {
 	if strings.TrimSpace(state.SessionID) == "" {
 		return
 	}
@@ -460,21 +460,21 @@ func (store *SessionService) SetACPSessionState(sessionID string, RunID string, 
 	if !ok {
 		return
 	}
-	run.ACPSessionID = strings.TrimSpace(state.SessionID)
-	run.ACPInstructionHash = strings.TrimSpace(state.InstructionHash)
-	session.ACPSessionID = run.ACPSessionID
-	session.ACPInstructionHash = run.ACPInstructionHash
+	run.CodexThreadID = strings.TrimSpace(state.SessionID)
+	run.CodexInstructionHash = strings.TrimSpace(state.InstructionHash)
+	session.CodexThreadID = run.CodexThreadID
+	session.CodexInstructionHash = run.CodexInstructionHash
 	store.persistSessionUnlocked(sessionID, session)
 	store.persistRunUnlocked(sessionID, run, false)
 }
 
-// SetACPSessionID records a legacy ACP session without an instruction fingerprint.
-func (store *SessionService) SetACPSessionID(sessionID string, RunID string, ACPSessionID string) {
-	store.SetACPSessionState(sessionID, RunID, ACPSessionState{SessionID: ACPSessionID})
+// SetCodexThreadID records a legacy Runtime session without an instruction fingerprint.
+func (store *SessionService) SetCodexThreadID(sessionID string, RunID string, CodexThreadID string) {
+	store.SetCodexSessionState(sessionID, RunID, CodexSessionState{SessionID: CodexThreadID})
 }
 
-// ClearACPSessionID clears the reusable ACP session ID.
-func (store *SessionService) ClearACPSessionID(sessionID string) {
+// ClearCodexThreadID clears the reusable Runtime session ID.
+func (store *SessionService) ClearCodexThreadID(sessionID string) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
@@ -489,8 +489,8 @@ func (store *SessionService) ClearACPSessionID(sessionID string) {
 	if !ok {
 		return
 	}
-	session.ACPSessionID = ""
-	session.ACPInstructionHash = ""
+	session.CodexThreadID = ""
+	session.CodexInstructionHash = ""
 	store.persistSessionUnlocked(sessionID, session)
 }
 

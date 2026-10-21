@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	httpresponse "github.com/mediago-dev/mediago-drama/services/server/internal/http/response"
-	serviceacp "github.com/mediago-dev/mediago-drama/services/server/internal/service/acp"
 	service "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
+	serviceruntime "github.com/mediago-dev/mediago-drama/services/server/internal/service/codex"
 )
 
 const (
@@ -58,7 +58,7 @@ func (handler AgentRuntime) HandleAgentRuntimeConfig(context *gin.Context) {
 	config, err := handler.inspect(context.Request.Context(), projectID)
 	if err != nil {
 		publicMessage := agentRuntimeUnavailableMessage
-		if serviceacp.IsAuthenticationRequiredError(err) {
+		if serviceruntime.IsAuthenticationRequiredError(err) {
 			publicMessage = agentRuntimeAuthenticationRequiredMessage
 		}
 		httpresponse.Fail(context, http.StatusServiceUnavailable, publicMessage, err)

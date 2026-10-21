@@ -25,14 +25,14 @@ func (store *SessionService) persistSessionUnlocked(sessionID string, session *a
 	}
 	now := timestamp.NowRFC3339Nano()
 	model := agentSessionModel{
-		SessionID:          strings.TrimSpace(sessionID),
-		ProjectID:          strings.TrimSpace(session.projectID),
-		Title:              strings.TrimSpace(session.title),
-		ACPSessionID:       strings.TrimSpace(session.ACPSessionID),
-		ACPInstructionHash: strings.TrimSpace(session.ACPInstructionHash),
-		LastStatus:         strings.TrimSpace(session.lastStatus),
-		LastMessage:        strings.TrimSpace(session.lastMessage),
-		UpdatedAt:          domain.TimeFromString(now),
+		SessionID:            strings.TrimSpace(sessionID),
+		ProjectID:            strings.TrimSpace(session.projectID),
+		Title:                strings.TrimSpace(session.title),
+		CodexThreadID:        strings.TrimSpace(session.CodexThreadID),
+		CodexInstructionHash: strings.TrimSpace(session.CodexInstructionHash),
+		LastStatus:           strings.TrimSpace(session.lastStatus),
+		LastMessage:          strings.TrimSpace(session.lastMessage),
+		UpdatedAt:            domain.TimeFromString(now),
 	}
 	_ = store.repo.UpsertAgentSession(model)
 }
@@ -57,14 +57,14 @@ func (store *SessionService) loadSessionUnlocked(sessionID string) (*agentSessio
 	}
 
 	session := &agentSession{
-		projectID:          sessionModel.ProjectID,
-		title:              sessionModel.Title,
-		ACPSessionID:       sessionModel.ACPSessionID,
-		ACPInstructionHash: sessionModel.ACPInstructionHash,
-		runs:               map[string]*AgentRun{},
-		lastStatus:         sessionModel.LastStatus,
-		lastMessage:        sessionModel.LastMessage,
-		lastRootRunID:      "",
+		projectID:            sessionModel.ProjectID,
+		title:                sessionModel.Title,
+		CodexThreadID:        sessionModel.CodexThreadID,
+		CodexInstructionHash: sessionModel.CodexInstructionHash,
+		runs:                 map[string]*AgentRun{},
+		lastStatus:           sessionModel.LastStatus,
+		lastMessage:          sessionModel.LastMessage,
+		lastRootRunID:        "",
 	}
 	return session, true
 }

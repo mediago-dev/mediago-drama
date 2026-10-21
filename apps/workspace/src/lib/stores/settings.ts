@@ -5,7 +5,7 @@ export const projectSettingsGeneralTab = "project-general";
 export type SettingsTabValue =
 	| "appearance"
 	| "api-keys"
-	| "billing"
+	| "usage"
 	| "codex-skills"
 	| "updates"
 	| "shortcuts"

@@ -31,8 +31,8 @@ type referenceIndexItem struct {
 	Title           string
 }
 
-// BuildACPUserPrompt appends compact reference guidance to user prompts that need workspace resources.
-func BuildACPUserPrompt(request AgentRunRequest) string {
+// BuildRuntimeUserPrompt appends compact reference guidance to user prompts that need workspace resources.
+func BuildRuntimeUserPrompt(request AgentRunRequest) string {
 	userPrompt := strings.TrimSpace(request.Prompt)
 	if userPrompt == "" ||
 		strings.Contains(userPrompt, referenceIndexPromptHeading) ||

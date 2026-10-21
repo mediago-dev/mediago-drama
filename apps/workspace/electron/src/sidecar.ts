@@ -2,21 +2,31 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { agentsDir, isPackaged, resourceRoot, serverBinaryPath, toolsDir } from "./paths.js";
+import {
+	agentsDir,
+	appDataPaths,
+	isPackaged,
+	resourceRoot,
+	serverBinaryPath,
+	toolsDir,
+} from "./paths.js";
 
 let child: ChildProcessWithoutNullStreams | null = null;
 let connection: SidecarConnection | null = null;
+let starting: Promise<SidecarConnection> | null = null;
 
 export type SidecarConnection = {
 	origin: string;
 	token: string;
 };
 
-export const startServerSidecar = (): SidecarConnection | null => {
-	if (!isPackaged() && process.env.ELECTRON_RENDERER_URL) return null;
+export const startServerSidecar = async (): Promise<SidecarConnection | null> => {
+	const developmentServer = !isPackaged() ? process.env.MEDIAGO_DEV_SERVER_PATH?.trim() : undefined;
+	if (!isPackaged() && process.env.ELECTRON_RENDERER_URL && !developmentServer) return null;
+	if (starting) return starting;
 	if (child && child.exitCode === null && connection) return connection;
 
-	const serverPath = serverBinaryPath();
+	const serverPath = developmentServer || serverBinaryPath();
 	if (!existsSync(serverPath)) {
 		throw new Error(`missing server sidecar: ${serverPath}`);
 	}
@@ -26,16 +36,40 @@ export const startServerSidecar = (): SidecarConnection | null => {
 	const serverPort = configuredServerPort();
 	const environment = sidecarEnvironment(platformConfig, localCLIConfig, serverPort, token);
 
-	const spawned = spawn(serverPath, [], {
+	const configPath = developmentServer ? process.env.MEDIAGO_DEV_SERVER_CONFIG?.trim() : undefined;
+	const spawned = spawn(serverPath, configPath ? ["--config", configPath] : [], {
 		env: environment,
 		stdio: ["pipe", "pipe", "pipe"],
+		windowsHide: true,
 	});
 	child = spawned;
-	connection = { origin: `http://127.0.0.1:${serverPort}`, token };
-
-	spawned.stdout.on("data", (chunk) => {
-		console.info(`[mediago-server] ${String(chunk).trimEnd()}`);
+	const pending = new Promise<SidecarConnection>((resolve, reject) => {
+		const timeout = setTimeout(() => {
+			spawned.stdin.end();
+			spawned.kill();
+			reject(new Error("server sidecar startup timed out"));
+		}, 60_000);
+		let output = "";
+		spawned.stdout.on("data", (chunk) => {
+			output += String(chunk);
+			if (output.length > 65_536) output = output.slice(-65_536);
+			const match = /(?:^|\n)MEDIAGO_SIDECAR_READY (http:\/\/127\.0\.0\.1:(\d+))\r?\n/.exec(output);
+			if (match && Number(match[2]) > 0 && Number(match[2]) <= 65535) {
+				clearTimeout(timeout);
+				connection = { origin: match[1]!, token };
+				resolve(connection);
+			}
+		});
+		spawned.once("error", (error) => {
+			clearTimeout(timeout);
+			reject(error);
+		});
+		spawned.once("exit", () => {
+			clearTimeout(timeout);
+			reject(new Error("server sidecar exited before it was ready"));
+		});
 	});
+	starting = pending;
 	spawned.stderr.on("data", (chunk) => {
 		console.error(`[mediago-server] ${String(chunk).trimEnd()}`);
 	});
@@ -47,7 +81,13 @@ export const startServerSidecar = (): SidecarConnection | null => {
 		if (spawned.pid === undefined) clearSidecar(spawned);
 	});
 	spawned.on("exit", () => clearSidecar(spawned));
-	return connection;
+	try {
+		const ready = await pending;
+		if (developmentServer) console.log(`[desktop] server: ${ready.origin}`);
+		return ready;
+	} finally {
+		if (starting === pending) starting = null;
+	}
 };
 
 const clearSidecar = (exited: ChildProcessWithoutNullStreams) => {
@@ -62,16 +102,14 @@ const packagedModelPlatformConfig = () => {
 		const raw = readFileSync(join(resourceRoot(), "model-platform.json"), "utf8");
 		const parsed = JSON.parse(raw) as {
 			agent?: unknown;
-			mediagoBaseURL?: unknown;
 			modelPlatform?: unknown;
 		};
 		return {
 			agent: typeof parsed.agent === "string" ? parsed.agent.trim() : "",
-			mediagoBaseURL: typeof parsed.mediagoBaseURL === "string" ? parsed.mediagoBaseURL.trim() : "",
 			modelPlatform: typeof parsed.modelPlatform === "string" ? parsed.modelPlatform.trim() : "",
 		};
 	} catch {
-		return { agent: "", mediagoBaseURL: "", modelPlatform: "" };
+		return { agent: "", modelPlatform: "" };
 	}
 };
 
@@ -109,14 +147,11 @@ const sidecarEnvironment = (
 
 	return {
 		...inherited,
-		MEDIAGO_AGENT_ID: configuredValue("MEDIAGO_AGENT_ID", platformConfig.agent || "opencode"),
+		MEDIAGO_WORKSPACE_DIR: configuredValue("MEDIAGO_WORKSPACE_DIR", appDataPaths().workspace),
+		MEDIAGO_AGENT_ID: "codex",
 		MEDIAGO_MODEL_PLATFORM: configuredValue(
 			"MEDIAGO_MODEL_PLATFORM",
-			platformConfig.modelPlatform || "mediago",
-		),
-		MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: configuredValue(
-			"MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL",
-			platformConfig.mediagoBaseURL || "",
+			platformConfig.modelPlatform || "openrouter",
 		),
 		MEDIAGO_GENERATION_CLIS: configuredValue(
 			"MEDIAGO_GENERATION_CLIS",
@@ -126,11 +161,10 @@ const sidecarEnvironment = (
 		MEDIAGO_EXIT_ON_STDIN_CLOSE: "1",
 		MEDIAGO_SIDECAR_MODE: "1",
 		MEDIAGO_SIDECAR_TOKEN: token,
-		MEDIAGO_AGENT_BIN_DIR: agentsDir(),
-		MEDIAGO_FFMPEG_BIN_DIR: toolsDir(),
-		MEDIAGO_JIMENG_BIN_DIR: toolsDir(),
-		MEDIAGO_LIBTV_BIN_DIR: toolsDir(),
-		MEDIAGO_PIPPIT_BIN_DIR: toolsDir(),
+		MEDIAGO_AGENT_BIN_DIR: configuredValue("MEDIAGO_AGENT_BIN_DIR", agentsDir()),
+		MEDIAGO_FFMPEG_BIN_DIR: configuredValue("MEDIAGO_FFMPEG_BIN_DIR", toolsDir()),
+		MEDIAGO_JIMENG_BIN_DIR: configuredValue("MEDIAGO_JIMENG_BIN_DIR", toolsDir()),
+		MEDIAGO_LIBTV_BIN_DIR: configuredValue("MEDIAGO_LIBTV_BIN_DIR", toolsDir()),
 	};
 };
 
@@ -139,7 +173,7 @@ const configuredServerPort = () => {
 		const override = process.env.MEDIAGO_SERVER_PORT?.trim();
 		if (override) return override;
 	}
-	return "48273";
+	return "0";
 };
 
 const blockedPackagedEnvironmentNames = new Set([

@@ -1,0 +1,37 @@
+version = 2
+
+[workspace]
+id = "media-cli-44b079"
+name = "mediago-drama"
+
+[projects.workspace]
+path = "apps/workspace"
+toolchain = "node"
+
+[projects.core]
+path = "packages/core"
+toolchain = "go"
+
+[projects.instructions]
+path = "packages/instructions"
+toolchain = "go"
+
+[projects.jianyingdraft]
+path = "packages/jianyingdraft"
+toolchain = "go"
+
+[projects.mcp]
+path = "packages/mcp"
+toolchain = "go"
+
+[projects.tools]
+path = "packages/tools"
+toolchain = "go"
+
+[projects.vendor]
+path = "packages/vendor"
+toolchain = "go"
+
+[projects.server]
+path = "services/server"
+toolchain = "go"

@@ -10,27 +10,26 @@ import (
 
 // ServerConfig contains local HTTP server configuration loaded from YAML.
 type ServerConfig struct {
-	Host           string            `yaml:"host"`
-	Port           int               `yaml:"port"`
-	LogPath        string            `yaml:"log_path"`
-	LogLevel       string            `yaml:"log_level"`
-	WorkspaceDir   string            `yaml:"workspace_dir"`
-	ACPCommand     string            `yaml:"acp_command"`
-	ModelPlatforms []string          `yaml:"model_platforms"`
-	GenerationCLIs []string          `yaml:"generation_clis"`
-	MediagoBaseURL string            `yaml:"mediago_base_url"`
-	Agent          AgentConfig       `yaml:"agent"`
-	FFmpeg         FFmpegConfig      `yaml:"ffmpeg"`
-	Jimeng         JimengConfig      `yaml:"jimeng"`
-	LibTV          LocalCLIConfig    `yaml:"libtv"`
-	Pippit         LocalCLIConfig    `yaml:"pippit"`
-	Billing        BillingConfig     `yaml:"billing"`
-	Prompt         PromptConfig      `yaml:"prompt"`
-	InternalAPI    InternalAPIConfig `yaml:"internal_api"`
-	DocumentMCP    DocumentMCPConfig `yaml:"document_mcp"`
+	Host           string   `yaml:"host"`
+	Port           int      `yaml:"port"`
+	LogPath        string   `yaml:"log_path"`
+	LogLevel       string   `yaml:"log_level"`
+	WorkspaceDir   string   `yaml:"workspace_dir"`
+	CodexPath      string   `yaml:"codex_path"`
+	ModelPlatforms []string `yaml:"model_platforms"`
+	GenerationCLIs []string `yaml:"generation_clis"`
+
+	Agent  AgentConfig    `yaml:"agent"`
+	FFmpeg FFmpegConfig   `yaml:"ffmpeg"`
+	Jimeng JimengConfig   `yaml:"jimeng"`
+	LibTV  LocalCLIConfig `yaml:"libtv"`
+
+	Prompt      PromptConfig      `yaml:"prompt"`
+	InternalAPI InternalAPIConfig `yaml:"internal_api"`
+	DocumentMCP DocumentMCPConfig `yaml:"document_mcp"`
 }
 
-// AgentConfig contains ACP agent binary selection and vendored bin settings.
+// AgentConfig contains Runtime agent binary selection and vendored bin settings.
 type AgentConfig struct {
 	ID     string `yaml:"id"`
 	BinDir string `yaml:"bin_dir"`
@@ -61,11 +60,6 @@ type PromptConfig struct {
 	InstructionDelivery string `yaml:"instruction_delivery"`
 }
 
-// BillingConfig contains billing and pricing configuration.
-type BillingConfig struct {
-	PriceOverlayPath string `yaml:"price_overlay_path"`
-}
-
 // DocumentMCPConfig contains stdio document MCP runtime configuration loaded
 // from YAML before environment overrides are applied.
 type DocumentMCPConfig struct {
@@ -79,19 +73,21 @@ type DocumentMCPConfig struct {
 	SelectionText    string `yaml:"selection_text"`
 }
 
-// Load reads a YAML server configuration file over the built-in defaults.
+// Load reads YAML over defaults, then applies the workspace environment override.
 func Load(path string) (ServerConfig, error) {
 	config := defaults()
 	path = strings.TrimSpace(path)
-	if path == "" {
-		return config, nil
+	if path != "" {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return config, fmt.Errorf("reading config %s: %w", path, err)
+		}
+		if err := yaml.Unmarshal(raw, &config); err != nil {
+			return config, fmt.Errorf("parsing config %s: %w", path, err)
+		}
 	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return config, fmt.Errorf("reading config %s: %w", path, err)
-	}
-	if err := yaml.Unmarshal(raw, &config); err != nil {
-		return config, fmt.Errorf("parsing config %s: %w", path, err)
+	if workspaceDir := strings.TrimSpace(os.Getenv("MEDIAGO_WORKSPACE_DIR")); workspaceDir != "" {
+		config.WorkspaceDir = workspaceDir
 	}
 	return normalize(config), nil
 }
@@ -117,16 +113,15 @@ func normalize(config ServerConfig) ServerConfig {
 	config.LogPath = strings.TrimSpace(config.LogPath)
 	config.LogLevel = strings.TrimSpace(config.LogLevel)
 	config.WorkspaceDir = strings.TrimSpace(config.WorkspaceDir)
-	config.ACPCommand = strings.TrimSpace(config.ACPCommand)
+	config.CodexPath = strings.TrimSpace(config.CodexPath)
 	config.ModelPlatforms = normalizeStringList(config.ModelPlatforms)
 	config.GenerationCLIs = normalizeStringList(config.GenerationCLIs)
-	config.MediagoBaseURL = strings.TrimRight(strings.TrimSpace(config.MediagoBaseURL), "/")
+
 	config.Agent = normalizeAgentConfig(config.Agent)
 	config.FFmpeg = normalizeFFmpegConfig(config.FFmpeg)
 	config.Jimeng = normalizeJimengConfig(config.Jimeng)
 	config.LibTV = normalizeLocalCLIConfig(config.LibTV)
-	config.Pippit = normalizeLocalCLIConfig(config.Pippit)
-	config.Billing = normalizeBillingConfig(config.Billing)
+
 	config.InternalAPI = normalizeInternalAPIConfig(config.InternalAPI)
 	config.DocumentMCP = normalizeDocumentMCPConfig(config.DocumentMCP)
 	if config.Prompt.MaxSectionChars <= 0 {
@@ -161,11 +156,6 @@ func normalizeLocalCLIConfig(config LocalCLIConfig) LocalCLIConfig {
 	config.Path = strings.TrimSpace(config.Path)
 	config.BinDir = strings.TrimSpace(config.BinDir)
 	config.ProjectID = strings.TrimSpace(config.ProjectID)
-	return config
-}
-
-func normalizeBillingConfig(config BillingConfig) BillingConfig {
-	config.PriceOverlayPath = strings.TrimSpace(config.PriceOverlayPath)
 	return config
 }
 

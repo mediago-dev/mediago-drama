@@ -1,6 +1,11 @@
 version: "3"
 
 tasks:
+  dev:
+    desc: Prepare resources and run the development server from the workspace root
+    cmds:
+      - task --dir ../.. dev:server
+
   build:
     cmds:
       - task: build:server
@@ -41,6 +46,11 @@ tasks:
     cmds:
       - task: swagger
       - go test -race ./...
+
+  test:startup:
+    desc: Test open-source data paths, configuration, and HTTP startup
+    cmds:
+      - go test -race ./cmd/mediago-server ./internal/config ./internal/service/shared
 
   test:integration:
     cmds:

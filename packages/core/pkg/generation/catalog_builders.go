@@ -2,6 +2,14 @@ package generation
 
 import "strings"
 
+func concatModelRoutes(groups ...[]ModelRoute) []ModelRoute {
+	var routes []ModelRoute
+	for _, group := range groups {
+		routes = append(routes, group...)
+	}
+	return routes
+}
+
 type routeOption func(*ModelRoute)
 
 func applyRouteOptions(route *ModelRoute, options ...routeOption) {
@@ -44,46 +52,6 @@ func version(
 	}
 }
 
-func dmxRoute(
-	id string,
-	familyID string,
-	versionID string,
-	label string,
-	model string,
-	adapter string,
-	docURL string,
-	params RouteParamConfig,
-	async bool,
-	supportsReferenceURLs bool,
-	legacyModelID string,
-	options ...routeOption,
-) ModelRoute {
-	kind := kindForFamily(familyID)
-	route := ModelRoute{
-		ID:                    id,
-		FamilyID:              familyID,
-		VersionID:             versionID,
-		Label:                 label,
-		Kind:                  kind,
-		Provider:              ProviderDMX,
-		Model:                 model,
-		Adapter:               adapter,
-		DocURL:                docURL,
-		Async:                 async,
-		SupportsReferenceURLs: supportsReferenceURLs,
-		Status:                RouteStatusAvailable,
-		AuthKeys:              []string{ProviderDMX},
-		Params:                routeParamSpecs(kind, params.CanonicalParams),
-		ParamGroups:           routeParamGroups(kind, params.CanonicalParams),
-		Combos:                cloneParamCombos(params.Combos),
-		CanonicalParams:       params.CanonicalParams,
-		Translation:           params.Translation,
-		LegacyModelID:         legacyModelID,
-	}
-	applyRouteOptions(&route, options...)
-	return route
-}
-
 func jimengRoute(
 	id string,
 	familyID string,
@@ -113,46 +81,6 @@ func jimengRoute(
 		SupportsReferenceURLs: supportsReferenceURLs,
 		Status:                RouteStatusAvailable,
 		AuthKeys:              []string{ProviderJimeng},
-		Params:                routeParamSpecs(kind, params.CanonicalParams),
-		ParamGroups:           routeParamGroups(kind, params.CanonicalParams),
-		Combos:                cloneParamCombos(params.Combos),
-		CanonicalParams:       params.CanonicalParams,
-		Translation:           params.Translation,
-		LegacyModelID:         legacyModelID,
-	}
-	applyRouteOptions(&route, options...)
-	return route
-}
-
-func xiaoyunqueRoute(
-	id string,
-	familyID string,
-	versionID string,
-	label string,
-	model string,
-	adapter string,
-	docURL string,
-	params RouteParamConfig,
-	async bool,
-	supportsReferenceURLs bool,
-	legacyModelID string,
-	options ...routeOption,
-) ModelRoute {
-	kind := kindForFamily(familyID)
-	route := ModelRoute{
-		ID:                    id,
-		FamilyID:              familyID,
-		VersionID:             versionID,
-		Label:                 label,
-		Kind:                  kind,
-		Provider:              ProviderXiaoyunque,
-		Model:                 model,
-		Adapter:               adapter,
-		DocURL:                docURL,
-		Async:                 async,
-		SupportsReferenceURLs: supportsReferenceURLs,
-		Status:                RouteStatusAvailable,
-		AuthKeys:              []string{ProviderXiaoyunque},
 		Params:                routeParamSpecs(kind, params.CanonicalParams),
 		ParamGroups:           routeParamGroups(kind, params.CanonicalParams),
 		Combos:                cloneParamCombos(params.Combos),

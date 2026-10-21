@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestCodexAccountReadsSharedChatGPTLogin(t *testing.T) {
+func TestCodexAccountReadsIsolatedChatGPTLogin(t *testing.T) {
 	binPath := writeFakeCodexAppServer(t)
 	t.Setenv("FAKE_CODEX_ACCOUNT_MODE", "logged-in")
 	t.Setenv("CODEX_HOME", filepath.Join(t.TempDir(), "shared-codex"))
@@ -23,7 +23,7 @@ func TestCodexAccountReadsSharedChatGPTLogin(t *testing.T) {
 	if status.Status != "loggedIn" || status.Email != "user@example.com" || status.PlanType != "plus" {
 		t.Fatalf("GetCodexAccount() = %#v", status)
 	}
-	if status.CodexHome != os.Getenv("CODEX_HOME") || !status.Shared {
+	if status.CodexHome != os.Getenv("CODEX_HOME") || status.Shared {
 		t.Fatalf("shared account metadata = %#v", status)
 	}
 }

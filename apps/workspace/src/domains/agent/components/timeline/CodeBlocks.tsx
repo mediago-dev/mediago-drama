@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { collapseAllNested, darkStyles, defaultStyles, JsonView } from "react-json-view-lite";
 import "react-json-view-lite/dist/index.css";
 import { useThemeStore } from "@/shared/stores/theme";
-import type { AgentACPContentBlock } from "@/domains/agent/stores";
+import type { AgentRuntimeContentBlock } from "@/domains/agent/stores";
 import { cn } from "@/shared/lib/utils";
 import { byteLength, compactDiffLines, countTextLines, formatBytes, isLargeText } from "./format";
 import { XtermView } from "./XtermView";
@@ -80,7 +80,7 @@ export const JsonViewBlock: React.FC<{ label: string; value: unknown }> = ({ lab
 	);
 };
 
-export const DiffBlock: React.FC<{ block: AgentACPContentBlock }> = ({ block }) => {
+export const DiffBlock: React.FC<{ block: AgentRuntimeContentBlock }> = ({ block }) => {
 	const text = [
 		`--- ${block.path || "before"}`,
 		block.oldText ?? "",
@@ -133,7 +133,7 @@ export const DiffBlock: React.FC<{ block: AgentACPContentBlock }> = ({ block }) 
 	);
 };
 
-export const TerminalBlock: React.FC<{ block: AgentACPContentBlock }> = ({ block }) => {
+export const TerminalBlock: React.FC<{ block: AgentRuntimeContentBlock }> = ({ block }) => {
 	const text = block.text || block.terminalId || "";
 	const [expanded, setExpanded] = useState(!isLargeText(text));
 

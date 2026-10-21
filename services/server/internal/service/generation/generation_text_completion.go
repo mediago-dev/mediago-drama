@@ -176,18 +176,6 @@ func (workflow *GenerationService) resolveConfiguredTextRoute(routeID string) (c
 		coregeneration.RouteOpenRouterMiniMaxM27HighspeedText,
 		coregeneration.RouteOpenRouterDeepSeekV4FlashText,
 		coregeneration.RouteOpenRouterDeepSeekV4ProText,
-		coregeneration.RouteDMXGPT55Text,
-		coregeneration.RouteDMXGPT54Text,
-		coregeneration.RouteDMXGPT54MiniText,
-		coregeneration.RouteDMXGemini35FlashText,
-		coregeneration.RouteDMXGemini31ProText,
-		coregeneration.RouteDMXGemini31FlashLiteText,
-		coregeneration.RouteDMXMiniMaxM3Text,
-		coregeneration.RouteDMXMiniMaxM27Text,
-		coregeneration.RouteDMXMiniMaxM27HighspeedText,
-		coregeneration.RouteDMXDeepSeekV4FlashText,
-		coregeneration.RouteDMXDeepSeekV4ProText,
-		coregeneration.RouteDMXGPT41MiniText,
 	}
 	for _, candidateID := range preferredRouteIDs {
 		route, ok := coregeneration.FindRoute(candidateID)
@@ -207,8 +195,8 @@ func (workflow *GenerationService) resolveConfiguredTextRoute(routeID string) (c
 	return route, workflow.requireGenerationRouteConfigured(route)
 }
 
-// TextRouteForAgentRuntimeModel maps an ACP runtime model value like
-// "mediago/deepseek-v4-flash" back to a generation text route.
+// TextRouteForAgentRuntimeModel maps an Runtime runtime model value like
+// "deepseek/deepseek-v4-flash" back to a generation text route.
 func TextRouteForAgentRuntimeModel(value string) (string, string, bool) {
 	provider, model, ok := strings.Cut(strings.TrimSpace(value), "/")
 	if !ok {
@@ -234,10 +222,6 @@ func TextRouteForAgentRuntimeModel(value string) (string, string, bool) {
 
 func generationProviderForAgentRuntimeProvider(provider string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case coregeneration.ProviderMediago:
-		return coregeneration.ProviderMediago, true
-	case "dmxapi", coregeneration.ProviderDMX:
-		return coregeneration.ProviderDMX, true
 	case coregeneration.ProviderOpenRouter:
 		return coregeneration.ProviderOpenRouter, true
 	case coregeneration.ProviderOpenAI:

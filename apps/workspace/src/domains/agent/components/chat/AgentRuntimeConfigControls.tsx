@@ -810,9 +810,6 @@ const agentProviderLabel = (provider: string) => {
 			return "OpenAI";
 		case "minimax":
 			return "MiniMax 国内";
-		case "opencode":
-		case "opencodezen":
-			return "OpenCode Zen";
 		case "githubcopilot":
 		case "copilot":
 			return "GitHub Copilot";
@@ -912,12 +909,12 @@ export const buildRuntimeConfigSelection = (
 
 export const getRuntimeConfigError = (err: unknown) => {
 	if (err && typeof err === "object" && "code" in err && (err as { code?: unknown }).code === 404) {
-		return "ACP 配置接口不可用";
+		return "Runtime 配置接口不可用";
 	}
 	if (err && typeof err === "object" && "message" in err) {
 		const message = (err as { message?: unknown }).message;
 		if (typeof message === "string" && message.trim()) return message.trim();
 	}
 	if (err instanceof Error) return err.message;
-	return "ACP 配置不可用";
+	return "Runtime 配置不可用";
 };

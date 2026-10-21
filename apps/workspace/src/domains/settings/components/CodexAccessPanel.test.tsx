@@ -46,7 +46,7 @@ vi.mock("@/domains/settings/components/CodexRelayPanel", () => ({
 			<p>{officialChannel?.detail}</p>
 			{officialChannel?.status === "loggedIn" ? (
 				<button type="button" onClick={officialChannel.onLogout}>
-					退出全局账号
+					退出账号
 				</button>
 			) : null}
 			{officialChannel?.status === "loggedOut" ? (
@@ -94,7 +94,7 @@ describe("CodexAccessPanel", () => {
 
 		expect(await screen.findByText("user@example.com")).toBeInTheDocument();
 		expect(screen.getByText("ChatGPT Plus · /Users/test/.codex")).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: "退出全局账号" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "退出账号" })).toBeInTheDocument();
 		expect(beginCodexAccountLogin).not.toHaveBeenCalled();
 	});
 

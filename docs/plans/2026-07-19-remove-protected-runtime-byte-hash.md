@@ -1,3 +1,5 @@
+> 历史设计：商业运行时和权益链路已从开源版移除。当前行为见 [本地技能包与开源打包](../prompt-pack-runtime-policies.md)。
+
 # Remove Protected Runtime Byte Hash Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.

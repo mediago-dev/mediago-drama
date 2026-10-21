@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	corepricing "github.com/mediago-dev/mediago-drama/packages/core/pkg/pricing"
 	appmcp "github.com/mediago-dev/mediago-drama/services/server/internal/app/mcp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	httphandlers "github.com/mediago-dev/mediago-drama/services/server/internal/http/handlers"
@@ -27,44 +27,39 @@ var errAgentRuntimeConfigInspectionUnsupported = errors.New("agent runner does n
 
 // Config controls local server persistence and runtime behavior.
 type Config struct {
-	Host                       string
-	Port                       int
-	SettingsDBPath             string
-	MediaDir                   string
-	WorkspaceDir               string
-	ACPCommand                 string
-	AgentID                    string
-	AgentBinDir                string
-	ModelPlatforms             []string
-	GenerationCLIs             []string
-	MediagoBaseURL             string
-	SidecarToken               string
-	ProtectedPackImporterPath  string
-	AllowUnprotectedPackImport bool
-	FFmpegPath                 string
-	FFmpegBinDir               string
-	JimengBinPath              string
-	JimengBinDir               string
-	LibTVBinPath               string
-	LibTVBinDir                string
-	LibTVProjectID             string
-	PippitBinPath              string
-	PippitBinDir               string
-	DocumentMCPConfigPath      string
-	AgentBridgeURL             string
-	AgentBridgeToken           string
-	AgentRunTimeout            time.Duration
-	PromptMaxSectionChars      int
-	PromptDelivery             string
-	DisableGenerationWorker    bool
-	GenerationWorkerInterval   time.Duration
-	GenerationWorkerLimit      int
-	DisableWorkspaceWatcher    bool
-	WorkspaceWatcherInterval   time.Duration
-	BillingPrices              corepricing.Table
-	RuntimeExtensions          []RuntimeExtension
-	agentRunner                agentRunner
-	documentOperationRunner    documentOperationRunner
+	Host           string
+	Port           int
+	SettingsDBPath string
+	MediaDir       string
+	WorkspaceDir   string
+	CodexPath      string
+	AgentID        string
+	AgentBinDir    string
+	ModelPlatforms []string
+	GenerationCLIs []string
+
+	SidecarToken   string
+	FFmpegPath     string
+	FFmpegBinDir   string
+	JimengBinPath  string
+	JimengBinDir   string
+	LibTVBinPath   string
+	LibTVBinDir    string
+	LibTVProjectID string
+
+	DocumentMCPConfigPath    string
+	AgentBridgeURL           string
+	AgentBridgeToken         string
+	AgentRunTimeout          time.Duration
+	PromptMaxSectionChars    int
+	PromptDelivery           string
+	DisableGenerationWorker  bool
+	GenerationWorkerInterval time.Duration
+	GenerationWorkerLimit    int
+	DisableWorkspaceWatcher  bool
+	WorkspaceWatcherInterval time.Duration
+	agentRunner              agentRunner
+	documentOperationRunner  documentOperationRunner
 }
 
 // NewHandler returns an HTTP handler for a client-side rendered SPA.
@@ -76,6 +71,18 @@ func NewHandler(staticFS fs.FS) http.Handler {
 type Handler struct {
 	http.Handler
 	api *apiHandler
+}
+
+// ReadinessError reports initialization failures with the workspace database path.
+func (handler *Handler) ReadinessError() error {
+	if handler == nil || handler.api == nil {
+		return errors.New("app handler is nil")
+	}
+	if err := handler.api.ReadinessError(); err != nil {
+		return fmt.Errorf("initializing workspace %q (database %q): %w",
+			handler.api.workspaceState.Dir(), handler.api.workspaceState.DatabasePath(), err)
+	}
+	return nil
 }
 
 // Close stops app workers and flushes buffered resources.
@@ -91,10 +98,10 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 
 	api := newAPIHandler(config)
-	if !config.DisableGenerationWorker {
+	if api.ReadinessError() == nil && !config.DisableGenerationWorker {
 		api.startGenerationWorker(config)
 	}
-	if !config.DisableWorkspaceWatcher {
+	if api.ReadinessError() == nil && !config.DisableWorkspaceWatcher {
 		api.startWorkspaceFileWatcher(config)
 	}
 	mcpHandler := httphandlers.NewMCP(api.agentBridgeToken, func(_ *http.Request) *mcp.Server {
@@ -147,16 +154,16 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	})
 	router := gin.New()
 	router.Use(
+		middleware.Edition(),
 		middleware.LocalCORS(),
 		middleware.SidecarToken(config.SidecarToken, api.agentBridgeToken),
-		middleware.Edition(runtimeEdition(config.RuntimeExtensions)),
 		middleware.RequestID(),
 		middleware.RequestLogger(),
 		middleware.RecoveryLogger(writeError),
 	)
 	settingsHandler := httphandlers.NewSettings(api.settings)
 	capabilityHandler := httphandlers.NewCapabilities(api.capability)
-	billingHandler := httphandlers.NewBilling(api.billing)
+	usageHandler := httphandlers.NewUsage(api.usage)
 	mediaHandler := httphandlers.NewMediaAssets(api.mediaAssets)
 	projectAssetHandler := httphandlers.NewProjectAssets(api.projectAssets)
 	backendsHandler := httphandlers.NewAgentBackends(api.backendService)
@@ -222,7 +229,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		MCP:                   mcpHandler,
 		Settings:              settingsHandler,
 		Capabilities:          capabilityHandler,
-		Billing:               billingHandler,
+		Usage:                 usageHandler,
 		MediaAssets:           mediaHandler,
 		ProjectAssets:         projectAssetHandler,
 		AgentBackends:         backendsHandler,
@@ -251,15 +258,6 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		AgentRuntime:          runtimeHandler,
 		AgentSessions:         sessionHandler,
 	})
-	for _, extension := range api.runtimeExtensions {
-		if extension == nil {
-			continue
-		}
-		extension.RegisterRoutes(router, RuntimeExtensionServices{
-			PromptPacks:  api.promptPack,
-			WorkspaceDir: api.workspaceState.Dir(),
-		})
-	}
 	registerDevelopmentDocs(router)
 
 	static := httphandlers.NewSPA(staticFS)

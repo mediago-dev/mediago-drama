@@ -3,7 +3,7 @@ import type React from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BillingSummaryResponse } from "@/domains/billing/api/billing";
+import type { UsageSummaryResponse } from "@/domains/usage/api/usage";
 import { GenerationModalShell } from "@/domains/documents/components/GenerationModalShell";
 import { type MarkdownDocument, useDocumentsStore } from "@/domains/documents/stores";
 import {
@@ -89,19 +89,16 @@ const projectConfig: ProjectConfig = {
 	schemaVersion: 1,
 };
 
-const billingSummary: BillingSummaryResponse = {
-	currencies: ["CNY", "USD"],
+const usageSummary: UsageSummaryResponse = {
 	range: { end: "2026-06-19T00:00:00.000Z", start: "2026-06-18T00:00:00.000Z" },
 	rows: [
 		{
 			cachedTokens: 0,
 			calls: 3,
-			costs: { CNY: 0.42 },
 			inputTokens: 120,
 			key: "usage-row-only",
 			label: "仅用于测试的能力明细",
 			outputTokens: 80,
-			priced: true,
 			reasoningTokens: 0,
 			totalTokens: 200,
 		},
@@ -110,7 +107,6 @@ const billingSummary: BillingSummaryResponse = {
 	totals: {
 		cachedTokens: 0,
 		calls: 0,
-		costs: {},
 		inputTokens: 0,
 		outputTokens: 0,
 		reasoningTokens: 0,
@@ -325,8 +321,8 @@ describe("ProjectOverview", () => {
 					return apiResponse(projectConfig);
 				case "/prompt-presets":
 					return apiResponse({ prompts: [] });
-				case "/projects/project-a/billing/summary":
-					return apiResponse(billingSummary);
+				case "/projects/project-a/usage/summary":
+					return apiResponse(usageSummary);
 				case "/projects/project-a/workspace/documents":
 					return apiResponse({
 						assets: [],
@@ -723,8 +719,9 @@ describe("ProjectOverview", () => {
 			</SWRConfig>,
 		);
 
-		await screen.findByText("项目消耗");
-		expect(screen.getByText("累计花费")).toBeInTheDocument();
+		await screen.findByText("项目用量");
+		expect(screen.queryByText("累计花费")).not.toBeInTheDocument();
+		expect(screen.getByText("总 Token")).toBeInTheDocument();
 		expect(screen.queryByText("仅用于测试的能力明细")).not.toBeInTheDocument();
 		expect(screen.queryByText("usage-row-only")).not.toBeInTheDocument();
 	});

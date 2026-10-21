@@ -1,3 +1,5 @@
+> 历史设计：商业运行时和权益链路已从开源版移除。当前行为见 [本地技能包与开源打包](../prompt-pack-runtime-policies.md)。
+
 # Imported Prompt Pack Access Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
@@ -13,6 +15,7 @@
 ### Task 1: Define the backend access contract
 
 **Files:**
+
 - Modify: `services/server/internal/service/promptpack/service_test.go`
 
 **Step 1: Write the failing test**
@@ -32,6 +35,7 @@ Expected: FAIL because imported details and authoring operations are currently a
 ### Task 2: Enforce imported-pack management access in the service
 
 **Files:**
+
 - Modify: `services/server/internal/service/promptpack/service.go`
 - Modify: `services/server/internal/service/promptpack/import_export.go`
 
@@ -52,6 +56,7 @@ Expected: PASS.
 ### Task 3: Disable imported packs in the management UI
 
 **Files:**
+
 - Modify: `apps/workspace/src/pages/PromptPackEditor.test.tsx`
 - Modify: `apps/workspace/src/pages/PromptPackEditor.tsx`
 - Modify: `apps/workspace/src/domains/settings/components/debug/PromptPackWorkspace.tsx`
@@ -73,6 +78,7 @@ Expected: PASS.
 ### Task 4: Verify quality gates
 
 **Files:**
+
 - Verify all modified files.
 
 **Step 1: Format modified files**

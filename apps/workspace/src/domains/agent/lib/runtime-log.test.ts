@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
-import type { AgentRuntimeACPEvent } from "@/domains/agent/api/agent";
+import type { AgentRuntimeUpdate } from "@/domains/agent/api/agent";
 import type { AgentMessage } from "@/domains/agent/stores/types";
 import {
 	containsRuntimeLogMarkers,
-	isACPToolRuntimeLog,
+	isRuntimeToolRuntimeLog,
 	normalizeRuntimeLogMessage,
 } from "./runtime-log";
 
-describe("ACP runtime log detection", () => {
+describe("Runtime runtime log detection", () => {
 	it("detects legacy Codex runtime logs wrapped as tool updates", () => {
-		const acp: AgentRuntimeACPEvent = {
+		const runtime: AgentRuntimeUpdate = {
 			kind: "toolCallUpdate",
 			toolCallId: "2026-06-03T09:43:13.788359Z",
 			toolKind: "other",
@@ -22,11 +22,11 @@ describe("ACP runtime log detection", () => {
 			],
 		};
 
-		expect(isACPToolRuntimeLog(acp)).toBe(true);
+		expect(isRuntimeToolRuntimeLog(runtime)).toBe(true);
 	});
 
 	it("ignores generic tool titles when detecting Codex runtime logs", () => {
-		const acp: AgentRuntimeACPEvent = {
+		const runtime: AgentRuntimeUpdate = {
 			kind: "toolCallUpdate",
 			toolCallId: "runtime-log-call",
 			toolKind: "other",
@@ -40,11 +40,11 @@ describe("ACP runtime log detection", () => {
 			],
 		};
 
-		expect(isACPToolRuntimeLog(acp)).toBe(true);
+		expect(isRuntimeToolRuntimeLog(runtime)).toBe(true);
 	});
 
 	it("keeps real MCP tool updates classified as tools", () => {
-		const acp: AgentRuntimeACPEvent = {
+		const runtime: AgentRuntimeUpdate = {
 			kind: "toolCallUpdate",
 			toolCallId: "call-edit",
 			toolKind: "other",
@@ -59,7 +59,7 @@ describe("ACP runtime log detection", () => {
 			],
 		};
 
-		expect(isACPToolRuntimeLog(acp)).toBe(false);
+		expect(isRuntimeToolRuntimeLog(runtime)).toBe(false);
 	});
 
 	it("normalizes persisted legacy tool runtime logs as runtime messages", () => {
@@ -71,7 +71,7 @@ describe("ACP runtime log detection", () => {
 			content:
 				"ERROR codex_core::session::session: failed to load skill /tmp/example/.agents/skills/test-runner-1.0.0/SKILL.md: missing YAML frontmatter delimited by ---",
 			metadata: {
-				acpKind: "other",
+				runtimeKind: "other",
 				toolCallId: "runtime-log-call",
 			},
 		};
@@ -102,7 +102,7 @@ describe("ACP runtime log detection", () => {
 			title: "Tool: mediago_drama/list_documents",
 			content: "ERROR codex_core::session appeared inside returned document text",
 			metadata: {
-				acpKind: "mcp",
+				runtimeKind: "mcp",
 				toolCallId: "real-tool-call",
 				locations: [{ path: "draft.md" }],
 			},

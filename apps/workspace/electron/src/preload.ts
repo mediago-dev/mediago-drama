@@ -15,6 +15,9 @@ import {
 } from "./ipc-contract.js";
 
 const api = {
+	serverOrigin: process.argv
+		.find((arg) => arg.startsWith("--mediago-server-origin="))
+		?.slice("--mediago-server-origin=".length),
 	platform: process.platform,
 	isElectron: true,
 	openExternal: (url: string) => ipcRenderer.invoke(desktopIpcChannel.openExternal, url),

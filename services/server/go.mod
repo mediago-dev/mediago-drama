@@ -3,7 +3,6 @@ module github.com/mediago-dev/mediago-drama/services/server
 go 1.25.0
 
 require (
-	github.com/coder/acp-go-sdk v0.13.5
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-gonic/gin v1.10.1
 	github.com/glebarez/sqlite v1.11.0

@@ -1,7 +1,7 @@
 import {
 	cancelAgentSession,
 	toAgentDocumentSnapshot,
-	type AgentACPConfigSelection,
+	type AgentRuntimeConfigSelection,
 	type AgentReference,
 } from "@/domains/agent/api/agent";
 import {
@@ -35,7 +35,7 @@ import { useProjectStore } from "@/domains/projects/stores";
 
 // Orchestrates a single agent run: builds the execution context, derives the
 // machine/task prompt and the user-facing display prompt, then dispatches to
-// the remote ACP runtime or the local mock runtime. Event handling, session
+// the remote Runtime runtime or the local mock runtime. Event handling, session
 // reconciliation, and document streaming live in their own modules; the
 // re-exports below keep this file the stable public entry point.
 
@@ -52,9 +52,9 @@ interface RunAgentPromptOptions {
 	comments?: DocumentComment[];
 	displayPrompt?: string;
 	displayMetadata?: AgentMessageMetadata;
-	model?: AgentACPConfigSelection;
-	reasoning?: AgentACPConfigSelection;
-	permission?: AgentACPConfigSelection;
+	model?: AgentRuntimeConfigSelection;
+	reasoning?: AgentRuntimeConfigSelection;
+	permission?: AgentRuntimeConfigSelection;
 	references?: AgentReference[];
 	reuseCurrentRun?: boolean;
 	selection?: string;
@@ -92,7 +92,7 @@ export const runAgentPrompt = async (prompt: string, options: RunAgentPromptOpti
 
 	try {
 		if (agentStore.runtimeMode === "remote") {
-			await runStreamingACPAgent(taskPrompt, context, options);
+			await runStreamingRuntimeAgent(taskPrompt, context, options);
 			resolveAppliedComment(context.activeDocument.id, context.commentId, taskPrompt);
 			return;
 		}
@@ -215,7 +215,7 @@ export const stopAgentRun = async () => {
 	agentStore.cancelRun("智能体运行已中断。");
 };
 
-const runStreamingACPAgent = async (
+const runStreamingRuntimeAgent = async (
 	prompt: string,
 	context: AgentExecutionContext,
 	options: RunAgentPromptOptions,

@@ -48,7 +48,7 @@ func metadataForProjectedMessage(label string, detail string) map[string]any {
 func isRuntimeAgentActivity(label string, detail string) bool {
 	text := strings.ToLower(label + " " + detail)
 	runtimeMarkers := []string{
-		"acp",
+		"runtime",
 		"mcp",
 		"会话",
 		"运行时",
@@ -93,11 +93,11 @@ func isEmptyMetadataValue(value any) bool {
 		return strings.TrimSpace(typed) == ""
 	case json.RawMessage:
 		return len(typed) == 0
-	case []AgentACPContentBlock:
+	case []AgentRuntimeContentBlock:
 		return len(typed) == 0
-	case []AgentACPLocation:
+	case []AgentRuntimeLocation:
 		return len(typed) == 0
-	case []AgentACPPlanEntry:
+	case []AgentRuntimePlanEntry:
 		return len(typed) == 0
 	default:
 		return false
@@ -158,21 +158,21 @@ func metadataRawMessage(metadata map[string]any, key string) json.RawMessage {
 	}
 }
 
-func metadataACPContentBlocks(metadata map[string]any, key string) []AgentACPContentBlock {
+func metadataRuntimeContentBlocks(metadata map[string]any, key string) []AgentRuntimeContentBlock {
 	if metadata == nil {
 		return nil
 	}
-	if blocks, ok := metadata[key].([]AgentACPContentBlock); ok {
+	if blocks, ok := metadata[key].([]AgentRuntimeContentBlock); ok {
 		return blocks
 	}
 	return nil
 }
 
-func metadataACPLocations(metadata map[string]any, key string) []AgentACPLocation {
+func metadataRuntimeLocations(metadata map[string]any, key string) []AgentRuntimeLocation {
 	if metadata == nil {
 		return nil
 	}
-	if locations, ok := metadata[key].([]AgentACPLocation); ok {
+	if locations, ok := metadata[key].([]AgentRuntimeLocation); ok {
 		return locations
 	}
 	return nil

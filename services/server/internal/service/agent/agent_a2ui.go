@@ -105,15 +105,15 @@ func BuildSelectionA2UI(projectID string, selectionID string, title string, prom
 	return newA2UIPayload(surfaceID, components)
 }
 
-// BuildAgentPermissionA2UI builds the deterministic UI surface for ACP
+// BuildAgentPermissionA2UI builds the deterministic UI surface for Runtime
 // permission decisions.
-func BuildAgentPermissionA2UI(request AgentACPPermissionRequest) *AgentA2UIPayload {
+func BuildAgentPermissionA2UI(request AgentRuntimePermissionRequest) *AgentA2UIPayload {
 	surfaceID := "agent-permission-" + strings.TrimSpace(request.RequestID)
 	if strings.TrimSpace(request.RequestID) == "" {
 		surfaceID = "agent-permission"
 	}
 	title := "需要确认工具权限"
-	toolTitle := "ACP 工具调用"
+	toolTitle := "Runtime 工具调用"
 	toolKind := ""
 	if request.ToolCall != nil {
 		toolTitle = firstNonEmpty(request.ToolCall.Title, request.ToolCall.ID, request.ToolCall.Kind, toolTitle)
@@ -327,7 +327,7 @@ func a2uiButton(id string, child string, variant string, eventName string, conte
 	return button
 }
 
-func a2uiButtonVariantForPermission(option AgentACPPermissionOption) string {
+func a2uiButtonVariantForPermission(option AgentRuntimePermissionOption) string {
 	kind := strings.ToLower(strings.TrimSpace(option.Kind))
 	if strings.Contains(kind, "allow") {
 		return "primary"
@@ -338,7 +338,7 @@ func a2uiButtonVariantForPermission(option AgentACPPermissionOption) string {
 	return "default"
 }
 
-func a2uiPermissionOptionLabel(option AgentACPPermissionOption) string {
+func a2uiPermissionOptionLabel(option AgentRuntimePermissionOption) string {
 	kind := strings.ToLower(strings.TrimSpace(option.Kind))
 	switch {
 	case strings.Contains(kind, "allow") && a2uiPermissionKindIsPersistent(kind):

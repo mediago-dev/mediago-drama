@@ -8,24 +8,24 @@ import (
 	service "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
 )
 
-// AgentPermissionResolver supplies ACP permission decision operations.
+// AgentPermissionResolver supplies Runtime permission decision operations.
 type AgentPermissionResolver interface {
 	ResolveAgentPermission(service.AgentPermissionDecisionRequest) (service.AgentSessionStatus, int, error)
 }
 
-// AgentPermissions handles ACP permission decision HTTP routes.
+// AgentPermissions handles Runtime permission decision HTTP routes.
 type AgentPermissions struct {
 	resolver AgentPermissionResolver
 }
 
-// NewAgentPermissions returns an ACP permission route handler.
+// NewAgentPermissions returns an Runtime permission route handler.
 func NewAgentPermissions(resolver AgentPermissionResolver) AgentPermissions {
 	return AgentPermissions{resolver: resolver}
 }
 
 // HandleDecideAgentPermission godoc
 // @Summary 处理 Agent 权限请求
-// @Description 接受或拒绝一个运行中的 Agent ACP 权限请求。
+// @Description 接受或拒绝一个运行中的 Agent Runtime 权限请求。
 // @Tags Agent
 // @Accept json
 // @Produce json

@@ -10,7 +10,6 @@ import (
 	appworkspace "github.com/mediago-dev/mediago-drama/services/server/internal/app/workspace"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/platform/timestamp"
 	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
-	servicebilling "github.com/mediago-dev/mediago-drama/services/server/internal/service/billing"
 	servicecapability "github.com/mediago-dev/mediago-drama/services/server/internal/service/capability"
 	servicecodexskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/codexskill"
 	servicedocument "github.com/mediago-dev/mediago-drama/services/server/internal/service/document"
@@ -25,40 +24,40 @@ import (
 	servicesettings "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 	serviceshared "github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
+	serviceusage "github.com/mediago-dev/mediago-drama/services/server/internal/service/usage"
 	serviceworkspaceevent "github.com/mediago-dev/mediago-drama/services/server/internal/service/workspaceevent"
 )
 
 type apiHandler struct {
-	initErr           error
-	workspaceState    *appworkspace.WorkspaceStateService
-	events            *appevents.Broker
-	workspaceEvents   *serviceworkspaceevent.Broker
-	agentSessions     *agentSessionService
-	agentRunner       agentRunner
-	documentRunner    documentOperationRunner
-	agentRunTimeout   time.Duration
-	agentBridgeURL    string
-	agentBridgeToken  string
-	agentRuntime      *serviceagent.AgentRuntime
-	backendService    *serviceagent.AgentBackendService
-	settings          *servicesettings.Settings
-	capability        *servicecapability.Service
-	billing           *servicebilling.Service
-	generation        *servicegeneration.GenerationService
-	selection         *serviceselection.Service
-	jianyingDraft     *servicejianyingdraft.Service
-	mediaAssets       *servicemedia.MediaAssets
-	previewStreamer   *servicemedia.FFmpegPreviewStreamer
-	projectAssets     *serviceprojectasset.ProjectAssets
-	promptPack        *servicepromptpack.Service
-	promptTemplates   *serviceprompttemplates.Service
-	promptLibrary     *servicepromptlibrary.Service
-	skillRegistry     *serviceskill.Registry
-	codexSkills       *servicecodexskill.Service
-	runtimeExtensions []RuntimeExtension
-	shutdownCtx       context.Context
-	shutdownCancel    context.CancelFunc
-	workers           sync.WaitGroup
+	initErr          error
+	workspaceState   *appworkspace.WorkspaceStateService
+	events           *appevents.Broker
+	workspaceEvents  *serviceworkspaceevent.Broker
+	agentSessions    *agentSessionService
+	agentRunner      agentRunner
+	documentRunner   documentOperationRunner
+	agentRunTimeout  time.Duration
+	agentBridgeURL   string
+	agentBridgeToken string
+	agentRuntime     *serviceagent.AgentRuntime
+	backendService   *serviceagent.AgentBackendService
+	settings         *servicesettings.Settings
+	capability       *servicecapability.Service
+	usage            *serviceusage.Service
+	generation       *servicegeneration.GenerationService
+	selection        *serviceselection.Service
+	jianyingDraft    *servicejianyingdraft.Service
+	mediaAssets      *servicemedia.MediaAssets
+	previewStreamer  *servicemedia.FFmpegPreviewStreamer
+	projectAssets    *serviceprojectasset.ProjectAssets
+	promptPack       *servicepromptpack.Service
+	promptTemplates  *serviceprompttemplates.Service
+	promptLibrary    *servicepromptlibrary.Service
+	skillRegistry    *serviceskill.Registry
+	codexSkills      *servicecodexskill.Service
+	shutdownCtx      context.Context
+	shutdownCancel   context.CancelFunc
+	workers          sync.WaitGroup
 }
 
 // ReadinessError returns startup dependency initialization failures, if any.
@@ -78,7 +77,7 @@ func (handler *apiHandler) SubmitAgentMessage(payload messageRequest) (messageRe
 	return handler.agentRuntime.SubmitAgentMessage(payload)
 }
 
-// ResolveAgentPermission resolves an in-flight ACP permission request.
+// ResolveAgentPermission resolves an in-flight Runtime permission request.
 func (handler *apiHandler) ResolveAgentPermission(payload agentPermissionDecisionRequest) (agentSessionStatus, int, error) {
 	return handler.agentRuntime.ResolvePermission(payload)
 }
@@ -93,8 +92,8 @@ func (handler *apiHandler) AgentSessionStatus(sessionID string) agentSessionStat
 	return status
 }
 
-// PendingAgentPermissions returns active ACP permission requests for a session.
-func (handler *apiHandler) PendingAgentPermissions(sessionID string) []agentACPPermissionRequest {
+// PendingAgentPermissions returns active Runtime permission requests for a session.
+func (handler *apiHandler) PendingAgentPermissions(sessionID string) []agentRuntimePermissionRequest {
 	if handler == nil || handler.agentRuntime == nil {
 		return nil
 	}
@@ -174,11 +173,6 @@ func (handler *apiHandler) Close() error {
 	}
 	handler.workers.Wait()
 	var closeErr error
-	for _, extension := range handler.runtimeExtensions {
-		if extension != nil {
-			closeErr = errors.Join(closeErr, extension.Close())
-		}
-	}
 	if handler.workspaceState != nil {
 		closeErr = errors.Join(closeErr, handler.workspaceState.Close())
 	}

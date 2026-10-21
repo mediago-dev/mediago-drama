@@ -40,8 +40,8 @@ export const refreshWorkspaceStateFromBackend = async (projectId?: string) => {
 	}
 };
 
-export const acpRuntimeStatus: AgentRuntimeStatus = {
-	runtime: "acp",
+export const runtimeStatus: AgentRuntimeStatus = {
+	runtime: "runtime",
 	fallback: false,
 	validated: true,
 };

@@ -14,7 +14,7 @@ port: 19090
 log_path: " /tmp/mediago-server.log "
 log_level: " debug "
 workspace_dir: " /tmp/media-workspace "
-acp_command: " codex-acp --model test "
+codex_path: " codex-runtime --model test "
 generation_clis:
   - " libtv "
   - " pippit "
@@ -31,7 +31,7 @@ libtv:
 pippit:
   path: " /opt/pippit-tool-cli "
   bin_dir: " /opt/vendor/pippit "
-billing:
+usage:
   price_overlay_path: " ./pricing.json "
 prompt:
   max_section_chars: 9000
@@ -61,7 +61,7 @@ document_mcp:
 		config.LogPath != "/tmp/mediago-server.log" ||
 		config.LogLevel != "debug" ||
 		config.WorkspaceDir != "/tmp/media-workspace" ||
-		config.ACPCommand != "codex-acp --model test" ||
+		config.CodexPath != "codex-runtime --model test" ||
 		len(config.GenerationCLIs) != 2 ||
 		config.GenerationCLIs[0] != "libtv" ||
 		config.GenerationCLIs[1] != "pippit" ||
@@ -72,9 +72,6 @@ document_mcp:
 		config.LibTV.Path != "/opt/libtv" ||
 		config.LibTV.BinDir != "/opt/vendor/libtv" ||
 		config.LibTV.ProjectID != "libtv-project-123" ||
-		config.Pippit.Path != "/opt/pippit-tool-cli" ||
-		config.Pippit.BinDir != "/opt/vendor/pippit" ||
-		config.Billing.PriceOverlayPath != "./pricing.json" ||
 		config.Prompt.MaxSectionChars != 9000 ||
 		config.Prompt.InstructionDelivery != "inline" ||
 		config.InternalAPI.URL != "http://internal.test" ||
@@ -103,6 +100,36 @@ func TestLoadDefaults(t *testing.T) {
 		len(config.GenerationCLIs) != 1 ||
 		config.GenerationCLIs[0] != "dreamina" {
 		t.Fatalf("config = %#v, want default host and port", config)
+	}
+}
+
+func TestLoadWorkspaceEnvironmentOverride(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		yaml bool
+	}{
+		{name: "defaults"},
+		{name: "yaml", yaml: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			workspaceDir := filepath.Join(root, "custom workspace")
+			t.Setenv("MEDIAGO_WORKSPACE_DIR", " "+workspaceDir+" ")
+			path := ""
+			if test.yaml {
+				path = filepath.Join(root, "server.yaml")
+				if err := os.WriteFile(path, []byte("workspace_dir: ~/legacy/workspace\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			config, err := Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if config.WorkspaceDir != workspaceDir {
+				t.Fatalf("WorkspaceDir = %q, want %q", config.WorkspaceDir, workspaceDir)
+			}
+		})
 	}
 }
 

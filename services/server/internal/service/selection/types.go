@@ -90,7 +90,7 @@ const (
 const (
 	MinTimeout = 30 * time.Second
 	MaxTimeout = 10 * time.Minute
-	// DefaultTimeout keeps one blocking wait under ACP client tool-call
+	// DefaultTimeout keeps one blocking wait under Runtime client tool-call
 	// timeouts (codex kills MCP calls at ~120s). Reaching this transport window
 	// is not a user decision: agents keep waiting on the same selection by
 	// calling await_user_selection again.

@@ -1,17 +1,11 @@
 package settings
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
@@ -20,20 +14,16 @@ import (
 
 	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
-	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 	"gorm.io/gorm"
 )
 
 type domainAgentModelProfile = domain.AgentModelProfileModel
 
 const (
-	opencodeConfigSchema       = "https://opencode.ai/config.json"
-	agentModelKeyPrefix        = "agent-model:"
-	agentModelKeySuffix        = ":api-key"
-	agentModelProviderMediago  = coregeneration.ProviderMediago
-	agentModelProviderDMXAPI   = ModelPlatformDMXAPI
+	agentModelKeyPrefix = "agent-model:"
+	agentModelKeySuffix = ":api-key"
+
 	agentModelProviderDeepSeek = "deepseek"
-	mediagoModelListTimeout    = 5 * time.Second
 )
 
 var (
@@ -49,7 +39,7 @@ type AgentModelProfileAPIKeyStatus struct {
 	Masked     string `json:"masked,omitempty"`
 }
 
-// AgentModelProfile describes one global ACP model profile.
+// AgentModelProfile describes one global Runtime model profile.
 type AgentModelProfile struct {
 	ID               string                        `json:"id"`
 	Name             string                        `json:"name"`
@@ -84,7 +74,7 @@ type AgentModelProfileTemplate struct {
 	Temperature      *float64 `json:"temperature,omitempty"`
 }
 
-// AgentModelProfilesResponse is the settings payload for global ACP model profiles.
+// AgentModelProfilesResponse is the settings payload for global Runtime model profiles.
 type AgentModelProfilesResponse struct {
 	Profiles         []AgentModelProfile         `json:"profiles"`
 	DefaultProfileID string                      `json:"defaultProfileId,omitempty"`
@@ -109,18 +99,7 @@ type AgentModelProfileMutation struct {
 	Temperature      *float64 `json:"temperature,omitempty"`
 }
 
-// OpenCodeRuntimeConfig is the generated process config for opencode ACP.
-type OpenCodeRuntimeConfig struct {
-	ConfigDir             string
-	Env                   map[string]string
-	ProfileCount          int
-	DefaultProfileID      string
-	RestrictModelValues   bool
-	AllowedModelValues    []string
-	AllowedModelProviders []string
-}
-
-// ListAgentModelProfiles returns global ACP model profiles with redacted credential state.
+// ListAgentModelProfiles returns global Runtime model profiles with redacted credential state.
 func (service *Settings) ListAgentModelProfiles(ctx context.Context) (AgentModelProfilesResponse, error) {
 	models, err := service.listAgentModelProfileModels()
 	if err != nil {
@@ -129,7 +108,7 @@ func (service *Settings) ListAgentModelProfiles(ctx context.Context) (AgentModel
 	return service.agentModelProfilesResponse(ctx, models)
 }
 
-// CreateAgentModelProfile creates one global ACP model profile.
+// CreateAgentModelProfile creates one global Runtime model profile.
 func (service *Settings) CreateAgentModelProfile(ctx context.Context, input AgentModelProfileMutation) (AgentModelProfilesResponse, error) {
 	models, err := service.listAgentModelProfileModels()
 	if err != nil {
@@ -173,7 +152,7 @@ func (service *Settings) CreateAgentModelProfile(ctx context.Context, input Agen
 	return service.ListAgentModelProfiles(ctx)
 }
 
-// UpdateAgentModelProfile updates one global ACP model profile.
+// UpdateAgentModelProfile updates one global Runtime model profile.
 func (service *Settings) UpdateAgentModelProfile(ctx context.Context, id string, input AgentModelProfileMutation) (AgentModelProfilesResponse, error) {
 	if service.agentProfiles == nil {
 		return AgentModelProfilesResponse{}, ErrAgentModelStoreMissing
@@ -220,7 +199,7 @@ func (service *Settings) UpdateAgentModelProfile(ctx context.Context, id string,
 	return service.ListAgentModelProfiles(ctx)
 }
 
-// DeleteAgentModelProfile removes one global ACP model profile and its stored key.
+// DeleteAgentModelProfile removes one global Runtime model profile and its stored key.
 func (service *Settings) DeleteAgentModelProfile(ctx context.Context, id string) (AgentModelProfilesResponse, error) {
 	if service.agentProfiles == nil {
 		return AgentModelProfilesResponse{}, ErrAgentModelStoreMissing
@@ -244,7 +223,7 @@ func (service *Settings) DeleteAgentModelProfile(ctx context.Context, id string)
 	return service.ListAgentModelProfiles(ctx)
 }
 
-// SetAgentModelProfileDefault selects one enabled global ACP model profile as the default.
+// SetAgentModelProfileDefault selects one enabled global Runtime model profile as the default.
 func (service *Settings) SetAgentModelProfileDefault(ctx context.Context, id string) (AgentModelProfilesResponse, error) {
 	if service.agentProfiles == nil {
 		return AgentModelProfilesResponse{}, ErrAgentModelStoreMissing
@@ -268,7 +247,7 @@ func (service *Settings) SetAgentModelProfileDefault(ctx context.Context, id str
 	return service.ListAgentModelProfiles(ctx)
 }
 
-// SetAgentModelProfileAPIKey stores one global ACP model profile API key.
+// SetAgentModelProfileAPIKey stores one global Runtime model profile API key.
 func (service *Settings) SetAgentModelProfileAPIKey(ctx context.Context, id string, value string) (AgentModelProfilesResponse, error) {
 	if service.agentProfiles == nil {
 		return AgentModelProfilesResponse{}, ErrAgentModelStoreMissing
@@ -291,7 +270,7 @@ func (service *Settings) SetAgentModelProfileAPIKey(ctx context.Context, id stri
 	return service.ListAgentModelProfiles(ctx)
 }
 
-// ClearAgentModelProfileAPIKey removes one global ACP model profile API key.
+// ClearAgentModelProfileAPIKey removes one global Runtime model profile API key.
 func (service *Settings) ClearAgentModelProfileAPIKey(ctx context.Context, id string) (AgentModelProfilesResponse, error) {
 	if service.agentProfiles == nil {
 		return AgentModelProfilesResponse{}, ErrAgentModelStoreMissing
@@ -308,57 +287,6 @@ func (service *Settings) ClearAgentModelProfileAPIKey(ctx context.Context, id st
 		}
 	}
 	return service.ListAgentModelProfiles(ctx)
-}
-
-// PrepareOpenCodeRuntimeConfig renders opencode config and resolves process env.
-func (service *Settings) PrepareOpenCodeRuntimeConfig(ctx context.Context, workspaceDir string) (OpenCodeRuntimeConfig, error) {
-	return service.PrepareOpenCodeRuntimeConfigForModel(ctx, workspaceDir, "")
-}
-
-// PrepareOpenCodeRuntimeConfigForModel renders opencode config and resolves
-// process env, preferring the selected runtime model as opencode's default.
-func (service *Settings) PrepareOpenCodeRuntimeConfigForModel(ctx context.Context, workspaceDir string, preferredModel string) (OpenCodeRuntimeConfig, error) {
-	return service.PrepareOpenCodeRuntimeConfigForModelAndInstructions(ctx, workspaceDir, preferredModel, "")
-}
-
-// PrepareOpenCodeRuntimeConfigForModelAndInstructions renders OpenCode model
-// configuration and a managed native instruction file.
-func (service *Settings) PrepareOpenCodeRuntimeConfigForModelAndInstructions(
-	ctx context.Context,
-	workspaceDir string,
-	preferredModel string,
-	instructions string,
-) (OpenCodeRuntimeConfig, error) {
-	enabled, env, err := service.officialAgentRuntimeProfiles(ctx)
-	if err != nil {
-		return OpenCodeRuntimeConfig{}, err
-	}
-	hasInstructions := strings.TrimSpace(instructions) != ""
-	if len(enabled) == 0 && !hasInstructions {
-		return OpenCodeRuntimeConfig{RestrictModelValues: true}, nil
-	}
-	configRoot := filepath.Join(shared.WorkspacePathsFor(workspaceDir).GlobalMetadataDir(), "runtime", "agents", "opencode", "config")
-	if err := ensurePrivateDirectory(configRoot); err != nil {
-		return OpenCodeRuntimeConfig{}, fmt.Errorf("creating opencode config directory: %w", err)
-	}
-	defaultProfile := selectedAgentRuntimeDefaultProfile(enabled, preferredModel)
-	rendered := renderOpenCodeConfig(enabled, defaultProfile)
-	if !hasInstructions {
-		instructions = ""
-	}
-	configDir, err := publishOpenCodeRuntimeConfig(configRoot, rendered, instructions)
-	if err != nil {
-		return OpenCodeRuntimeConfig{}, err
-	}
-	return OpenCodeRuntimeConfig{
-		ConfigDir:             configDir,
-		Env:                   env,
-		ProfileCount:          len(enabled),
-		DefaultProfileID:      strings.TrimSpace(defaultProfile.ID),
-		RestrictModelValues:   true,
-		AllowedModelValues:    agentRuntimeModelValues(enabled),
-		AllowedModelProviders: agentRuntimeModelProviders(enabled),
-	}, nil
 }
 
 func (service *Settings) officialAgentRuntimeProfiles(ctx context.Context) ([]domainAgentModelProfile, map[string]string, error) {
@@ -444,7 +372,7 @@ func AgentModelProfileAPIKeyName(profileID string) string {
 	return agentModelKeyPrefix + strings.TrimSpace(profileID) + agentModelKeySuffix
 }
 
-// AgentModelProfileEnvName returns the process environment variable used by opencode.
+// AgentModelProfileEnvName returns the process environment variable used by model profiles.
 func AgentModelProfileEnvName(profileID string) string {
 	name := strings.ToUpper(strings.TrimSpace(profileID))
 	name = envNamePartPattern.ReplaceAllString(name, "_")
@@ -626,27 +554,7 @@ type officialAgentModelProfileSpec struct {
 func (service *Settings) officialAgentRuntimeProfileSpecs() []officialAgentModelProfileSpec {
 	zero := 0.0
 	return []officialAgentModelProfileSpec{
-		{
-			ProviderID:        agentModelProviderMediago,
-			ProviderLabel:     "MediaGo",
-			BaseURL:           service.MediagoBaseURL(),
-			CredentialKeyName: coregeneration.ProviderMediago,
-			RouteProvider:     coregeneration.ProviderMediago,
-			PlatformID:        ModelPlatformMediago,
-			LegacyProfileID:   "mediago",
-			Temperature:       &zero,
-		},
-		{
-			ProviderID:        agentModelProviderDMXAPI,
-			ProviderLabel:     "DMXAPI",
-			BaseURL:           "https://www.dmxapi.cn/v1",
-			CredentialKeyName: coregeneration.ProviderDMX,
-			RouteProvider:     coregeneration.ProviderDMX,
-			PlatformID:        ModelPlatformDMXAPI,
-			LegacyProfileID:   "dmxapi",
-			SupportsTools:     true,
-			Temperature:       &zero,
-		},
+
 		{
 			ProviderID:        coregeneration.ProviderOpenRouter,
 			ProviderLabel:     "OpenRouter",
@@ -705,8 +613,7 @@ func supportsOfficialAgentModel(providerID string) bool {
 func allAgentRuntimeCapabilitySpecs() []officialAgentModelProfileSpec {
 	zero := 0.0
 	return []officialAgentModelProfileSpec{
-		{CredentialKeyName: coregeneration.ProviderMediago, Temperature: &zero},
-		{CredentialKeyName: coregeneration.ProviderDMX, Temperature: &zero},
+
 		{CredentialKeyName: coregeneration.ProviderOpenRouter, Temperature: &zero},
 		{CredentialKeyName: coregeneration.ProviderOpenAI, Temperature: &zero},
 		{CredentialKeyName: coregeneration.ProviderMiniMax, Temperature: &zero},
@@ -715,13 +622,7 @@ func allAgentRuntimeCapabilitySpecs() []officialAgentModelProfileSpec {
 }
 
 func (service *Settings) agentRuntimeProfilesForSpec(ctx context.Context, spec officialAgentModelProfileSpec, apiKey string) ([]domainAgentModelProfile, error) {
-	if spec.ProviderID == agentModelProviderMediago && strings.TrimSpace(apiKey) != "" {
-		profiles, err := service.mediagoAgentRuntimeProfiles(ctx, spec, apiKey)
-		if err != nil {
-			return nil, nil
-		}
-		return profiles, nil
-	}
+
 	return catalogAgentRuntimeProfilesForSpec(spec), nil
 }
 
@@ -756,281 +657,6 @@ func catalogAgentRuntimeProfilesForSpec(spec officialAgentModelProfileSpec) []do
 		})
 	}
 	return profiles
-}
-
-type mediagoModelListResponse struct {
-	Data  []mediagoGatewayModel `json:"data"`
-	Items []mediagoGatewayModel `json:"items"`
-}
-
-type mediagoGatewayModel struct {
-	ID                  string                     `json:"id"`
-	Name                string                     `json:"name"`
-	CanonicalSlug       string                     `json:"canonical_slug"`
-	Kind                string                     `json:"kind"`
-	Enabled             *bool                      `json:"enabled,omitempty"`
-	Disabled            *bool                      `json:"disabled,omitempty"`
-	Available           *bool                      `json:"available,omitempty"`
-	Hidden              *bool                      `json:"hidden,omitempty"`
-	Visible             *bool                      `json:"visible,omitempty"`
-	Status              string                     `json:"status,omitempty"`
-	RouteStatus         string                     `json:"route_status,omitempty"`
-	ChannelStatus       string                     `json:"channel_status,omitempty"`
-	ModelStatus         string                     `json:"model_status,omitempty"`
-	State               string                     `json:"state,omitempty"`
-	Tags                []string                   `json:"tags"`
-	Categories          []string                   `json:"categories"`
-	Capabilities        []string                   `json:"capabilities"`
-	Architecture        mediagoGatewayArchitecture `json:"architecture"`
-	TopProvider         mediagoGatewayTopProvider  `json:"top_provider"`
-	ContextLength       int                        `json:"context_length"`
-	MaxOutputTokens     int                        `json:"max_output_tokens"`
-	SupportedParameters []string                   `json:"supported_parameters"`
-}
-
-type mediagoGatewayArchitecture struct {
-	InputModalities  []string `json:"input_modalities"`
-	OutputModalities []string `json:"output_modalities"`
-}
-
-type mediagoGatewayTopProvider struct {
-	ContextLength       int `json:"context_length"`
-	MaxCompletionTokens int `json:"max_completion_tokens"`
-}
-
-func (service *Settings) mediagoAgentRuntimeProfiles(ctx context.Context, spec officialAgentModelProfileSpec, apiKey string) ([]domainAgentModelProfile, error) {
-	baseURL := strings.TrimRight(strings.TrimSpace(spec.BaseURL), "/")
-	if baseURL == "" {
-		return nil, nil
-	}
-	models, err := fetchMediagoGatewayModels(ctx, baseURL, apiKey)
-	if err != nil {
-		return nil, err
-	}
-
-	profiles := make([]domainAgentModelProfile, 0, len(models))
-	seenModels := map[string]bool{}
-	for _, model := range models {
-		modelID := strings.TrimSpace(firstNonEmpty(model.ID, model.CanonicalSlug))
-		if modelID == "" || seenModels[modelID] || !mediagoGatewayModelAvailable(model) || !mediagoGatewayModelSupportsAgentConversation(model) {
-			continue
-		}
-		seenModels[modelID] = true
-		displayName := agentRuntimeModelDisplayName(modelID)
-		profile := domainAgentModelProfile{
-			ID:               profileIDFromProviderID(spec.ProviderID + "-" + modelID),
-			Name:             strings.TrimSpace(spec.ProviderLabel + " " + displayName),
-			ProviderID:       strings.TrimSpace(spec.ProviderID),
-			ProviderLabel:    strings.TrimSpace(spec.ProviderLabel),
-			BaseURL:          baseURL,
-			Model:            modelID,
-			ModelDisplayName: strings.TrimSpace(displayName),
-			Enabled:          true,
-			SupportsImages:   spec.SupportsImages || stringSliceContainsFold(model.Architecture.InputModalities, "image"),
-			SupportsTools:    mediagoGatewayModelSupportsTools(model),
-			ContextWindow:    firstPositiveInt(model.TopProvider.ContextLength, model.ContextLength),
-			MaxOutputTokens:  firstPositiveInt(model.TopProvider.MaxCompletionTokens, model.MaxOutputTokens),
-			Temperature:      cloneFloat(spec.Temperature),
-		}
-		if strings.TrimSpace(model.Name) != "" && strings.TrimSpace(model.Name) != modelID {
-			profile.ModelDisplayName = strings.TrimSpace(model.Name)
-			profile.Name = strings.TrimSpace(spec.ProviderLabel + " " + model.Name)
-		}
-		profiles = append(profiles, profile)
-	}
-	return profiles, nil
-}
-
-func fetchMediagoGatewayModels(ctx context.Context, baseURL string, apiKey string) ([]mediagoGatewayModel, error) {
-	ctx, cancel := context.WithTimeout(ctx, mediagoModelListTimeout)
-	defer cancel()
-
-	endpoint := strings.TrimRight(strings.TrimSpace(baseURL), "/") + "/models/user"
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Authorization", "Bearer "+strings.TrimSpace(apiKey))
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("mediago model list returned HTTP %d", response.StatusCode)
-	}
-
-	var payload mediagoModelListResponse
-	if err := json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(&payload); err != nil {
-		return nil, err
-	}
-	if len(payload.Data) > 0 {
-		return payload.Data, nil
-	}
-	return payload.Items, nil
-}
-
-func mediagoGatewayModelSupportsAgentConversation(model mediagoGatewayModel) bool {
-	input := model.Architecture.InputModalities
-	output := model.Architecture.OutputModalities
-	if strings.TrimSpace(model.Kind) != "" && !strings.EqualFold(strings.TrimSpace(model.Kind), "text") {
-		return false
-	}
-	if len(input) > 0 && !stringSliceContainsFold(input, "text") {
-		return false
-	}
-	if len(output) > 0 && !stringSliceContainsFold(output, "text") {
-		return false
-	}
-	if stringSliceContainsAnyFold(input, "audio", "speech", "voice", "video") {
-		return false
-	}
-	if stringSliceContainsAnyFold(output, "audio", "speech", "voice", "image", "video", "embedding", "embeddings", "rerank", "transcription") {
-		return false
-	}
-	if mediagoGatewayModelLooksTaskOnly(model) {
-		return false
-	}
-	return mediagoGatewayModelLooksAgentTextCapable(model)
-}
-
-func mediagoGatewayModelAvailable(model mediagoGatewayModel) bool {
-	if model.Disabled != nil && *model.Disabled {
-		return false
-	}
-	if model.Hidden != nil && *model.Hidden {
-		return false
-	}
-	if model.Enabled != nil && !*model.Enabled {
-		return false
-	}
-	if model.Available != nil && !*model.Available {
-		return false
-	}
-	if model.Visible != nil && !*model.Visible {
-		return false
-	}
-	for _, status := range []string{model.Status, model.RouteStatus, model.ChannelStatus, model.ModelStatus, model.State} {
-		if mediagoGatewayModelUnavailableStatus(status) {
-			return false
-		}
-	}
-	return true
-}
-
-func mediagoGatewayModelUnavailableStatus(status string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(status))
-	if normalized == "" {
-		return false
-	}
-	normalized = strings.NewReplacer("_", " ", "-", " ").Replace(normalized)
-	for _, token := range []string{
-		"disabled",
-		"disable",
-		"unavailable",
-		"inactive",
-		"hidden",
-		"offline",
-		"closed",
-		"deleted",
-		"removed",
-		"blocked",
-		"停用",
-		"禁用",
-		"隐藏",
-		"不可用",
-		"关闭",
-		"下架",
-	} {
-		if strings.Contains(normalized, token) {
-			return true
-		}
-	}
-	return false
-}
-
-func mediagoGatewayModelLooksTaskOnly(model mediagoGatewayModel) bool {
-	text := mediagoGatewayModelSignalText(model)
-	for _, token := range []string{
-		"audio",
-		"speech",
-		"voice",
-		"tts",
-		"stt",
-		"asr",
-		"transcribe",
-		"transcription",
-		"image",
-		"video",
-		"embedding",
-		"embeddings",
-		"rerank",
-		"retrieval",
-		"moderation",
-		"translate",
-		"translation",
-		"machine translation",
-		"subtitle",
-		"qwen mt",
-		"mt plus",
-	} {
-		if strings.Contains(text, token) {
-			return true
-		}
-	}
-	return false
-}
-
-func mediagoGatewayModelLooksAgentTextCapable(model mediagoGatewayModel) bool {
-	text := mediagoGatewayModelSignalText(model)
-	for _, token := range []string{
-		"chat",
-		"agent",
-		"planner",
-		"reasoning",
-		"coding",
-		"writing",
-		"long context",
-		"documents",
-		"fast",
-		"chinese",
-		"gpt",
-		"glm",
-		"deepseek",
-		"kimi",
-		"moonshot",
-		"minimax",
-		"qwen3",
-		"claude",
-	} {
-		if strings.Contains(text, token) {
-			return true
-		}
-	}
-	return false
-}
-
-func mediagoGatewayModelSignalText(model mediagoGatewayModel) string {
-	return normalizedModelSearchText(
-		model.ID,
-		model.Name,
-		model.CanonicalSlug,
-		model.Kind,
-		strings.Join(model.Tags, " "),
-		strings.Join(model.Categories, " "),
-		strings.Join(model.Capabilities, " "),
-	)
-}
-
-func mediagoGatewayModelSupportsTools(model mediagoGatewayModel) bool {
-	for _, parameter := range []string{"tools", "tool_choice", "tool_calls", "function_call", "functions"} {
-		if stringSliceContainsFold(model.SupportedParameters, parameter) {
-			return true
-		}
-	}
-	return false
 }
 
 func stringSliceContainsAnyFold(values []string, targets ...string) bool {
@@ -1216,96 +842,6 @@ func stringValue(value *string) string {
 	return *value
 }
 
-type openCodeConfigFile struct {
-	Schema       string                            `json:"$schema"`
-	Model        string                            `json:"model,omitempty"`
-	Instructions []string                          `json:"instructions,omitempty"`
-	Agent        map[string]openCodeAgentConfig    `json:"agent,omitempty"`
-	Provider     map[string]openCodeProviderConfig `json:"provider,omitempty"`
-}
-
-type openCodeAgentConfig struct {
-	Temperature *float64 `json:"temperature,omitempty"`
-}
-
-type openCodeProviderConfig struct {
-	NPM     string                         `json:"npm"`
-	Name    string                         `json:"name"`
-	Options openCodeProviderOptions        `json:"options"`
-	Models  map[string]openCodeModelConfig `json:"models"`
-}
-
-type openCodeProviderOptions struct {
-	BaseURL string `json:"baseURL"`
-	APIKey  string `json:"apiKey"`
-}
-
-type openCodeModelConfig struct {
-	Name       string                   `json:"name"`
-	Attachment bool                     `json:"attachment,omitempty"`
-	ToolCall   bool                     `json:"tool_call,omitempty"`
-	Limit      *openCodeModelLimit      `json:"limit,omitempty"`
-	Modalities *openCodeModelModalities `json:"modalities,omitempty"`
-}
-
-type openCodeModelLimit struct {
-	Context int `json:"context"`
-	Output  int `json:"output"`
-}
-
-type openCodeModelModalities struct {
-	Input  []string `json:"input,omitempty"`
-	Output []string `json:"output,omitempty"`
-}
-
-func renderOpenCodeConfig(profiles []domainAgentModelProfile, defaultProfile domainAgentModelProfile) openCodeConfigFile {
-	config := openCodeConfigFile{
-		Schema:   opencodeConfigSchema,
-		Provider: map[string]openCodeProviderConfig{},
-	}
-	for _, profile := range profiles {
-		if !profile.Enabled {
-			continue
-		}
-		model := openCodeModelConfig{
-			Name:       firstNonEmpty(strings.TrimSpace(profile.ModelDisplayName), strings.TrimSpace(profile.Model)),
-			ToolCall:   profile.SupportsTools,
-			Attachment: profile.SupportsImages,
-			Modalities: &openCodeModelModalities{
-				Input:  openCodeInputModalities(profile.SupportsImages),
-				Output: []string{"text"},
-			},
-		}
-		if profile.ContextWindow > 0 && profile.MaxOutputTokens > 0 {
-			model.Limit = &openCodeModelLimit{Context: profile.ContextWindow, Output: profile.MaxOutputTokens}
-		}
-		providerConfig, ok := config.Provider[profile.ProviderID]
-		if !ok {
-			providerConfig = openCodeProviderConfig{
-				NPM:  "@ai-sdk/openai-compatible",
-				Name: firstNonEmpty(strings.TrimSpace(profile.ProviderLabel), strings.TrimSpace(profile.ProviderID)),
-				Options: openCodeProviderOptions{
-					BaseURL: strings.TrimRight(strings.TrimSpace(profile.BaseURL), "/"),
-					APIKey:  "{env:" + AgentModelProfileEnvName(profile.ID) + "}",
-				},
-				Models: map[string]openCodeModelConfig{},
-			}
-		}
-		providerConfig.Models[profile.Model] = model
-		config.Provider[profile.ProviderID] = providerConfig
-	}
-	if defaultProfile.ID != "" {
-		config.Model = defaultProfile.ProviderID + "/" + defaultProfile.Model
-		if defaultProfile.Temperature != nil {
-			config.Agent = map[string]openCodeAgentConfig{
-				"build": {Temperature: cloneFloat(defaultProfile.Temperature)},
-				"plan":  {Temperature: cloneFloat(defaultProfile.Temperature)},
-			}
-		}
-	}
-	return config
-}
-
 func agentRuntimeModelValues(profiles []domainAgentModelProfile) []string {
 	values := make([]string, 0, len(profiles))
 	seen := map[string]struct{}{}
@@ -1351,154 +887,6 @@ func agentRuntimeModelValue(profile domainAgentModelProfile) string {
 	return providerID + "/" + model
 }
 
-func writeOpenCodeConfig(path string, config openCodeConfigFile) error {
-	data, err := encodeOpenCodeConfig(config)
-	if err != nil {
-		return err
-	}
-	if err := writePrivateFile(path, data); err != nil {
-		return fmt.Errorf("writing opencode config: %w", err)
-	}
-	return nil
-}
-
-func encodeOpenCodeConfig(config openCodeConfigFile) ([]byte, error) {
-	var buffer bytes.Buffer
-	encoder := json.NewEncoder(&buffer)
-	encoder.SetEscapeHTML(false)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(config); err != nil {
-		return nil, fmt.Errorf("encoding opencode config: %w", err)
-	}
-	return buffer.Bytes(), nil
-}
-
-func writeOpenCodeManagedInstructions(configDir string, instructions string) (string, error) {
-	instructionDir := filepath.Join(configDir, "instructions")
-	if err := ensurePrivateDirectory(instructionDir); err != nil {
-		return "", fmt.Errorf("creating opencode instruction directory: %w", err)
-	}
-	instructionPath, err := filepath.Abs(filepath.Join(instructionDir, "mediago-drama.md"))
-	if err != nil {
-		return "", fmt.Errorf("resolving opencode instruction path: %w", err)
-	}
-	if err := writePrivateFile(instructionPath, []byte(instructions)); err != nil {
-		return "", fmt.Errorf("writing opencode managed instructions: %w", err)
-	}
-	return instructionPath, nil
-}
-
-// publishOpenCodeRuntimeConfig writes a complete runtime config into a staging
-// directory and publishes it with one rename. The content ID uses the logical
-// config plus the instruction body; the generated absolute instruction path is
-// excluded because it contains the content ID itself.
-func publishOpenCodeRuntimeConfig(configRoot string, config openCodeConfigFile, instructions string) (string, error) {
-	contentID, err := openCodeRuntimeContentID(config, instructions)
-	if err != nil {
-		return "", err
-	}
-	configDir := filepath.Join(configRoot, contentID)
-	finalInstructionPath := ""
-	if instructions != "" {
-		finalInstructionPath, err = filepath.Abs(filepath.Join(configDir, "instructions", "mediago-drama.md"))
-		if err != nil {
-			return "", fmt.Errorf("resolving opencode instruction path: %w", err)
-		}
-		config.Instructions = []string{finalInstructionPath}
-	}
-	configData, err := encodeOpenCodeConfig(config)
-	if err != nil {
-		return "", err
-	}
-
-	matches, err := publishedOpenCodeRuntimeConfigMatches(configDir, configData, instructions)
-	if err != nil {
-		return "", err
-	}
-	if matches {
-		return configDir, nil
-	}
-
-	stagingDir, err := os.MkdirTemp(configRoot, ".tmp-"+contentID+"-")
-	if err != nil {
-		return "", fmt.Errorf("creating opencode staging directory: %w", err)
-	}
-	defer os.RemoveAll(stagingDir)
-	if err := securePrivatePath(stagingDir, 0o700); err != nil {
-		return "", fmt.Errorf("securing opencode staging directory: %w", err)
-	}
-	if instructions != "" {
-		if _, err := writeOpenCodeManagedInstructions(stagingDir, instructions); err != nil {
-			return "", err
-		}
-	}
-	if err := writeOpenCodeConfig(filepath.Join(stagingDir, "opencode.json"), config); err != nil {
-		return "", err
-	}
-
-	if err := os.Rename(stagingDir, configDir); err != nil {
-		// Another concurrent writer may have published the same content first.
-		matches, matchErr := publishedOpenCodeRuntimeConfigMatches(configDir, configData, instructions)
-		if matchErr != nil {
-			return "", matchErr
-		}
-		if !matches {
-			return "", fmt.Errorf("publishing opencode runtime config: %w", err)
-		}
-	}
-	return configDir, nil
-}
-
-func openCodeRuntimeContentID(config openCodeConfigFile, instructions string) (string, error) {
-	config.Instructions = nil
-	payload := struct {
-		Version      string             `json:"version"`
-		Config       openCodeConfigFile `json:"config"`
-		Instructions string             `json:"instructions,omitempty"`
-	}{
-		Version:      "mediago-opencode-runtime-v1",
-		Config:       config,
-		Instructions: instructions,
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("encoding opencode runtime content identity: %w", err)
-	}
-	digest := sha256.Sum256(data)
-	return fmt.Sprintf("%x", digest), nil
-}
-
-func publishedOpenCodeRuntimeConfigMatches(configDir string, configData []byte, instructions string) (bool, error) {
-	info, err := os.Stat(configDir)
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("checking opencode runtime config: %w", err)
-	}
-	if !info.IsDir() {
-		return false, fmt.Errorf("opencode runtime config path %q is not a directory", configDir)
-	}
-	existingConfig, err := os.ReadFile(filepath.Join(configDir, "opencode.json"))
-	if err != nil {
-		return false, fmt.Errorf("reading published opencode config: %w", err)
-	}
-	if !bytes.Equal(existingConfig, configData) {
-		return false, fmt.Errorf("published opencode config %q does not match its content identity", configDir)
-	}
-	if instructions == "" {
-		return true, nil
-	}
-	existingInstructions, err := os.ReadFile(filepath.Join(configDir, "instructions", "mediago-drama.md"))
-	if err != nil {
-		return false, fmt.Errorf("reading published opencode instructions: %w", err)
-	}
-	if !bytes.Equal(existingInstructions, []byte(instructions)) {
-		return false, fmt.Errorf("published opencode instructions %q do not match their content identity", configDir)
-	}
-	return true, nil
-}
-
 func ensurePrivateDirectory(path string) error {
 	if err := os.MkdirAll(path, 0o700); err != nil {
 		return err
@@ -1519,13 +907,6 @@ func securePrivatePath(path string, mode os.FileMode) error {
 		return nil
 	}
 	return os.Chmod(path, mode)
-}
-
-func openCodeInputModalities(supportsImages bool) []string {
-	if supportsImages {
-		return []string{"text", "image"}
-	}
-	return []string{"text"}
 }
 
 func defaultProfileID(profiles []domainAgentModelProfile) string {

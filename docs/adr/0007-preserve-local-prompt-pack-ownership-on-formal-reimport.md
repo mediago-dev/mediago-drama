@@ -1,3 +1,5 @@
+> 历史设计：商业运行时和权益链路已从开源版移除。当前行为见 [本地技能包与开源打包](../prompt-pack-runtime-policies.md)。
+
 # ADR-0007: Preserve local prompt-pack ownership on formal reimport
 
 ## Status

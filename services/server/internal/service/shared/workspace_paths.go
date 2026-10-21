@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	userDataDirName = "mediago-drama"
+	userDataDirName = "mediago-drama-oss"
 	metadataDirName = ".mediago-drama"
 )
 
@@ -196,9 +196,9 @@ func DefaultUserDataDir() string {
 		return filepath.Join(configDir, userDataDirName)
 	}
 	if cwd, err := os.Getwd(); err == nil && cwd != "" {
-		return filepath.Join(cwd, metadataDirName)
+		return filepath.Join(cwd, "."+userDataDirName)
 	}
-	return filepath.Join(".", metadataDirName)
+	return filepath.Join(".", "."+userDataDirName)
 }
 
 // WorkspacePathsFor returns a canonical workspace path helper.

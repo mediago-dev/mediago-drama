@@ -24,7 +24,6 @@ import {
 import { useAgentLayoutStore } from "@/lib/stores/agent-layout";
 import { useWorkModeStore } from "@/lib/stores/work-mode";
 import { AppRoutes } from "@/router/routes";
-import { AnalyticsRouteSync } from "@/shared/analytics";
 import { cn } from "@/shared/lib/utils";
 
 export const App: React.FC = () => {
@@ -69,7 +68,6 @@ export const App: React.FC = () => {
 	if (location.pathname === "/prompt-pack-editor") {
 		return (
 			<>
-				<AnalyticsRouteSync />
 				<AppRoutes />
 			</>
 		);
@@ -77,7 +75,6 @@ export const App: React.FC = () => {
 
 	return (
 		<>
-			<AnalyticsRouteSync />
 			<AgentStateSync
 				agentSurfaceActive={isAgentSurfaceActive}
 				projectId={routeProjectId}

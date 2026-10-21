@@ -1,6 +1,10 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { rendererContentSecurityPolicy, resolveRendererAssetPath } from "./renderer-protocol.js";
+import {
+	rendererPolicyForServer,
+	rendererContentSecurityPolicy,
+	resolveRendererAssetPath,
+} from "./renderer-protocol.js";
 
 const rendererRoot = resolve("/opt/mediago/app/renderer");
 
@@ -34,4 +38,12 @@ describe("desktop renderer protocol", () => {
 		expect(rendererContentSecurityPolicy.split("; ")).toContain("script-src 'self'");
 		expect(rendererContentSecurityPolicy).not.toContain("'unsafe-eval'");
 	});
+});
+
+it("binds CSP to the exact sidecar origin", () => {
+	expect(rendererPolicyForServer("http://127.0.0.1:49157")).toContain(
+		"connect-src 'self' http://127.0.0.1:49157",
+	);
+	expect(rendererPolicyForServer()).not.toContain("48273");
+	expect(() => rendererPolicyForServer("https://example.com")).toThrow("Invalid sidecar origin");
 });

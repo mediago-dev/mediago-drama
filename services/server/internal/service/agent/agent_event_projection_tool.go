@@ -10,7 +10,7 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/shared"
 )
 
-func measureProjectedACPOutput(blocks []AgentACPContentBlock, rawOutput json.RawMessage) (int, int) {
+func measureProjectedRuntimeOutput(blocks []AgentRuntimeContentBlock, rawOutput json.RawMessage) (int, int) {
 	parts := make([]string, 0, len(blocks)+1)
 	for _, block := range blocks {
 		text := ""
@@ -49,7 +49,7 @@ func projectedDurationMs(startedAt string, finishedAt string, status string, pre
 	return duration
 }
 
-func projectedACPToolSummary(status string, lines int, bytes int) string {
+func projectedRuntimeToolSummary(status string, lines int, bytes int) string {
 	parts := []string{}
 	if strings.TrimSpace(status) != "" {
 		parts = append(parts, "状态："+status)
@@ -116,17 +116,17 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func displayACPToolTitle(title string, toolCallID string) string {
+func displayRuntimeToolTitle(title string, toolCallID string) string {
 	title = strings.TrimSpace(title)
-	if title == "" || title == strings.TrimSpace(toolCallID) || isDefaultACPToolTitle(title) || looksLikeTimestampTitle(title) {
+	if title == "" || title == strings.TrimSpace(toolCallID) || isDefaultRuntimeToolTitle(title) || looksLikeTimestampTitle(title) {
 		return ""
 	}
 	return title
 }
 
-func isDefaultACPToolTitle(title string) bool {
+func isDefaultRuntimeToolTitle(title string) bool {
 	switch strings.TrimSpace(title) {
-	case "工具调用", "ACP 工具调用", "tool call", "tool_call":
+	case "工具调用", "Runtime 工具调用", "tool call", "tool_call":
 		return true
 	default:
 		return false
@@ -137,7 +137,7 @@ func looksLikeTimestampTitle(title string) bool {
 	return regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}`).MatchString(strings.TrimSpace(title))
 }
 
-func inferProjectedACPToolKind(title string) string {
+func inferProjectedRuntimeToolKind(title string) string {
 	normalized := strings.ToLower(strings.TrimSpace(title))
 	normalized = strings.TrimPrefix(normalized, "tool:")
 	normalized = strings.TrimSpace(normalized)
@@ -157,7 +157,7 @@ func inferProjectedACPToolKind(title string) string {
 	}
 }
 
-func projectedACPToolKind(values ...string) string {
+func projectedRuntimeToolKind(values ...string) string {
 	for _, value := range values {
 		trimmed := strings.TrimSpace(value)
 		if trimmed != "" && trimmed != "other" {

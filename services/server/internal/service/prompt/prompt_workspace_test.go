@@ -8,7 +8,7 @@ import (
 )
 
 func TestPromptBuilderUsesFixedAgentPrompt(t *testing.T) {
-	prompt := BuildWorkspaceACPPrompt(AgentRunRequest{
+	prompt := BuildWorkspaceRuntimePrompt(AgentRunRequest{
 		ProjectID:    "project-1",
 		WorkspaceDir: t.TempDir(),
 		Document:     &AgentDocumentContext{ID: "doc-1", Title: "第一集", Content: "# 第一集"},
@@ -39,7 +39,7 @@ func TestPromptBuilderDoesNotInlineProjectBrief(t *testing.T) {
 		Pacing: "短剧，每集 60 秒",
 	}
 
-	prompt := BuildWorkspaceACPPrompt(AgentRunRequest{
+	prompt := BuildWorkspaceRuntimePrompt(AgentRunRequest{
 		ProjectID:    "project-brief",
 		WorkspaceDir: t.TempDir(),
 		Documents: []AgentDocumentContext{
@@ -64,7 +64,7 @@ func TestPromptBuilderDoesNotInlineProjectBrief(t *testing.T) {
 }
 
 func TestPromptBuilderDoesNotInlineScopedEditContext(t *testing.T) {
-	prompt := BuildWorkspaceACPPrompt(AgentRunRequest{
+	prompt := BuildWorkspaceRuntimePrompt(AgentRunRequest{
 		ProjectID:     "project-1",
 		Prompt:        "优化这段台词",
 		SelectionText: "旧台词",
@@ -91,7 +91,7 @@ func TestPromptBuilderDoesNotInlineScopedEditContext(t *testing.T) {
 }
 
 func TestPromptBuilderDoesNotInlineAssetReferences(t *testing.T) {
-	prompt := BuildWorkspaceACPPrompt(AgentRunRequest{
+	prompt := BuildWorkspaceRuntimePrompt(AgentRunRequest{
 		ProjectID: "project-1",
 		References: []AgentReference{
 			{
@@ -122,7 +122,7 @@ func TestPromptBuilderDoesNotInlineAssetReferences(t *testing.T) {
 }
 
 func TestPromptBuilderDoesNotInlineResourceMentionIndex(t *testing.T) {
-	prompt := BuildWorkspaceACPPrompt(AgentRunRequest{
+	prompt := BuildWorkspaceRuntimePrompt(AgentRunRequest{
 		ProjectID: "project-1",
 		Document: &AgentDocumentContext{
 			ID:       "storyboard-doc",
@@ -160,8 +160,8 @@ func TestPromptBuilderDoesNotInlineResourceMentionIndex(t *testing.T) {
 	}
 }
 
-func TestBuildACPUserPromptInjectsReferenceIndexForStoryboardRequest(t *testing.T) {
-	prompt := BuildACPUserPrompt(AgentRunRequest{
+func TestBuildRuntimeUserPromptInjectsReferenceIndexForStoryboardRequest(t *testing.T) {
+	prompt := BuildRuntimeUserPrompt(AgentRunRequest{
 		ProjectID: "project-1",
 		Prompt:    "请把第一集改成分镜脚本",
 		Document: &AgentDocumentContext{
@@ -222,8 +222,8 @@ func TestBuildACPUserPromptInjectsReferenceIndexForStoryboardRequest(t *testing.
 	}
 }
 
-func TestBuildACPUserPromptInjectsReferenceIndexForActiveStoryboardDocument(t *testing.T) {
-	prompt := BuildACPUserPrompt(AgentRunRequest{
+func TestBuildRuntimeUserPromptInjectsReferenceIndexForActiveStoryboardDocument(t *testing.T) {
+	prompt := BuildRuntimeUserPrompt(AgentRunRequest{
 		ProjectID: "project-1",
 		Prompt:    "优化这组内容",
 		Document: &AgentDocumentContext{
@@ -252,8 +252,8 @@ func TestBuildACPUserPromptInjectsReferenceIndexForActiveStoryboardDocument(t *t
 	}
 }
 
-func TestBuildACPUserPromptInjectsAttachmentHandlingForReferencedText(t *testing.T) {
-	prompt := BuildACPUserPrompt(AgentRunRequest{
+func TestBuildRuntimeUserPromptInjectsAttachmentHandlingForReferencedText(t *testing.T) {
+	prompt := BuildRuntimeUserPrompt(AgentRunRequest{
 		ProjectID: "project-1",
 		Prompt:    "@我有九千万亿舔狗金.txt 请把第一章改写成剧本",
 	})
@@ -271,8 +271,8 @@ func TestBuildACPUserPromptInjectsAttachmentHandlingForReferencedText(t *testing
 	}
 }
 
-func TestBuildACPUserPromptInjectsAttachmentHandlingForStructuredReference(t *testing.T) {
-	prompt := BuildACPUserPrompt(AgentRunRequest{
+func TestBuildRuntimeUserPromptInjectsAttachmentHandlingForStructuredReference(t *testing.T) {
+	prompt := BuildRuntimeUserPrompt(AgentRunRequest{
 		ProjectID: "project-1",
 		Prompt:    "@原始素材 请改写第一章",
 		References: []AgentReference{
@@ -292,8 +292,8 @@ func TestBuildACPUserPromptInjectsAttachmentHandlingForStructuredReference(t *te
 	}
 }
 
-func TestBuildACPUserPromptSkipsReferenceIndexForUnrelatedRequest(t *testing.T) {
-	prompt := BuildACPUserPrompt(AgentRunRequest{
+func TestBuildRuntimeUserPromptSkipsReferenceIndexForUnrelatedRequest(t *testing.T) {
+	prompt := BuildRuntimeUserPrompt(AgentRunRequest{
 		ProjectID: "project-1",
 		Prompt:    "润色角色设定",
 		Document: &AgentDocumentContext{
@@ -349,7 +349,7 @@ func TestPromptBuilderKeepsSkillLoadingAsFixedRule(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			prompt := BuildACPPrompt(AgentRunRequest{
+			prompt := BuildRuntimePrompt(AgentRunRequest{
 				ProjectID: "project-1",
 				Document: &AgentDocumentContext{
 					ID:       "doc-1",
@@ -384,7 +384,7 @@ func TestPromptBuilderKeepsSkillLoadingAsFixedRule(t *testing.T) {
 }
 
 func TestPromptBuilderLoadsSkillDescriptionsWithoutInliningBodies(t *testing.T) {
-	prompt := BuildACPPrompt(AgentRunRequest{ProjectID: "project-1"}, PromptBuildOptions{
+	prompt := BuildRuntimePrompt(AgentRunRequest{ProjectID: "project-1"}, PromptBuildOptions{
 		Skills: []SkillDescriptor{
 			{Name: "scene-writer", Description: "根据任务生成场景设定。"},
 			{Name: "image-generation", Description: "生成或编辑图片时使用。"},
@@ -408,7 +408,7 @@ func TestPromptBuilderLoadsSkillDescriptionsWithoutInliningBodies(t *testing.T) 
 }
 
 func TestPromptBuilderRequiresImageGenerationSkillWithoutInliningWorkflow(t *testing.T) {
-	prompt := BuildACPPrompt(AgentRunRequest{ProjectID: "project-1"}, PromptBuildOptions{})
+	prompt := BuildRuntimePrompt(AgentRunRequest{ProjectID: "project-1"}, PromptBuildOptions{})
 
 	if !strings.Contains(prompt, "生成、修改或重绘图片前，必须先调用 MCP `load_skill` 装载 `image-generation`") {
 		t.Fatalf("prompt = %q, want image-generation skill trigger", prompt)
@@ -425,7 +425,7 @@ func TestPromptBuilderRequiresImageGenerationSkillWithoutInliningWorkflow(t *tes
 }
 
 func TestPromptBuilderEndsAgentRunAfterVisualMediaSubmission(t *testing.T) {
-	prompt := BuildACPPrompt(AgentRunRequest{ProjectID: "project-1"}, PromptBuildOptions{})
+	prompt := BuildRuntimePrompt(AgentRunRequest{ProjectID: "project-1"}, PromptBuildOptions{})
 
 	for _, want := range []string{
 		"Generation MCP 只提供 `generate_media` 和 `generate_media_batch`",
@@ -440,7 +440,7 @@ func TestPromptBuilderEndsAgentRunAfterVisualMediaSubmission(t *testing.T) {
 }
 
 func TestPromptBuilderRequiresVideoGenerationSkillWithoutInliningWorkflow(t *testing.T) {
-	prompt := BuildACPPrompt(AgentRunRequest{ProjectID: "project-1"}, PromptBuildOptions{})
+	prompt := BuildRuntimePrompt(AgentRunRequest{ProjectID: "project-1"}, PromptBuildOptions{})
 
 	if !strings.Contains(prompt, "生成、修改或衔接视频前，必须先调用 MCP `load_skill` 装载 `video-generation`") {
 		t.Fatalf("prompt = %q, want video-generation skill trigger", prompt)
@@ -495,7 +495,7 @@ func TestPromptBuilderDoesNotInlineCategoryGuidance(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			prompt := BuildACPPrompt(AgentRunRequest{
+			prompt := BuildRuntimePrompt(AgentRunRequest{
 				ProjectID: "project-1",
 				Document:  test.document,
 			}, PromptBuildOptions{})

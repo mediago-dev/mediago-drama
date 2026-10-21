@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"mime/multipart"
 	"net/http"
@@ -16,16 +15,6 @@ import (
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/service/promptpack"
 )
-
-type deniedPromptPackImporter struct{}
-
-func (deniedPromptPackImporter) Import(
-	context.Context,
-	string,
-	[]byte,
-) (promptpack.ProtectedImport, error) {
-	return promptpack.ProtectedImport{}, promptpack.ErrProtectedPackAccessDenied
-}
 
 func TestPromptPacksHandlerAtomicallySavesDraftContents(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
@@ -508,54 +497,8 @@ func TestPromptPacksHandlerRejectsUnsupportedPackVersion(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
-	if envelope.Success || envelope.Message != "当前构建不支持此技能包版本，请使用 MediaGo Drama 官方版导入" {
+	if envelope.Success || envelope.Message != "不支持此技能包格式版本，请导入普通 v1 .mgpack 文件" {
 		t.Fatalf("body = %s, want unsupported-version guidance", response.Body.String())
-	}
-}
-
-func TestPromptPacksHandlerExplainsProtectedAccess(t *testing.T) {
-	gin.SetMode(gin.ReleaseMode)
-	store := newPromptPackHandlerTestStore(t)
-	store.SetProtectedImporter(deniedPromptPackImporter{})
-	handler := NewPromptPacks(store)
-	router := gin.New()
-	router.POST("/packs/import", handler.HandleImportPack)
-
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	part, err := writer.CreateFormFile("file", "protected.mgpack")
-	if err != nil {
-		t.Fatalf("CreateFormFile() error = %v", err)
-	}
-	if _, err := part.Write([]byte{'M', 'G', 'P', 'K', 2}); err != nil {
-		t.Fatalf("Write() error = %v", err)
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
-
-	request := httptest.NewRequest(http.MethodPost, "/packs/import", &body)
-	request.Header.Set("Content-Type", writer.FormDataContentType())
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, request)
-
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusForbidden, response.Body.String())
-	}
-	var envelope struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-		Success bool   `json:"success"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
-		t.Fatalf("Unmarshal() error = %v", err)
-	}
-	if envelope.Success || envelope.Code != http.StatusForbidden {
-		t.Fatalf("body = %s, want rejected import", response.Body.String())
-	}
-	want := "当前 MediaGo 账号没有该技能包的导入权限，请在 MediaGo 授权页面完成购买或加入发布者席位后重新导入"
-	if envelope.Message != want {
-		t.Fatalf("message = %q, want %q", envelope.Message, want)
 	}
 }
 

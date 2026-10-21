@@ -8,10 +8,10 @@ import (
 )
 
 func TestBuildAgentPermissionA2UIIncludesDecisionContext(t *testing.T) {
-	payload := BuildAgentPermissionA2UI(AgentACPPermissionRequest{
+	payload := BuildAgentPermissionA2UI(AgentRuntimePermissionRequest{
 		RequestID: "permission-1",
-		ToolCall:  &AgentACPToolCallSummary{Title: "写入 README", Kind: "edit"},
-		Options: []AgentACPPermissionOption{
+		ToolCall:  &AgentRuntimeToolCallSummary{Title: "写入 README", Kind: "edit"},
+		Options: []AgentRuntimePermissionOption{
 			{OptionID: "allow-once", Kind: "allow_once", Name: "Yes, proceed"},
 			{
 				OptionID: "allow-always",

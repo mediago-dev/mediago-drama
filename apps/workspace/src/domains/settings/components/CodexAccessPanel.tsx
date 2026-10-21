@@ -44,7 +44,7 @@ export const CodexAccessPanel: React.FC = () => {
 				setAttempt(next);
 				if (next.status === "completed") {
 					await refreshAccount();
-					toast.success("ChatGPT 登录成功", { description: "已复用全局 Codex 登录态。" });
+					toast.success("ChatGPT 登录成功", { description: "已登录开源版独立 Codex 账号。" });
 				} else if (next.status !== "pending" && next.status !== "canceled") {
 					toast.error("ChatGPT 登录失败", { description: next.error || "请重新发起登录。" });
 				}
@@ -105,7 +105,7 @@ export const CodexAccessPanel: React.FC = () => {
 		try {
 			const next = await logoutCodexAccount();
 			await mutate(next, false);
-			toast.success("已退出全局 Codex 账号");
+			toast.success("已退出开源版 Codex 账号");
 			return true;
 		} catch (error) {
 			toast.error("退出失败", { description: errorMessage(error) });
@@ -117,9 +117,9 @@ export const CodexAccessPanel: React.FC = () => {
 
 	const confirmLogout = () => {
 		void confirmDialog({
-			title: "退出全局 Codex 账号？",
-			description: "退出后，共享同一 Codex 目录的 CLI、IDE 和其他客户端也需要重新登录。",
-			confirmLabel: "退出全局账号",
+			title: "退出开源版 Codex 账号？",
+			description: "退出后，开源版需要重新登录才能继续使用 ChatGPT。",
+			confirmLabel: "退出账号",
 			confirmIcon: <LogOut />,
 			onConfirm: logout,
 		});

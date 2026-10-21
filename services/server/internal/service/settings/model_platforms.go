@@ -53,18 +53,12 @@ type modelPlatformSpec struct {
 }
 
 func defaultModelPlatformIDs() []string {
-	return []string{ModelPlatformMediago}
+	return []string{ModelPlatformOpenRouter}
 }
 
 func modelPlatformSpecs() []modelPlatformSpec {
 	return []modelPlatformSpec{
-		{
-			ID:               ModelPlatformMediago,
-			Label:            "MediaGo",
-			Kind:             "unified",
-			Description:      "MediaGo 统一接口",
-			APIKeyProviderID: generation.ProviderMediago,
-		},
+
 		{
 			ID:               ModelPlatformOpenRouter,
 			Label:            "OpenRouter",
@@ -72,13 +66,7 @@ func modelPlatformSpecs() []modelPlatformSpec {
 			Description:      "OpenRouter 自定义聚合接口",
 			APIKeyProviderID: generation.ProviderOpenRouter,
 		},
-		{
-			ID:               ModelPlatformDMXAPI,
-			Label:            "DMXAPI",
-			Kind:             "custom",
-			Description:      "DMXAPI 自定义聚合接口",
-			APIKeyProviderID: generation.ProviderDMX,
-		},
+
 		{
 			ID:               ModelPlatformJimeng,
 			Label:            "即梦",
@@ -93,13 +81,6 @@ func modelPlatformSpecs() []modelPlatformSpec {
 			Description:      "LibTV CLI 接入",
 			APIKeyProviderID: generation.ProviderLibTV,
 		},
-		{
-			ID:               ModelPlatformXiaoyunque,
-			Label:            "小云雀",
-			Kind:             "cli",
-			Description:      "小云雀 / Pippit CLI 接入",
-			APIKeyProviderID: generation.ProviderXiaoyunque,
-		},
 	}
 }
 
@@ -111,22 +92,6 @@ func modelPlatformSpecByID(id string) (modelPlatformSpec, bool) {
 		}
 	}
 	return modelPlatformSpec{}, false
-}
-
-// SetMediagoBaseURL configures the first-party OpenAI-compatible endpoint.
-func (service *Settings) SetMediagoBaseURL(baseURL string) {
-	if service == nil {
-		return
-	}
-	service.mediagoBaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
-}
-
-// MediagoBaseURL returns the configured first-party OpenAI-compatible endpoint.
-func (service *Settings) MediagoBaseURL() string {
-	if service == nil {
-		return ""
-	}
-	return strings.TrimRight(strings.TrimSpace(service.mediagoBaseURL), "/")
 }
 
 // ParseModelPlatformIDs parses a comma-separated model platform list.
@@ -213,10 +178,8 @@ func (service *Settings) GenerationCLIProviderIDs() []string {
 }
 
 // ListModelPlatforms returns enabled aggregation platforms for this build.
-func (service *Settings) ListModelPlatforms(ctx context.Context) ModelPlatformList {
-	if ctx == nil {
-		ctx = context.Background()
-	}
+func (service *Settings) ListModelPlatforms(_ context.Context) ModelPlatformList {
+
 	ids := append(service.ModelPlatformIDs(), service.GenerationCLIProviderIDs()...)
 	platforms := make([]ModelPlatform, 0, len(ids))
 	seen := map[string]bool{}
@@ -235,7 +198,6 @@ func (service *Settings) ListModelPlatforms(ctx context.Context) ModelPlatformLi
 			Kind:             spec.Kind,
 			Description:      spec.Description,
 			APIKeyProviderID: spec.APIKeyProviderID,
-			ModelGroups:      service.modelPlatformModelGroups(ctx, spec.ID),
 		})
 	}
 	return ModelPlatformList{Platforms: platforms}
@@ -257,7 +219,7 @@ func enabledGenerationCLIProviderSet(ids []string) map[string]bool {
 
 func isGenerationCLIProvider(id string) bool {
 	switch strings.ToLower(strings.TrimSpace(id)) {
-	case generation.ProviderJimeng, generation.ProviderLibTV, generation.ProviderXiaoyunque:
+	case generation.ProviderJimeng, generation.ProviderLibTV:
 		return true
 	default:
 		return false
@@ -304,180 +266,9 @@ func generationCLIProviderID(value string) (string, bool) {
 		return generation.ProviderJimeng, true
 	case "libtv":
 		return generation.ProviderLibTV, true
-	case "pippit", "pippit-tool-cli", "xiaoyunque":
-		return generation.ProviderXiaoyunque, true
 	default:
 		return "", false
 	}
-}
-
-func (service *Settings) modelPlatformModelGroups(ctx context.Context, platformID string) []ModelPlatformModelGroup {
-	if platformID != ModelPlatformMediago {
-		return nil
-	}
-	if service != nil && service.apiKeys != nil {
-		apiKey, _, err := service.apiKeys.Get(generation.ProviderMediago)
-		if err == nil {
-			apiKey = strings.TrimSpace(apiKey)
-		}
-		if apiKey != "" && service.MediagoBaseURL() != "" {
-			models, err := fetchMediagoGatewayModels(ctx, service.MediagoBaseURL(), apiKey)
-			if err == nil {
-				if groups := modelPlatformGroupsFromGatewayModels(models); len(groups) > 0 {
-					return groups
-				}
-			}
-		}
-	}
-	return catalogModelPlatformGroups(generation.ProviderMediago)
-}
-
-func catalogModelPlatformGroups(provider string) []ModelPlatformModelGroup {
-	catalog := generation.Catalog()
-	versionLabels := map[string]string{}
-	for _, version := range catalog.Versions {
-		versionLabels[version.ID] = modelPlatformCleanModelLabel(version.Label)
-	}
-
-	builder := newModelPlatformGroupBuilder()
-	for _, route := range catalog.Routes {
-		if route.Provider != provider || route.Status != generation.RouteStatusAvailable {
-			continue
-		}
-		model := firstNonEmpty(versionLabels[route.VersionID], route.Model)
-		builder.add(modelPlatformVendorLabel(route.FamilyID, route.Model, route.Label), model)
-	}
-	return builder.groups()
-}
-
-func modelPlatformGroupsFromGatewayModels(models []mediagoGatewayModel) []ModelPlatformModelGroup {
-	builder := newModelPlatformGroupBuilder()
-	for _, model := range models {
-		if !mediagoGatewayModelAvailable(model) {
-			continue
-		}
-		displayName := strings.TrimSpace(firstNonEmpty(model.Name, model.ID, model.CanonicalSlug))
-		if displayName == "" {
-			continue
-		}
-		builder.add(modelPlatformGatewayVendorLabel(model), displayName)
-	}
-	return builder.groups()
-}
-
-type modelPlatformGroupBuilder struct {
-	groupOrder    []string
-	groupsByLabel map[string][]string
-	seen          map[string]map[string]bool
-}
-
-func newModelPlatformGroupBuilder() *modelPlatformGroupBuilder {
-	return &modelPlatformGroupBuilder{
-		groupOrder:    []string{},
-		groupsByLabel: map[string][]string{},
-		seen:          map[string]map[string]bool{},
-	}
-}
-
-func (builder *modelPlatformGroupBuilder) add(label string, model string) {
-	label = strings.TrimSpace(label)
-	model = strings.TrimSpace(model)
-	if label == "" {
-		label = "其他"
-	}
-	if model == "" {
-		return
-	}
-	if _, ok := builder.groupsByLabel[label]; !ok {
-		builder.groupOrder = append(builder.groupOrder, label)
-		builder.groupsByLabel[label] = []string{}
-		builder.seen[label] = map[string]bool{}
-	}
-	seenKey := strings.ToLower(model)
-	if builder.seen[label][seenKey] {
-		return
-	}
-	builder.seen[label][seenKey] = true
-	builder.groupsByLabel[label] = append(builder.groupsByLabel[label], model)
-}
-
-func (builder *modelPlatformGroupBuilder) groups() []ModelPlatformModelGroup {
-	result := make([]ModelPlatformModelGroup, 0, len(builder.groupOrder))
-	for _, label := range builder.groupOrder {
-		models := builder.groupsByLabel[label]
-		if len(models) == 0 {
-			continue
-		}
-		result = append(result, ModelPlatformModelGroup{
-			Label:  label,
-			Models: models,
-		})
-	}
-	return result
-}
-
-func modelPlatformVendorLabel(familyID string, model string, routeLabel string) string {
-	switch strings.ToLower(strings.TrimSpace(familyID)) {
-	case "gpt-text", "gpt-image":
-		return "OpenAI"
-	case "gemini-text", "nano-banana":
-		return "Google Gemini"
-	case "minimax-text", "minimax-speech":
-		return "MiniMax"
-	case "deepseek-text":
-		return "DeepSeek"
-	case "seedream", "seedance":
-		return "字节"
-	}
-	return modelPlatformVendorLabelFromText(model + " " + routeLabel)
-}
-
-func modelPlatformGatewayVendorLabel(model mediagoGatewayModel) string {
-	return modelPlatformVendorLabelFromText(
-		model.ID + " " +
-			model.Name + " " +
-			model.CanonicalSlug + " " +
-			model.Kind + " " +
-			strings.Join(model.Tags, " ") + " " +
-			strings.Join(model.Categories, " "),
-	)
-}
-
-func modelPlatformVendorLabelFromText(value string) string {
-	text := normalizedModelSearchText(value)
-	for _, item := range []struct {
-		token string
-		label string
-	}{
-		{token: "minimax", label: "MiniMax"},
-		{token: "deepseek", label: "DeepSeek"},
-		{token: "gemini", label: "Google Gemini"},
-		{token: "google", label: "Google Gemini"},
-		{token: "seedream", label: "字节"},
-		{token: "seedance", label: "字节"},
-		{token: "doubao", label: "字节"},
-		{token: "bytedance", label: "字节"},
-		{token: "gpt", label: "OpenAI"},
-		{token: "openai", label: "OpenAI"},
-		{token: "glm", label: "智谱 GLM"},
-		{token: "zhipu", label: "智谱 GLM"},
-		{token: "qwen", label: "通义千问"},
-		{token: "claude", label: "Anthropic"},
-		{token: "anthropic", label: "Anthropic"},
-		{token: "kimi", label: "Moonshot"},
-		{token: "moonshot", label: "Moonshot"},
-	} {
-		if strings.Contains(text, item.token) {
-			return item.label
-		}
-	}
-	return "其他"
-}
-
-func modelPlatformCleanModelLabel(label string) string {
-	label = strings.TrimSpace(label)
-	label = strings.TrimSuffix(label, " Text")
-	return strings.TrimSpace(label)
 }
 
 func (service *Settings) modelPlatformEnabled(id string) bool {
@@ -497,6 +288,9 @@ func (service *Settings) modelPlatformEnabled(id string) bool {
 // by this build's model platform allowlist. Official and local providers are
 // unaffected by MODEL_PLATFORM.
 func (service *Settings) GenerationProviderEnabled(providerID string) bool {
+	if generation.ProviderTypeOf(providerID) == "" {
+		return false
+	}
 	if service == nil || !service.modelPlatformsConfigured {
 		return true
 	}
@@ -509,12 +303,8 @@ func (service *Settings) GenerationProviderEnabled(providerID string) bool {
 
 func modelPlatformIDForGenerationProvider(providerID string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(providerID)) {
-	case generation.ProviderMediago:
-		return ModelPlatformMediago, true
 	case generation.ProviderOpenRouter:
 		return ModelPlatformOpenRouter, true
-	case generation.ProviderDMX:
-		return ModelPlatformDMXAPI, true
 	default:
 		return "", false
 	}

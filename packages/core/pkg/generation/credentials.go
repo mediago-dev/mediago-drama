@@ -14,19 +14,7 @@ type CredentialSpec struct {
 // CredentialSpecs returns the credential slots referenced by the catalog.
 func CredentialSpecs() []CredentialSpec {
 	specs := []CredentialSpec{
-		{
-			ID:          ProviderMediago,
-			Label:       "MediaGo",
-			Description: "MediaGo unified aggregation platform",
-		},
-		{
-			ID:              ProviderDMX,
-			Label:           "DMX",
-			Description:     "DMX aggregation platform",
-			CredentialLabel: "DMX API Key",
-			Placeholder:     "输入 DMX API Key",
-			Help:            "用于 DMX 聚合平台生成路由，也可作为智能体模型凭据。",
-		},
+
 		{
 			ID:          ProviderOpenRouter,
 			Label:       "OpenRouter",
@@ -84,14 +72,6 @@ func CredentialSpecs() []CredentialSpec {
 			Description:    "LibTV CLI local login session",
 			CredentialKind: "oauth",
 			Help:           "使用本地打包的 LibTV CLI 登录，生成会消耗当前 LibTV 账号额度。",
-		},
-		{
-			ID:              ProviderXiaoyunque,
-			Label:           "小云雀",
-			Description:     "Pippit / 小云雀 CLI Access Key",
-			CredentialLabel: "小云雀 Access Key",
-			Placeholder:     "输入 XYQ_ACCESS_KEY",
-			Help:            "使用本地打包的小云雀 / Pippit CLI，保存后将作为 XYQ_ACCESS_KEY 使用。",
 		},
 	}
 

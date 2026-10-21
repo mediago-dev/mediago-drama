@@ -93,7 +93,7 @@ describe("agent conversation helpers", () => {
 						title: "工具调用",
 						status: "complete",
 						metadata: {
-							acpKind: "other",
+							runtimeKind: "other",
 							toolCallId: "runtime-log-call",
 						},
 					},
@@ -105,7 +105,7 @@ describe("agent conversation helpers", () => {
 						title: "Tool: mediago_drama/list_documents",
 						status: "complete",
 						metadata: {
-							acpKind: "mcp",
+							runtimeKind: "mcp",
 							toolCallId: "real-tool-call",
 							locations: [{ path: "draft.md" }],
 						},
@@ -132,7 +132,7 @@ describe("agent conversation helpers", () => {
 		]);
 	});
 
-	it("upserts ACP tool calls without completing an unrelated assistant stream", () => {
+	it("upserts Runtime tool calls without completing an unrelated assistant stream", () => {
 		const conversation = baseConversation({
 			streamingMessageId: "assistant-stream",
 			messages: [

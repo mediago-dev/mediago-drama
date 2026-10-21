@@ -37,6 +37,11 @@ func routeCatalog() routeCatalogIndex {
 				}
 			}
 		}
+		for modelID, routeID := range legacyRouteIDs() {
+			if route, ok := routesByID[routeID]; ok {
+				routesByLegacyModelID[modelID] = cloneRoute(route)
+			}
+		}
 
 		return routeCatalogIndex{
 			routes:                cloneRoutes(routes),

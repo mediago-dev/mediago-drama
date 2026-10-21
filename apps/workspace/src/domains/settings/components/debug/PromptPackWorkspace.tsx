@@ -150,7 +150,7 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 	) {
 		const toast = useToast();
 		const selectedPack = packs.find(
-			(pack) => pack.id === selectedPackID && pack.source !== "imported",
+			(pack) => pack.id === selectedPackID && !(pack.source === "imported" && pack.releaseId),
 		);
 		const contentsKey =
 			selectedPackID && selectedPack && !creatingPack
@@ -296,7 +296,8 @@ export const PromptPackWorkspace = forwardRef<PromptPackWorkspaceHandle, PromptP
 		};
 
 		const selectPack = (packID: string) => {
-			if (packs.some((pack) => pack.id === packID && pack.source === "imported")) return;
+			if (packs.some((pack) => pack.id === packID && pack.source === "imported" && pack.releaseId))
+				return;
 			onSelectedPackChange(packID);
 		};
 
@@ -780,8 +781,12 @@ const PackLibraryNavigator: React.FC<{
 	onUninstallPack,
 	packs,
 }) => {
-	const manageablePacks = orderPacks(packs.filter((pack) => pack.source !== "imported"));
-	const importedPacks = orderPacks(packs.filter((pack) => pack.source === "imported"));
+	const manageablePacks = orderPacks(
+		packs.filter((pack) => !(pack.source === "imported" && pack.releaseId)),
+	);
+	const importedPacks = orderPacks(
+		packs.filter((pack) => pack.source === "imported" && pack.releaseId),
+	);
 
 	return (
 		<>
@@ -848,17 +853,18 @@ const PackLibraryRow: React.FC<{
 	pack: PromptPack;
 }> = ({ onPackEnabledChange, onSelectPack, onUninstallPack, pack }) => {
 	const imported = pack.source === "imported";
+	const restricted = imported && Boolean(pack.releaseId);
 	const row = (
 		<button
 			type="button"
 			aria-label={pack.name}
 			className={cn(
 				"flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm text-ide-sidebar-foreground transition-colors",
-				imported
+				restricted
 					? "cursor-not-allowed opacity-60"
 					: "hover:bg-ide-list-hover hover:text-foreground",
 			)}
-			disabled={imported}
+			disabled={restricted}
 			onClick={() => onSelectPack(pack.id)}
 		>
 			<PackageOpen className="size-3.5 shrink-0 text-muted-foreground" />
@@ -1651,13 +1657,17 @@ const WorkspaceStart: React.FC<{
 	togglingPackID,
 }) => {
 	if (isLoading) return <LoadingState label="加载技能包" />;
-	const manageablePacks = orderPacks(packs.filter((pack) => pack.source !== "imported"));
-	const importedPacks = orderPacks(packs.filter((pack) => pack.source === "imported"));
+	const manageablePacks = orderPacks(
+		packs.filter((pack) => !(pack.source === "imported" && pack.releaseId)),
+	);
+	const importedPacks = orderPacks(
+		packs.filter((pack) => pack.source === "imported" && pack.releaseId),
+	);
 
 	return (
 		<div className="h-full overflow-y-auto px-6 py-8 xl:px-8">
 			<section aria-label="技能包列表" className="mx-auto w-full max-w-5xl">
-				<section aria-label="默认和本地技能包">
+				<section aria-label="默认、本地和普通导入技能包">
 					<h2 className="mb-3 text-sm font-semibold text-foreground">技能包</h2>
 					{manageablePacks.length > 0 ? (
 						<div className="grid grid-cols-1 gap-3 lg:grid-cols-2">

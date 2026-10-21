@@ -51,7 +51,7 @@ type AgentTaskModel struct {
 // TableName returns the backing table name.
 func (AgentTaskModel) TableName() string { return "agent_tasks" }
 
-// AgentInvocationModel is one monotonic native ACP execution attempt.
+// AgentInvocationModel is one monotonic native Runtime execution attempt.
 type AgentInvocationModel struct {
 	ProjectID                     string     `gorm:"column:project_id;primaryKey;default:'';index:agent_invocations_workflow_status_idx,priority:1"`
 	ID                            string     `gorm:"column:id;primaryKey"`
@@ -221,7 +221,7 @@ type AgentWorkflowHandoffModel struct {
 	SuccessorRootTaskID        string     `gorm:"column:successor_root_task_id;not null"`
 	SuccessorInvocationID      string     `gorm:"column:successor_invocation_id;not null"`
 	SuccessorRunID             string     `gorm:"column:successor_run_id;not null"`
-	TargetACPSessionID         string     `gorm:"column:target_acp_session_id;not null;default:''"`
+	TargetCodexThreadID        string     `gorm:"column:target_codex_thread_id;not null;default:''"`
 	DispatchMessageID          string     `gorm:"column:dispatch_message_id;not null;default:''"`
 	DispatchFingerprint        string     `gorm:"column:dispatch_fingerprint;not null;default:''"`
 	RecoveryCapability         string     `gorm:"column:recovery_capability;not null;default:''"`

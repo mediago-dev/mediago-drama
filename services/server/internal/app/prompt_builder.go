@@ -8,12 +8,12 @@ import (
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 )
 
-func buildACPPrompt(request agentRunRequest) string {
-	return buildACPPromptWithMaxSectionChars(request, 0)
+func buildRuntimePrompt(request agentRunRequest) string {
+	return buildRuntimePromptWithMaxSectionChars(request, 0)
 }
 
-func buildACPPromptWithMaxSectionChars(request agentRunRequest, maxSectionChars int) string {
-	return serviceprompt.BuildACPPrompt(request, promptBuildOptionsWithMaxSectionChars(request, maxSectionChars))
+func buildRuntimePromptWithMaxSectionChars(request agentRunRequest, maxSectionChars int) string {
+	return serviceprompt.BuildRuntimePrompt(request, promptBuildOptionsWithMaxSectionChars(request, maxSectionChars))
 }
 
 func promptBuildOptionsWithMaxSectionChars(_ agentRunRequest, maxSectionChars int) serviceprompt.PromptBuildOptions {
