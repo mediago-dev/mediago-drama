@@ -1,23 +1,21 @@
-package billing
+package usage
 
 import (
 	"fmt"
 	"sort"
 	"strings"
 
-	corepricing "github.com/mediago-dev/mediago-drama/packages/core/pkg/pricing"
 	corecapability "github.com/mediago-dev/mediago-drama/services/server/internal/capability"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 )
 
-// Service aggregates usage and estimates billing from generation task records.
+// Service aggregates usage from generation task records.
 type Service struct {
-	repo   *repository.BillingRepository
-	prices corepricing.Table
-	caps   corecapability.Registry
+	repo *repository.UsageRepository
+	caps corecapability.Registry
 }
 
-// SummaryRequest filters and groups a billing summary.
+// SummaryRequest filters and groups a usage summary.
 type SummaryRequest struct {
 	Start     string
 	End       string
@@ -32,52 +30,46 @@ type RangeInfo struct {
 	End   string `json:"end"`
 }
 
-// Totals reports aggregate calls, tokens, and costs.
+// Totals reports aggregate calls and tokens.
 type Totals struct {
-	Calls           int64              `json:"calls"`
-	InputTokens     int64              `json:"inputTokens"`
-	OutputTokens    int64              `json:"outputTokens"`
-	TotalTokens     int64              `json:"totalTokens"`
-	ReasoningTokens int64              `json:"reasoningTokens"`
-	CachedTokens    int64              `json:"cachedTokens"`
-	Costs           map[string]float64 `json:"costs"`
+	Calls           int64 `json:"calls"`
+	InputTokens     int64 `json:"inputTokens"`
+	OutputTokens    int64 `json:"outputTokens"`
+	TotalTokens     int64 `json:"totalTokens"`
+	ReasoningTokens int64 `json:"reasoningTokens"`
+	CachedTokens    int64 `json:"cachedTokens"`
 }
 
-// SummaryResponse is a grouped usage and billing summary.
+// SummaryResponse is a grouped usage summary.
 type SummaryResponse struct {
-	Range      RangeInfo     `json:"range"`
-	Totals     Totals        `json:"totals"`
-	Rows       []SummaryRow  `json:"rows"`
-	Series     []SeriesPoint `json:"series"`
-	Currencies []string      `json:"currencies"`
+	Range  RangeInfo     `json:"range"`
+	Totals Totals        `json:"totals"`
+	Rows   []SummaryRow  `json:"rows"`
+	Series []SeriesPoint `json:"series"`
 }
 
-// SummaryRow is one grouped billing row.
+// SummaryRow is one grouped usage row.
 type SummaryRow struct {
-	Key             string             `json:"key"`
-	Label           string             `json:"label"`
-	Calls           int64              `json:"calls"`
-	InputTokens     int64              `json:"inputTokens"`
-	OutputTokens    int64              `json:"outputTokens"`
-	TotalTokens     int64              `json:"totalTokens"`
-	ReasoningTokens int64              `json:"reasoningTokens"`
-	CachedTokens    int64              `json:"cachedTokens"`
-	Costs           map[string]float64 `json:"costs"`
-	Priced          bool               `json:"priced"`
+	Key             string `json:"key"`
+	Label           string `json:"label"`
+	Calls           int64  `json:"calls"`
+	InputTokens     int64  `json:"inputTokens"`
+	OutputTokens    int64  `json:"outputTokens"`
+	TotalTokens     int64  `json:"totalTokens"`
+	ReasoningTokens int64  `json:"reasoningTokens"`
+	CachedTokens    int64  `json:"cachedTokens"`
 }
 
 // SeriesPoint is one daily usage point.
 type SeriesPoint struct {
-	Bucket       string             `json:"bucket"`
-	Calls        int64              `json:"calls"`
-	TotalTokens  int64              `json:"totalTokens"`
-	CachedTokens int64              `json:"cachedTokens"`
-	Costs        map[string]float64 `json:"costs"`
+	Bucket       string `json:"bucket"`
+	Calls        int64  `json:"calls"`
+	TotalTokens  int64  `json:"totalTokens"`
+	CachedTokens int64  `json:"cachedTokens"`
 }
 
 type groupBucket struct {
 	SummaryRow
-	missingPrice bool
 }
 
 type capabilityLookup struct {
@@ -85,15 +77,15 @@ type capabilityLookup struct {
 	labels            map[string]string
 }
 
-// NewService creates a billing aggregation service.
-func NewService(repo *repository.BillingRepository, prices corepricing.Table, caps corecapability.Registry) *Service {
-	return &Service{repo: repo, prices: prices, caps: caps}
+// NewService creates a usage aggregation service.
+func NewService(repo *repository.UsageRepository, caps corecapability.Registry) *Service {
+	return &Service{repo: repo, caps: caps}
 }
 
-// Summary returns a grouped billing summary.
+// Summary returns a grouped usage summary.
 func (service *Service) Summary(request SummaryRequest) (SummaryResponse, error) {
 	if service == nil || service.repo == nil {
-		return SummaryResponse{}, fmt.Errorf("billing service repository is nil")
+		return SummaryResponse{}, fmt.Errorf("usage service repository is nil")
 	}
 	groupBy := normalizeGroupBy(request.GroupBy)
 	rows, err := service.repo.ListUsageBuckets(repository.UsageQuery{
@@ -109,8 +101,7 @@ func (service *Service) Summary(request SummaryRequest) (SummaryResponse, error)
 	caps := service.capabilityLookup()
 	groups := map[string]*groupBucket{}
 	series := map[string]*SeriesPoint{}
-	totals := Totals{Costs: map[string]float64{}}
-	currencies := map[string]bool{}
+	totals := Totals{}
 
 	for _, row := range rows {
 		groupKey, groupLabel := groupForRow(groupBy, row, caps)
@@ -123,24 +114,10 @@ func (service *Service) Summary(request SummaryRequest) (SummaryResponse, error)
 		point.TotalTokens += row.TotalTokens
 		point.CachedTokens += row.CachedTokens
 
-		cost, priced := corepricing.EstimateCost(service.prices, row.RouteID, corepricing.Usage{
-			InputTokens:  int(row.InputTokens),
-			OutputTokens: int(row.OutputTokens),
-			CachedTokens: int(row.CachedTokens),
-			Calls:        int(row.Calls),
-		})
-		if !priced {
-			bucket.missingPrice = true
-			continue
-		}
-		addCost(bucket.Costs, cost.Currency, cost.Amount, currencies)
-		addCost(totals.Costs, cost.Currency, cost.Amount, currencies)
-		addCost(point.Costs, cost.Currency, cost.Amount, currencies)
 	}
 
 	responseRows := make([]SummaryRow, 0, len(groups))
 	for _, bucket := range groups {
-		bucket.Priced = !bucket.missingPrice
 		responseRows = append(responseRows, bucket.SummaryRow)
 	}
 	sort.Slice(responseRows, func(i int, j int) bool {
@@ -159,11 +136,10 @@ func (service *Service) Summary(request SummaryRequest) (SummaryResponse, error)
 	})
 
 	return SummaryResponse{
-		Range:      RangeInfo{Start: request.Start, End: request.End},
-		Totals:     totals,
-		Rows:       responseRows,
-		Series:     responseSeries,
-		Currencies: sortedCurrencies(currencies),
+		Range:  RangeInfo{Start: request.Start, End: request.End},
+		Totals: totals,
+		Rows:   responseRows,
+		Series: responseSeries,
 	}, nil
 }
 
@@ -255,10 +231,8 @@ func ensureGroup(groups map[string]*groupBucket, key string, label string) *grou
 		return bucket
 	}
 	bucket = &groupBucket{SummaryRow: SummaryRow{
-		Key:    key,
-		Label:  label,
-		Costs:  map[string]float64{},
-		Priced: true,
+		Key:   key,
+		Label: label,
 	}}
 	groups[key] = bucket
 	return bucket
@@ -273,7 +247,7 @@ func ensureSeries(series map[string]*SeriesPoint, bucket string) *SeriesPoint {
 	if point != nil {
 		return point
 	}
-	point = &SeriesPoint{Bucket: bucket, Costs: map[string]float64{}}
+	point = &SeriesPoint{Bucket: bucket}
 	series[bucket] = point
 	return point
 }
@@ -294,21 +268,4 @@ func addTotals(totals *Totals, bucket repository.UsageBucketRow) {
 	totals.TotalTokens += bucket.TotalTokens
 	totals.ReasoningTokens += bucket.ReasoningTokens
 	totals.CachedTokens += bucket.CachedTokens
-}
-
-func addCost(costs map[string]float64, currency string, amount float64, currencies map[string]bool) {
-	if currency == "" {
-		return
-	}
-	costs[currency] += amount
-	currencies[currency] = true
-}
-
-func sortedCurrencies(values map[string]bool) []string {
-	result := make([]string, 0, len(values))
-	for value := range values {
-		result = append(result, value)
-	}
-	sort.Strings(result)
-	return result
 }

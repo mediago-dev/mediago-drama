@@ -13,7 +13,7 @@ type Handlers struct {
 	MCP                   httphandlers.MCP
 	Settings              httphandlers.Settings
 	Capabilities          httphandlers.Capabilities
-	Billing               httphandlers.Billing
+	Usage                 httphandlers.Usage
 	MediaAssets           httphandlers.MediaAssets
 	ProjectAssets         httphandlers.ProjectAssets
 	AgentBackends         httphandlers.AgentBackends
@@ -59,7 +59,7 @@ func Register(router *gin.Engine, handlers Handlers) {
 func registerCoreRoutes(apiRoutes *gin.RouterGroup, handlers Handlers) {
 	apiRoutes.GET("/health", handlers.Health.HandleHealth)
 	apiRoutes.GET("/capabilities", handlers.Capabilities.HandleListCapabilities)
-	apiRoutes.GET("/billing/summary", handlers.Billing.HandleBillingSummary)
+	apiRoutes.GET("/usage/summary", handlers.Usage.HandleUsageSummary)
 	apiRoutes.GET("/projects", handlers.Projects.HandleListProjects)
 	apiRoutes.POST("/projects", handlers.Projects.HandleCreateProject)
 	apiRoutes.GET("/packs", handlers.PromptPacks.HandleListPacks)
@@ -267,7 +267,7 @@ func registerProjectRoutes(projectRoutes *gin.RouterGroup, handlers Handlers) {
 	projectRoutes.POST("/archive", handlers.Projects.HandleArchiveProject)
 	projectRoutes.POST("/restore", handlers.Projects.HandleRestoreProject)
 	projectRoutes.DELETE("/permanent", handlers.Projects.HandlePermanentlyDeleteProject)
-	projectRoutes.GET("/billing/summary", handlers.Billing.HandleProjectBillingSummary)
+	projectRoutes.GET("/usage/summary", handlers.Usage.HandleProjectUsageSummary)
 	projectRoutes.GET("/config", handlers.ProjectConfigs.HandleGetProjectConfig)
 	projectRoutes.PATCH("/config", handlers.ProjectConfigs.HandlePatchProjectConfig)
 	projectRoutes.GET("/brief", handlers.ProjectBriefs.HandleGetProjectBrief)

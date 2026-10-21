@@ -1,6 +1,6 @@
 package capability
 
-// Category groups atomic capabilities for the studio toolbox and billing rollups.
+// Category groups atomic capabilities for the studio toolbox and usage rollups.
 type Category string
 
 const (

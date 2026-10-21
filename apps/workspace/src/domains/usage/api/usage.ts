@@ -1,6 +1,6 @@
 import httpClient from "@/shared/lib/http";
 
-export interface BillingSummaryRow {
+export interface UsageSummaryRow {
 	key: string;
 	label: string;
 	calls: number;
@@ -9,11 +9,9 @@ export interface BillingSummaryRow {
 	totalTokens: number;
 	reasoningTokens: number;
 	cachedTokens: number;
-	costs: Record<string, number>;
-	priced: boolean;
 }
 
-export interface BillingSummaryResponse {
+export interface UsageSummaryResponse {
 	range: { start: string; end: string };
 	totals: {
 		calls: number;
@@ -22,20 +20,17 @@ export interface BillingSummaryResponse {
 		totalTokens: number;
 		reasoningTokens: number;
 		cachedTokens: number;
-		costs: Record<string, number>;
 	};
-	rows: BillingSummaryRow[];
+	rows: UsageSummaryRow[];
 	series: {
 		bucket: string;
 		calls: number;
 		totalTokens: number;
 		cachedTokens: number;
-		costs: Record<string, number>;
 	}[];
-	currencies: string[];
 }
 
-export interface BillingSummaryParams {
+export interface UsageSummaryParams {
 	end?: string;
 	groupBy: string;
 	kind?: string;
@@ -43,11 +38,11 @@ export interface BillingSummaryParams {
 	start?: string;
 }
 
-export const billingSummaryKey = (params: BillingSummaryParams) =>
+export const usageSummaryKey = (params: UsageSummaryParams) =>
 	[
 		params.projectId?.trim()
-			? `/projects/${encodeURIComponent(params.projectId.trim())}/billing/summary`
-			: "/billing/summary",
+			? `/projects/${encodeURIComponent(params.projectId.trim())}/usage/summary`
+			: "/usage/summary",
 		params.projectId?.trim() ?? "",
 		params.start ?? "",
 		params.end ?? "",
@@ -55,12 +50,12 @@ export const billingSummaryKey = (params: BillingSummaryParams) =>
 		params.kind ?? "",
 	] as const;
 
-export const getBillingSummary = async (params: BillingSummaryParams) => {
+export const getUsageSummary = async (params: UsageSummaryParams) => {
 	const projectId = params.projectId?.trim();
 	const path = projectId
-		? `/projects/${encodeURIComponent(projectId)}/billing/summary`
-		: "/billing/summary";
+		? `/projects/${encodeURIComponent(projectId)}/usage/summary`
+		: "/usage/summary";
 	const { projectId: _, ...query } = params;
-	const response = await httpClient.get<BillingSummaryResponse>(path, { params: query });
+	const response = await httpClient.get<UsageSummaryResponse>(path, { params: query });
 	return response.data;
 };

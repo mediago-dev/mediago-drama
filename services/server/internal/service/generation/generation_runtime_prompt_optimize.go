@@ -97,11 +97,7 @@ func (workflow *GenerationService) CreatePromptOptimizedGenerationMessage(
 	payload.ReferenceURLs = CompactStrings(payload.ReferenceURLs)
 	payload.ReferenceAssetIDs = CompactStrings(payload.ReferenceAssetIDs)
 	payload.ReferenceBindings = normalizeGenerationReferenceBindings(payload.ReferenceBindings)
-	var sourceRefsErr error
-	payload.SourceRefs, sourceRefsErr = normalizeContentSourceRefs(payload.SourceRefs)
-	if sourceRefsErr != nil {
-		return GenerationOptimizeAndGenerateResponse{}, http.StatusForbidden, sourceRefsErr
-	}
+	payload.SourceRefs = normalizeContentSourceRefs(payload.SourceRefs)
 	payload.PromptOptimization = NormalizeGenerationPromptOptimizationRequest(payload.PromptOptimization)
 	if payload.PromptOptimization == nil {
 		return GenerationOptimizeAndGenerateResponse{}, http.StatusBadRequest, fmt.Errorf("缺少 promptOptimization")
@@ -125,9 +121,6 @@ func (workflow *GenerationService) CreatePromptOptimizedGenerationMessage(
 	payload.Params = NormalizeGenerationParams(payload.Params)
 	if payload.Prompt == "" {
 		return GenerationOptimizeAndGenerateResponse{}, http.StatusBadRequest, fmt.Errorf("缺少 prompt")
-	}
-	if status, err := workflow.authorizeContentUse(ctx, "call", payload.SourceRefs); err != nil {
-		return GenerationOptimizeAndGenerateResponse{}, status, err
 	}
 
 	route, err := ResolveGenerationRoute(payload)

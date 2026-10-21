@@ -1,22 +1,14 @@
 package middleware
 
-import (
-	"strings"
+import "github.com/gin-gonic/gin"
 
-	"github.com/gin-gonic/gin"
-)
-
-// EditionHeader identifies the server implementation serving an API response.
+// EditionHeader identifies the open-source server implementation.
 const EditionHeader = "X-MediaGo-Edition"
 
-// Edition adds the normalized server edition to every response.
-func Edition(value string) gin.HandlerFunc {
-	edition := strings.ToLower(strings.TrimSpace(value))
-	if edition == "" {
-		edition = "community"
-	}
+// Edition identifies responses from the open-source server.
+func Edition() gin.HandlerFunc {
 	return func(context *gin.Context) {
-		context.Header(EditionHeader, edition)
+		context.Header(EditionHeader, "community")
 		context.Next()
 	}
 }

@@ -165,7 +165,7 @@ func TestOpenWorkspaceRepositoriesBuildsAllWorkspaceRepositories(t *testing.T) {
 		repos.AgentSessions == nil ||
 		repos.Approvals == nil ||
 		repos.DocumentSections == nil ||
-		repos.Billing == nil ||
+		repos.Usage == nil ||
 		repos.GenerationNotifications == nil ||
 		repos.GenerationTasks == nil ||
 		repos.MediaAssets == nil ||

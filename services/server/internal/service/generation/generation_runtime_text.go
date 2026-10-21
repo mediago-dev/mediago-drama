@@ -46,17 +46,10 @@ func (workflow *GenerationService) StreamGenerationText(
 	}
 	payload.ReferenceURLs = []string{}
 	payload.ReferenceAssetIDs = []string{}
-	var sourceRefsErr error
-	payload.SourceRefs, sourceRefsErr = normalizeContentSourceRefs(payload.SourceRefs)
-	if sourceRefsErr != nil {
-		return http.StatusForbidden, sourceRefsErr
-	}
+	payload.SourceRefs = normalizeContentSourceRefs(payload.SourceRefs)
 	payload.Params = NormalizeGenerationParams(payload.Params)
 	if payload.Prompt == "" {
 		return http.StatusBadRequest, fmt.Errorf("缺少 prompt")
-	}
-	if status, err := workflow.authorizeContentUse(ctx, "call", payload.SourceRefs); err != nil {
-		return status, err
 	}
 	if workflow.shouldUseExecutorText(payload) {
 		return workflow.streamGenerationTextWithExecutor(ctx, payload, hasScopeFilter, emit)

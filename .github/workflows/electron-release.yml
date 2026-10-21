@@ -126,7 +126,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: packages/vendor/dist/${{ matrix.platform }}
-          key: vendor-${{ runner.os }}-${{ matrix.platform }}-${{ vars.MEDIAGO_RIGHTS_RELEASE_TAG }}-${{ hashFiles('packages/vendor/agents.json', 'packages/vendor/tools.json') }}
+          key: vendor-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('packages/vendor/agents.json', 'packages/vendor/tools.json') }}
           restore-keys: |
             vendor-${{ runner.os }}-${{ matrix.platform }}-
 
@@ -139,16 +139,6 @@ jobs:
             electron-builder-${{ runner.os }}-${{ matrix.platform }}-
 
       - uses: go-task/setup-task@01a4adf9db2d14c1de7a560f09170b6e0df736aa # v2
-
-      - name: Prepare private runtime with vendor tooling
-        shell: bash
-        env:
-          MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME: "1"
-          MEDIAGO_PRIVATE_ARTIFACT_TOKEN: ${{ secrets.MEDIAGO_PRIVATE_ARTIFACT_TOKEN }}
-          MEDIAGO_RIGHTS_RELEASE_TAG: ${{ vars.MEDIAGO_RIGHTS_RELEASE_TAG }}
-        run: |
-          set -euo pipefail
-          task -d packages/vendor prepare:rights PLATFORM="${{ matrix.platform }}"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -181,15 +171,11 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.platform == 'darwin-arm64' && 'true' || 'false' }}
           CSC_KEY_PASSWORD: ${{ matrix.platform == 'darwin-arm64' && secrets.MEDIAGO_MAC_CSC_KEY_PASSWORD || '' }}
           CSC_LINK: ${{ matrix.platform == 'darwin-arm64' && secrets.MEDIAGO_MAC_CSC_LINK || '' }}
-          MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME: "1"
           MEDIAGO_MAC_NOTARIZE: ${{ matrix.platform == 'darwin-arm64' && vars.MEDIAGO_MAC_NOTARIZE == '1' && '1' || '0' }}
           MEDIAGO_MAC_SIGN: ${{ matrix.platform == 'darwin-arm64' && '1' || '0' }}
-          MEDIAGO_PROMPT_PACK_POLICY: marketplace
           MEDIAGO_ELECTRON_CHANNEL: ${{ inputs.channel }}
           MEDIAGO_ELECTRON_RELEASE_TYPE: ${{ needs.release-version.outputs.github_release_type }}
           MODEL_PLATFORM: ${{ vars.MODEL_PLATFORM }}
-          VITE_MEDIAGO_APIKEY_URL: ${{ vars.VITE_MEDIAGO_APIKEY_URL }}
-          VITE_TALKINGDATA_APP_ID: ${{ vars.VITE_TALKINGDATA_APP_ID }}
         run: task build:electron:target PLATFORM=${{ matrix.platform }} ELECTRON_SCRIPT=${{ matrix.electron_script }}
 
       - name: Verify macOS release signature

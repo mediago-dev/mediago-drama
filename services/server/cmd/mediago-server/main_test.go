@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	coregeneration "github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
-	corepricing "github.com/mediago-dev/mediago-drama/packages/core/pkg/pricing"
 	serverconfig "github.com/mediago-dev/mediago-drama/services/server/internal/config"
 )
 
@@ -295,92 +293,6 @@ func TestParseServerPort(t *testing.T) {
 				t.Fatalf("parseServerPort = %d, want %d", got, tt.want)
 			}
 		})
-	}
-}
-
-func TestLoadBillingPricesFromConfigRelativeOverlay(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "server.yaml")
-	overlayPath := filepath.Join(dir, "pricing.json")
-	if err := os.WriteFile(overlayPath, []byte(`{
-		"prices": [
-			{"routeId":"dmx.gpt-4.1-mini-text","currency":"CNY","unit":"per_call","perCallPrice":2.5}
-		]
-	}`), 0o600); err != nil {
-		t.Fatalf("writing overlay: %v", err)
-	}
-
-	table, err := loadBillingPrices(" pricing.json ", configPath)
-	if err != nil {
-		t.Fatalf("loadBillingPrices() error = %v", err)
-	}
-	price, ok := table.Find(coregeneration.RouteDMXGPT41MiniText)
-	if !ok {
-		t.Fatal("overlay route missing")
-	}
-	if price.Currency != "CNY" || price.Unit != corepricing.UnitPerCall || price.PerCallPrice != 2.5 {
-		t.Fatalf("price = %#v", price)
-	}
-}
-
-func TestLoadBillingPricesUsesDefaultWithoutOverlay(t *testing.T) {
-	table, err := loadBillingPrices("", "")
-	if err != nil {
-		t.Fatalf("loadBillingPrices() error = %v", err)
-	}
-	if _, ok := table.Find(coregeneration.RouteOfficialGPT41MiniText); !ok {
-		t.Fatal("default price table missing text route")
-	}
-}
-
-func TestBillingPriceOverlayCoversAvailableRoutes(t *testing.T) {
-	overlayPath := filepath.Join("..", "..", "configs", "pricing.overlay.json")
-	raw, err := os.ReadFile(overlayPath)
-	if err != nil {
-		t.Fatalf("reading overlay: %v", err)
-	}
-	var overlay struct {
-		Prices []corepricing.RoutePrice `json:"prices"`
-	}
-	if err := json.Unmarshal(raw, &overlay); err != nil {
-		t.Fatalf("parsing overlay: %v", err)
-	}
-	overlayRoutes := map[string]bool{}
-	for _, price := range overlay.Prices {
-		overlayRoutes[price.RouteID] = true
-	}
-
-	missing := []string{}
-	for _, route := range coregeneration.Routes() {
-		if route.Status != coregeneration.RouteStatusAvailable {
-			continue
-		}
-		if !overlayRoutes[route.ID] {
-			missing = append(missing, route.ID)
-		}
-	}
-	if len(missing) > 0 {
-		t.Fatalf("available routes missing overlay prices: %s", strings.Join(missing, ", "))
-	}
-
-	table, err := loadBillingPrices(
-		"pricing.overlay.json",
-		filepath.Join("..", "..", "configs", "server.yaml"),
-	)
-	if err != nil {
-		t.Fatalf("loadBillingPrices() error = %v", err)
-	}
-
-	cost, ok := corepricing.EstimateCost(table, coregeneration.RouteOfficialGPT41MiniText, corepricing.Usage{
-		InputTokens:  1_000_000,
-		OutputTokens: 500_000,
-		CachedTokens: 100_000,
-	})
-	if !ok {
-		t.Fatal("sample route price missing")
-	}
-	if cost.Currency != "USD" || cost.Amount <= 0 {
-		t.Fatalf("sample cost = %#v, want positive USD cost", cost)
 	}
 }
 

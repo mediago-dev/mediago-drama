@@ -5,23 +5,23 @@ import (
 
 	"github.com/gin-gonic/gin"
 	httpresponse "github.com/mediago-dev/mediago-drama/services/server/internal/http/response"
-	servicebilling "github.com/mediago-dev/mediago-drama/services/server/internal/service/billing"
+	serviceusage "github.com/mediago-dev/mediago-drama/services/server/internal/service/usage"
 )
 
-// Billing handles billing summary routes.
-type Billing struct {
-	service *servicebilling.Service
+// Usage handles usage summary routes.
+type Usage struct {
+	service *serviceusage.Service
 }
 
-// NewBilling returns a billing route handler.
-func NewBilling(service *servicebilling.Service) Billing {
-	return Billing{service: service}
+// NewUsage returns a usage route handler.
+func NewUsage(service *serviceusage.Service) Usage {
+	return Usage{service: service}
 }
 
-// HandleBillingSummary godoc
-// @Summary 获取全局费用汇总
-// @Description 按时间、类型和维度汇总生成任务使用量与费用。
-// @Tags Billing
+// HandleUsageSummary godoc
+// @Summary 获取全局用量汇总
+// @Description 按时间、类型和维度汇总生成任务使用量。
+// @Tags Usage
 // @Produce json
 // @Param start query string false "Start date or timestamp"
 // @Param end query string false "End date or timestamp"
@@ -29,9 +29,9 @@ func NewBilling(service *servicebilling.Service) Billing {
 // @Param kind query string false "Generation kind"
 // @Success 200 {object} SwaggerEnvelope
 // @Failure 500 {object} SwaggerEnvelope
-// @Router /api/v1/billing/summary [get]
-func (handler Billing) HandleBillingSummary(context *gin.Context) {
-	response, err := handler.service.Summary(servicebilling.SummaryRequest{
+// @Router /api/v1/usage/summary [get]
+func (handler Usage) HandleUsageSummary(context *gin.Context) {
+	response, err := handler.service.Summary(serviceusage.SummaryRequest{
 		Start:     context.Query("start"),
 		End:       context.Query("end"),
 		GroupBy:   context.DefaultQuery("groupBy", "model"),
@@ -39,16 +39,16 @@ func (handler Billing) HandleBillingSummary(context *gin.Context) {
 		ProjectID: optionalProjectID(context),
 	})
 	if err != nil {
-		httpresponse.Fail(context, http.StatusInternalServerError, "计费汇总失败", err)
+		httpresponse.Fail(context, http.StatusInternalServerError, "用量汇总失败", err)
 		return
 	}
 	httpresponse.OK(context, response)
 }
 
-// HandleProjectBillingSummary godoc
-// @Summary 获取项目费用汇总
-// @Description 按项目范围汇总生成任务使用量与费用。
-// @Tags Billing
+// HandleProjectUsageSummary godoc
+// @Summary 获取项目用量汇总
+// @Description 按项目范围汇总生成任务使用量。
+// @Tags Usage
 // @Produce json
 // @Param projectId path string true "Project ID"
 // @Param start query string false "Start date or timestamp"
@@ -57,7 +57,7 @@ func (handler Billing) HandleBillingSummary(context *gin.Context) {
 // @Param kind query string false "Generation kind"
 // @Success 200 {object} SwaggerEnvelope
 // @Failure 500 {object} SwaggerEnvelope
-// @Router /api/v1/projects/{projectId}/billing/summary [get]
-func (handler Billing) HandleProjectBillingSummary(context *gin.Context) {
-	handler.HandleBillingSummary(context)
+// @Router /api/v1/projects/{projectId}/usage/summary [get]
+func (handler Usage) HandleProjectUsageSummary(context *gin.Context) {
+	handler.HandleUsageSummary(context)
 }

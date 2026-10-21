@@ -10,7 +10,6 @@ vars:
   SERVER_PORT: '{{.SERVER_PORT | default "48273"}}'
   DEV_SERVER_PORT: '{{.DEV_SERVER_PORT | default "8080"}}'
   DEV_SERVER_URL: "http://127.0.0.1:{{.DEV_SERVER_PORT}}"
-  DEV_PROMPT_PACK_PUBLISH_URL: '{{.VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL | default "http://localhost:4321/account#promptPacks"}}'
   GOEXE:
     sh: go env GOEXE
   DEV_SERVER_BIN: '{{.DEV_SERVER_BIN | default (printf "bin/mediago-server%s" .GOEXE)}}'
@@ -195,7 +194,6 @@ tasks:
       MEDIAGO_FFMPEG_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
       MEDIAGO_JIMENG_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
       MEDIAGO_LIBTV_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
-      VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL: "{{.DEV_PROMPT_PACK_PUBLISH_URL}}"
     cmds:
       - task: dev:server:check
       - task -d services/server swagger
@@ -224,7 +222,6 @@ tasks:
       MEDIAGO_JIMENG_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
       MEDIAGO_LIBTV_BIN_DIR: "{{.VENDOR_TOOL_DIR}}"
       VITE_API_PROXY_TARGET: "{{.DEV_SERVER_URL}}"
-      VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL: "{{.DEV_PROMPT_PACK_PUBLISH_URL}}"
     cmds:
       - task: dev:server:check
       - task -d services/server swagger
@@ -239,7 +236,6 @@ tasks:
     env:
       VITE_API_PROXY_TARGET: "{{.DEV_SERVER_URL}}"
       VITE_MEDIAGO_SERVER_PORT: "{{.DEV_SERVER_PORT}}"
-      VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL: "{{.DEV_PROMPT_PACK_PUBLISH_URL}}"
     cmds:
       - pnpm -C apps/workspace exec wait-on --timeout 300000 --httpTimeout 2000 "http-get://127.0.0.1:{{.DEV_SERVER_PORT}}/api/v1/health"
       - pnpm -C apps/workspace electron:dev
@@ -345,8 +341,6 @@ tasks:
 
   workspace:dev:
     desc: Run only the web workspace dev server
-    env:
-      VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL: "{{.DEV_PROMPT_PACK_PUBLISH_URL}}"
     cmds:
       - pnpm -C apps/workspace dev
 

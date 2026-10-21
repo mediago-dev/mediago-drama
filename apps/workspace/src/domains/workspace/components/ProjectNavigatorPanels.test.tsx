@@ -157,7 +157,7 @@ describe("SettingsSidebarPanel", () => {
 			within(workspaceGroup as HTMLElement)
 				.getAllByRole("button")
 				.map((button) => button.textContent),
-		).toEqual(["基础设置", "快捷键", "用量与账单", "应用更新"]);
+		).toEqual(["基础设置", "快捷键", "用量统计", "应用更新"]);
 	});
 
 	it("hides the Codex access settings entry for non-Codex agents", () => {

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	corepricing "github.com/mediago-dev/mediago-drama/packages/core/pkg/pricing"
 	appmcp "github.com/mediago-dev/mediago-drama/services/server/internal/app/mcp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/domain"
 	httphandlers "github.com/mediago-dev/mediago-drama/services/server/internal/http/handlers"
@@ -39,16 +38,14 @@ type Config struct {
 	ModelPlatforms []string
 	GenerationCLIs []string
 
-	SidecarToken               string
-	ProtectedPackImporterPath  string
-	AllowUnprotectedPackImport bool
-	FFmpegPath                 string
-	FFmpegBinDir               string
-	JimengBinPath              string
-	JimengBinDir               string
-	LibTVBinPath               string
-	LibTVBinDir                string
-	LibTVProjectID             string
+	SidecarToken   string
+	FFmpegPath     string
+	FFmpegBinDir   string
+	JimengBinPath  string
+	JimengBinDir   string
+	LibTVBinPath   string
+	LibTVBinDir    string
+	LibTVProjectID string
 
 	DocumentMCPConfigPath    string
 	AgentBridgeURL           string
@@ -61,8 +58,6 @@ type Config struct {
 	GenerationWorkerLimit    int
 	DisableWorkspaceWatcher  bool
 	WorkspaceWatcherInterval time.Duration
-	BillingPrices            corepricing.Table
-	RuntimeExtensions        []RuntimeExtension
 	agentRunner              agentRunner
 	documentOperationRunner  documentOperationRunner
 }
@@ -159,16 +154,16 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 	})
 	router := gin.New()
 	router.Use(
+		middleware.Edition(),
 		middleware.LocalCORS(),
 		middleware.SidecarToken(config.SidecarToken, api.agentBridgeToken),
-		middleware.Edition(runtimeEdition(config.RuntimeExtensions)),
 		middleware.RequestID(),
 		middleware.RequestLogger(),
 		middleware.RecoveryLogger(writeError),
 	)
 	settingsHandler := httphandlers.NewSettings(api.settings)
 	capabilityHandler := httphandlers.NewCapabilities(api.capability)
-	billingHandler := httphandlers.NewBilling(api.billing)
+	usageHandler := httphandlers.NewUsage(api.usage)
 	mediaHandler := httphandlers.NewMediaAssets(api.mediaAssets)
 	projectAssetHandler := httphandlers.NewProjectAssets(api.projectAssets)
 	backendsHandler := httphandlers.NewAgentBackends(api.backendService)
@@ -234,7 +229,7 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		MCP:                   mcpHandler,
 		Settings:              settingsHandler,
 		Capabilities:          capabilityHandler,
-		Billing:               billingHandler,
+		Usage:                 usageHandler,
 		MediaAssets:           mediaHandler,
 		ProjectAssets:         projectAssetHandler,
 		AgentBackends:         backendsHandler,
@@ -263,15 +258,6 @@ func NewHandlerWithConfig(staticFS fs.FS, config Config) http.Handler {
 		AgentRuntime:          runtimeHandler,
 		AgentSessions:         sessionHandler,
 	})
-	for _, extension := range api.runtimeExtensions {
-		if extension == nil {
-			continue
-		}
-		extension.RegisterRoutes(router, RuntimeExtensionServices{
-			PromptPacks:  api.promptPack,
-			WorkspaceDir: api.workspaceState.Dir(),
-		})
-	}
 	registerDevelopmentDocs(router)
 
 	static := httphandlers.NewSPA(staticFS)

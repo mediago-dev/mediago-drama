@@ -10,16 +10,13 @@ import (
 	"strconv"
 	"strings"
 
-	corepricing "github.com/mediago-dev/mediago-drama/packages/core/pkg/pricing"
 	draftlib "github.com/mediago-dev/mediago-drama/packages/jianyingdraft/pkg/jianyingdraft"
 	appagent "github.com/mediago-dev/mediago-drama/services/server/internal/app/agent"
 	appevents "github.com/mediago-dev/mediago-drama/services/server/internal/app/events"
 	appworkspace "github.com/mediago-dev/mediago-drama/services/server/internal/app/workspace"
 	corecapability "github.com/mediago-dev/mediago-drama/services/server/internal/capability"
-	platformprotectedpack "github.com/mediago-dev/mediago-drama/services/server/internal/platform/protectedpack"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/repository"
 	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
-	servicebilling "github.com/mediago-dev/mediago-drama/services/server/internal/service/billing"
 	servicecapability "github.com/mediago-dev/mediago-drama/services/server/internal/service/capability"
 	serviceruntime "github.com/mediago-dev/mediago-drama/services/server/internal/service/codex"
 	servicecodexskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/codexskill"
@@ -35,6 +32,7 @@ import (
 	servicesettings "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 	serviceskill "github.com/mediago-dev/mediago-drama/services/server/internal/service/skill"
 	servicetextcompletion "github.com/mediago-dev/mediago-drama/services/server/internal/service/textcompletion"
+	serviceusage "github.com/mediago-dev/mediago-drama/services/server/internal/service/usage"
 	serviceworkspaceevent "github.com/mediago-dev/mediago-drama/services/server/internal/service/workspaceevent"
 )
 
@@ -213,38 +211,13 @@ func newAPIHandler(config Config) *apiHandler {
 		settingsReposErr,
 		filepath.Join(filepath.Dir(settingsDBPath), "packs"),
 	)
-	promptPack.SetUnprotectedImportAllowed(config.AllowUnprotectedPackImport)
-	var protectedPackImporterErr error
-	if importerPath := strings.TrimSpace(config.ProtectedPackImporterPath); importerPath != "" {
-		var importer *platformprotectedpack.Importer
-		importer, protectedPackImporterErr = platformprotectedpack.New(importerPath)
-		if protectedPackImporterErr == nil {
-			promptPack.SetProtectedImporter(importer)
-		} else {
-			slog.Error(
-				"protected prompt pack importer initialization failed",
-				"path", importerPath,
-				"error", protectedPackImporterErr,
-			)
-			promptPack.SetProtectedImporterUnavailable(protectedPackImporterErr)
-		}
-	}
 	serviceskill.SetPromptPackStore(promptPack)
 	skillRegistry := serviceskill.NewRegistryWithStore(promptPack)
 	promptLibrary := servicepromptlibrary.NewServiceFromPromptPack(promptPack, settingsReposErr)
 	generationService.SetStylePromptLibrary(promptLibrary)
-	for _, extension := range config.RuntimeExtensions {
-		if extension != nil && extension.ContentUseAuthorizer() != nil {
-			generationService.SetContentUseAuthorizer(extension.ContentUseAuthorizer())
-		}
-	}
 	capabilityRegistry := corecapability.Default()
 	capabilityService := servicecapability.NewService(capabilityRegistry, generationService.RouteConfigured)
-	billingPrices := config.BillingPrices
-	if billingPrices == nil {
-		billingPrices = corepricing.Default()
-	}
-	billingService := servicebilling.NewService(workspaceRepos.Billing, billingPrices, capabilityRegistry)
+	usageService := serviceusage.NewService(workspaceRepos.Usage, capabilityRegistry)
 	projectAssets := serviceprojectasset.NewProjectAssetsFromRepository(workspaceRepos.ProjectAssets, mediaDir, workspaceState.Dir(), workspaceRepos.Workspace, workspaceReposErr)
 	selectionService := serviceselection.NewService(workspaceRepos.Selections, workspaceReposErr)
 	events := appevents.NewBroker(workspaceState.AppendAgentEvent)
@@ -261,35 +234,33 @@ func newAPIHandler(config Config) *apiHandler {
 			settingsReposErr,
 			settingsMigrationErr,
 			workspaceReposErr,
-			protectedPackImporterErr,
 		),
-		workspaceState:    workspaceState,
-		events:            events,
-		workspaceEvents:   workspaceEvents,
-		agentSessions:     agentSessions,
-		agentRunner:       runner,
-		documentRunner:    documentRunner,
-		agentRunTimeout:   agentRunTimeout,
-		agentBridgeURL:    agentBridgeURL,
-		agentBridgeToken:  agentBridgeToken,
-		settings:          settings,
-		capability:        capabilityService,
-		billing:           billingService,
-		backendService:    backendService,
-		generation:        generationService,
-		selection:         selectionService,
-		jianyingDraft:     jianyingDraft,
-		mediaAssets:       mediaAssets,
-		previewStreamer:   previewStreamer,
-		projectAssets:     projectAssets,
-		promptPack:        promptPack,
-		promptTemplates:   promptTemplates,
-		promptLibrary:     promptLibrary,
-		skillRegistry:     skillRegistry,
-		codexSkills:       codexSkills,
-		runtimeExtensions: append([]RuntimeExtension(nil), config.RuntimeExtensions...),
-		shutdownCtx:       shutdownCtx,
-		shutdownCancel:    shutdownCancel,
+		workspaceState:   workspaceState,
+		events:           events,
+		workspaceEvents:  workspaceEvents,
+		agentSessions:    agentSessions,
+		agentRunner:      runner,
+		documentRunner:   documentRunner,
+		agentRunTimeout:  agentRunTimeout,
+		agentBridgeURL:   agentBridgeURL,
+		agentBridgeToken: agentBridgeToken,
+		settings:         settings,
+		capability:       capabilityService,
+		usage:            usageService,
+		backendService:   backendService,
+		generation:       generationService,
+		selection:        selectionService,
+		jianyingDraft:    jianyingDraft,
+		mediaAssets:      mediaAssets,
+		previewStreamer:  previewStreamer,
+		projectAssets:    projectAssets,
+		promptPack:       promptPack,
+		promptTemplates:  promptTemplates,
+		promptLibrary:    promptLibrary,
+		skillRegistry:    skillRegistry,
+		codexSkills:      codexSkills,
+		shutdownCtx:      shutdownCtx,
+		shutdownCancel:   shutdownCancel,
 	}
 	handler.agentRuntime = serviceagent.NewAgentRuntime(
 		workspaceState.StateService().Documents,

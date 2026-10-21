@@ -82,7 +82,7 @@ app.on('browser-window-created', (_event, window) => {
   window.webContents.once('did-finish-load', async () => {
     try {
       const result = await window.webContents.executeJavaScript(
-        "(async () => { const origin = window.mediagoDesktop.serverOrigin; const read = async (path) => (await (await fetch(origin + path)).json()).data; const [keys, models, platforms] = await Promise.all([read('/api/v1/settings/api-keys'), read('/api/v1/generation/models'), read('/api/v1/settings/model-platforms')]); return { origin, status: (await fetch(origin + '/api/v1/health')).status, apiProviders: keys.providers.map(p => p.id), routeProviders: [...new Set(models.routes.map(r => r.provider))], platformIDs: platforms.platforms.map(p => p.id) }; })()"
+        "(async () => { const origin = window.mediagoDesktop.serverOrigin; const read = async (path) => (await (await fetch(origin + path)).json()).data; const [keys, models, platforms, usage] = await Promise.all([read('/api/v1/settings/api-keys'), read('/api/v1/generation/models'), read('/api/v1/settings/model-platforms'), read('/api/v1/usage/summary')]); return { origin, status: (await fetch(origin + '/api/v1/health')).status, apiProviders: keys.providers.map(p => p.id), routeProviders: [...new Set(models.routes.map(r => r.provider))], platformIDs: platforms.platforms.map(p => p.id), usage }; })()"
       );
       console.log('MEDIAGO_DEV_SMOKE ' + JSON.stringify(result));
     } catch (error) { console.error(error); app.exit(1); }
@@ -136,6 +136,7 @@ app.on('browser-window-created', (_event, window) => {
 			apiProviders: string[];
 			routeProviders: string[];
 			platformIDs: string[];
+			usage: { totals: { calls: number; totalTokens: number } };
 		}>((resolve, reject) => {
 			let output = "";
 			const timeout = setTimeout(
@@ -168,6 +169,9 @@ app.on('browser-window-created', (_event, window) => {
 			assert.ok(!result.platformIDs.includes(id), `removed platform: ${id}`);
 		}
 		assert.ok(result.apiProviders.includes("openrouter"));
+		assert.equal(result.usage.totals.calls, 0);
+		assert.equal(result.usage.totals.totalTokens, 0);
+		assert.doesNotMatch(JSON.stringify(result.usage), /"(?:costs|currencies|priced|amount)"/);
 		// The desktop adds the private sidecar token; requests outside it must be rejected.
 		assert.equal((await fetch(result.origin + "/api/v1/health")).status, 401);
 		child.disconnect();

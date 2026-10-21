@@ -38,13 +38,6 @@ type ExportedPack struct {
 	Pack     Pack
 }
 
-// InstallProvenance binds decrypted pack content to a formal platform release.
-type InstallProvenance struct {
-	PackageID string
-	ReleaseID string
-	Version   string
-}
-
 // ExportPack encodes one installed prompt pack as a complete .mgpack file.
 func (store *Service) ExportPack(ctx context.Context, packID string) (ExportedPack, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
@@ -63,26 +56,10 @@ func (store *Service) ExportPack(ctx context.Context, packID string) (ExportedPa
 	if err := rejectReadonlyPackMutation(model); err != nil {
 		return ExportedPack{}, err
 	}
-	return store.ExportPackSnapshot(ctx, packID)
+	return store.exportPackSnapshot(ctx, packID)
 }
 
-// ExportPackSnapshot encodes a pack for trusted in-process commercial wrapping.
-// It is intentionally not exposed by the public HTTP API.
-func (store *Service) ExportPackSnapshot(ctx context.Context, packID string) (ExportedPack, error) {
-	return store.exportPackSnapshot(ctx, packID, "")
-}
-
-// ExportPackSnapshotAtVersion encodes a trusted in-process snapshot with an
-// explicit release version while leaving the persisted authoring pack unchanged.
-func (store *Service) ExportPackSnapshotAtVersion(ctx context.Context, packID string, version string) (ExportedPack, error) {
-	version = strings.TrimSpace(version)
-	if version == "" || len(version) > 64 {
-		return ExportedPack{}, fmt.Errorf("%w: snapshot version is invalid", ErrInvalidPack)
-	}
-	return store.exportPackSnapshot(ctx, packID, version)
-}
-
-func (store *Service) exportPackSnapshot(ctx context.Context, packID string, version string) (ExportedPack, error) {
+func (store *Service) exportPackSnapshot(ctx context.Context, packID string) (ExportedPack, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return ExportedPack{}, err
 	}
@@ -103,10 +80,6 @@ func (store *Service) exportPackSnapshot(ctx context.Context, packID string, ver
 	}
 	if err := validateBundleForExport(bundle); err != nil {
 		return ExportedPack{}, err
-	}
-	if version != "" {
-		bundle.Manifest.Version = version
-		pack.Version = version
 	}
 	data, err := encodeBundle(bundle)
 	if err != nil {
@@ -139,42 +112,9 @@ func validateBundleForExport(bundle instructionpack.Bundle) error {
 	return nil
 }
 
-// InstallData installs an uploaded v1 .mgpack payload. Unsupported container
-// versions are delegated to the optional protected importer.
+// InstallData installs an uploaded local v1 .mgpack without an online account.
+// Other container versions are explicitly unsupported.
 func (store *Service) InstallData(ctx context.Context, fileName string, data []byte) (Pack, error) {
-	pack, err := store.installData(ctx, fileName, data, InstallProvenance{})
-	if !errors.Is(err, ErrUnsupportedPackVersion) {
-		return pack, err
-	}
-	if store.protectedImporter == nil {
-		if store.protectedImportErr != nil {
-			return Pack{}, fmt.Errorf("%w: %v", ErrProtectedPackUnavailable, store.protectedImportErr)
-		}
-		return pack, err
-	}
-	imported, importErr := store.protectedImporter.Import(ctx, fileName, data)
-	if importErr != nil {
-		return Pack{}, importErr
-	}
-	return store.InstallDataWithProvenance(ctx, fileName, imported.Payload, InstallProvenance{
-		PackageID: imported.PackageID,
-		ReleaseID: imported.ReleaseID,
-		Version:   imported.Version,
-	})
-}
-
-// InstallDataWithProvenance atomically imports decrypted content with its formal source.
-func (store *Service) InstallDataWithProvenance(ctx context.Context, fileName string, data []byte, provenance InstallProvenance) (Pack, error) {
-	provenance.PackageID = strings.TrimSpace(provenance.PackageID)
-	provenance.ReleaseID = strings.TrimSpace(provenance.ReleaseID)
-	provenance.Version = strings.TrimSpace(provenance.Version)
-	if provenance.PackageID == "" || provenance.ReleaseID == "" || provenance.Version == "" {
-		return Pack{}, fmt.Errorf("%w: formal provenance is incomplete", ErrInvalidPack)
-	}
-	return store.installData(ctx, fileName, data, provenance)
-}
-
-func (store *Service) installData(ctx context.Context, fileName string, data []byte, provenance InstallProvenance) (Pack, error) {
 	if err := store.ensureSeeded(ctx); err != nil {
 		return Pack{}, err
 	}
@@ -196,9 +136,6 @@ func (store *Service) installData(ctx context.Context, fileName string, data []b
 	if err != nil {
 		return Pack{}, fmt.Errorf("%w: decoding .mgpack: %v", ErrInvalidPack, err)
 	}
-	if provenance.PackageID == "" && !store.allowUnprotected {
-		return Pack{}, ErrUnprotectedPackImportDenied
-	}
 	bundle, err := instructionpack.ParseZip(ctx, archive)
 	if err != nil {
 		return Pack{}, fmt.Errorf("%w: parsing .mgpack: %v", ErrInvalidPack, err)
@@ -206,34 +143,7 @@ func (store *Service) installData(ctx context.Context, fileName string, data []b
 	if bundle.Manifest.ID == DefaultPackID {
 		return Pack{}, fmt.Errorf("%w: default pack cannot be imported", ErrInvalidPack)
 	}
-	if provenance.PackageID != "" && provenance.PackageID != bundle.Manifest.ID {
-		return Pack{}, fmt.Errorf("%w: formal package id mismatch", ErrInvalidPack)
-	}
-	if provenance.PackageID != "" {
-		existing, existingErr := store.repo.GetPack(bundle.Manifest.ID)
-		if existingErr == nil && normalizePackSource(existing.Source, existing.ID) == packSourceLocal {
-			// A reviewed release coming back to its existing authoring source is
-			// release metadata, not a third-party installation. Keep the local
-			// draft intact because it may have advanced while review was pending.
-			return store.RecordSubmittedRelease(
-				ctx,
-				bundle.Manifest.ID,
-				provenance.ReleaseID,
-				provenance.Version,
-			)
-		}
-		if existingErr != nil && !repository.IsRecordNotFound(existingErr) {
-			return Pack{}, existingErr
-		}
-	}
-	if provenance.Version != "" && provenance.Version != bundle.Manifest.Version {
-		bundle.Manifest.Version = provenance.Version
-		data, err = encodeBundle(bundle)
-		if err != nil {
-			return Pack{}, fmt.Errorf("%w: applying formal release version: %w", ErrInvalidPack, err)
-		}
-	}
-	if provenance.PackageID == "" {
+	{
 		existing, existingErr := store.repo.GetPack(bundle.Manifest.ID)
 		if existingErr == nil {
 			matches, matchErr := store.bundleMatchesStoredPack(ctx, existing, bundle)
@@ -254,7 +164,7 @@ func (store *Service) installData(ctx context.Context, fileName string, data []b
 	if err != nil {
 		return Pack{}, err
 	}
-	if err := store.installBundleWithProvenance(ctx, bundle, packSourceImported, origin, provenance); err != nil {
+	if err := store.installBundle(ctx, bundle, packSourceImported, origin); err != nil {
 		return Pack{}, err
 	}
 	model, err := store.repo.GetPack(bundle.Manifest.ID)

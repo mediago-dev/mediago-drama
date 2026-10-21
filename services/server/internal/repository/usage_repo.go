@@ -7,8 +7,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// BillingRepository reads generation usage rows for billing rollups.
-type BillingRepository struct {
+// UsageRepository reads generation usage rows for usage rollups.
+type UsageRepository struct {
 	db *gorm.DB
 }
 
@@ -39,15 +39,15 @@ type UsageBucketRow struct {
 	CachedTokens    int64  `gorm:"column:cached_tokens"`
 }
 
-// NewBillingRepositoryFromDB creates a billing repository from a workspace DB.
-func NewBillingRepositoryFromDB(db *gorm.DB) *BillingRepository {
-	return &BillingRepository{db: db}
+// NewUsageRepositoryFromDB creates a usage repository from a workspace DB.
+func NewUsageRepositoryFromDB(db *gorm.DB) *UsageRepository {
+	return &UsageRepository{db: db}
 }
 
 // ListUsageBuckets returns route/day usage buckets aggregated from typed token columns.
-func (repo *BillingRepository) ListUsageBuckets(query UsageQuery) ([]UsageBucketRow, error) {
+func (repo *UsageRepository) ListUsageBuckets(query UsageQuery) ([]UsageBucketRow, error) {
 	if repo == nil || repo.db == nil {
-		return nil, fmt.Errorf("billing repository database is nil")
+		return nil, fmt.Errorf("usage repository database is nil")
 	}
 
 	rows := []UsageBucketRow{}
@@ -86,7 +86,7 @@ SELECT
 	COUNT(*) AS calls,
 	SUM(` + inputTokenExpr + `) AS input_tokens,
 	SUM(` + outputTokenExpr + `) AS output_tokens,
-	SUM(` + totalTokenForBillingExpr + `) AS total_tokens,
+	SUM(` + totalTokenForUsageExpr + `) AS total_tokens,
 	SUM(` + reasoningTokenExpr + `) AS reasoning_tokens,
 	SUM(` + cachedTokenExpr + `) AS cached_tokens
 FROM generation_tasks
@@ -94,7 +94,7 @@ WHERE ` + strings.Join(clauses, " AND ") + `
 GROUP BY capability_id, route_id, family_id, version_id, provider, model_id, model, kind, bucket
 ORDER BY bucket ASC, route_id ASC`
 	if err := repo.db.Raw(sql, args...).Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("listing billing usage buckets: %w", err)
+		return nil, fmt.Errorf("listing usage usage buckets: %w", err)
 	}
 	return rows, nil
 }
@@ -107,4 +107,4 @@ const (
 	cachedTokenExpr    = "COALESCE(cached_tokens, 0)"
 )
 
-const totalTokenForBillingExpr = "CASE WHEN " + totalTokenExpr + " > 0 THEN " + totalTokenExpr + " ELSE " + inputTokenExpr + " + " + outputTokenExpr + " END"
+const totalTokenForUsageExpr = "CASE WHEN " + totalTokenExpr + " > 0 THEN " + totalTokenExpr + " ELSE " + inputTokenExpr + " + " + outputTokenExpr + " END"

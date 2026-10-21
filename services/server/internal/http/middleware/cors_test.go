@@ -35,7 +35,7 @@ func TestIsAllowedLocalOrigin(t *testing.T) {
 func TestLocalCORSExposesEditionHeader(t *testing.T) {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
-	router.Use(LocalCORS(), Edition("commercial"))
+	router.Use(LocalCORS(), Edition())
 	router.GET("/health", func(context *gin.Context) {
 		context.Status(http.StatusNoContent)
 	})
@@ -51,8 +51,8 @@ func TestLocalCORSExposesEditionHeader(t *testing.T) {
 	if got := response.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(got, "X-MediaGo-Sidecar-Token") {
 		t.Fatalf("Access-Control-Allow-Headers = %q, want sidecar token header", got)
 	}
-	if got := response.Header().Get(EditionHeader); got != "commercial" {
-		t.Fatalf("%s = %q, want commercial", EditionHeader, got)
+	if got := response.Header().Get(EditionHeader); got != "community" {
+		t.Fatalf("%s = %q, want community", EditionHeader, got)
 	}
 }
 

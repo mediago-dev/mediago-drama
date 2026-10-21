@@ -13,12 +13,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
-	corepricing "github.com/mediago-dev/mediago-drama/packages/core/pkg/pricing"
 	server "github.com/mediago-dev/mediago-drama/services/server/internal/app"
 	appagent "github.com/mediago-dev/mediago-drama/services/server/internal/app/agent"
 	serverconfig "github.com/mediago-dev/mediago-drama/services/server/internal/config"
@@ -26,8 +24,6 @@ import (
 	servicesettings "github.com/mediago-dev/mediago-drama/services/server/internal/service/settings"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/workspace"
 )
-
-var defaultPromptPackPolicy = "marketplace"
 
 // @title MediaGo Drama API
 // @version 0.0.0
@@ -40,7 +36,7 @@ var defaultPromptPackPolicy = "marketplace"
 // @tag.description Model Context Protocol HTTP endpoints.
 // @tag.name Capabilities
 // @tag.description Capability manifests exposed by the server.
-// @tag.name Billing
+// @tag.name Usage
 // @tag.description Usage and cost summaries.
 // @tag.name Projects
 // @tag.description Workspace project lifecycle APIs.
@@ -159,18 +155,6 @@ func run(args []string) error {
 	if err := os.Setenv("ONE_INTERNAL_API_TOKEN", bridgeToken); err != nil {
 		return fmt.Errorf("exporting ONE_INTERNAL_API_TOKEN: %w", err)
 	}
-	billingPrices, err := loadBillingPrices(config.Billing.PriceOverlayPath, configPath)
-	if err != nil {
-		return err
-	}
-	protectedPackImporterPath, err := resolveProtectedPackImporterPath()
-	if err != nil {
-		return err
-	}
-	allowUnprotectedPackImport, err := unprotectedPromptPackImportAllowed()
-	if err != nil {
-		return err
-	}
 	sidecarToken, err := configuredSidecarToken()
 	if err != nil {
 		return err
@@ -185,26 +169,20 @@ func run(args []string) error {
 		ModelPlatforms: config.ModelPlatforms,
 		GenerationCLIs: config.GenerationCLIs,
 
-		SidecarToken:               sidecarToken,
-		ProtectedPackImporterPath:  protectedPackImporterPath,
-		AllowUnprotectedPackImport: allowUnprotectedPackImport,
-		FFmpegPath:                 config.FFmpeg.Path,
-		FFmpegBinDir:               config.FFmpeg.BinDir,
-		JimengBinPath:              config.Jimeng.Path,
-		JimengBinDir:               config.Jimeng.BinDir,
-		LibTVBinPath:               config.LibTV.Path,
-		LibTVBinDir:                config.LibTV.BinDir,
-		LibTVProjectID:             config.LibTV.ProjectID,
+		SidecarToken:   sidecarToken,
+		FFmpegPath:     config.FFmpeg.Path,
+		FFmpegBinDir:   config.FFmpeg.BinDir,
+		JimengBinPath:  config.Jimeng.Path,
+		JimengBinDir:   config.Jimeng.BinDir,
+		LibTVBinPath:   config.LibTV.Path,
+		LibTVBinDir:    config.LibTV.BinDir,
+		LibTVProjectID: config.LibTV.ProjectID,
 
 		DocumentMCPConfigPath: configPath,
 		AgentBridgeURL:        internalAPIURL + "/api/v1/internal/agent/spawn",
 		AgentBridgeToken:      bridgeToken,
 		PromptMaxSectionChars: config.Prompt.MaxSectionChars,
 		PromptDelivery:        config.Prompt.InstructionDelivery,
-		BillingPrices:         billingPrices,
-	}
-	if err := configureEdition(&appConfig); err != nil {
-		return fmt.Errorf("configuring server edition: %w", err)
 	}
 	handler := server.NewHandlerWithConfig(staticFS, appConfig)
 	defer closeServerHandler(handler)
@@ -246,31 +224,6 @@ func closeServerHandler(handler http.Handler) {
 	if err := closer.Close(); err != nil {
 		slog.Error("closing server handler", "error", err)
 	}
-}
-
-func loadBillingPrices(overlayPath string, configPath string) (corepricing.Table, error) {
-	overlayPath = strings.TrimSpace(overlayPath)
-	if overlayPath == "" {
-		return corepricing.Default(), nil
-	}
-	resolvedPath := resolveConfigRelativePath(overlayPath, configPath)
-	file, err := os.Open(resolvedPath)
-	if err != nil {
-		return nil, fmt.Errorf("opening billing price overlay %s: %w", resolvedPath, err)
-	}
-	defer file.Close()
-	table, err := corepricing.OverlayJSON(corepricing.Default(), file)
-	if err != nil {
-		return nil, fmt.Errorf("loading billing price overlay %s: %w", resolvedPath, err)
-	}
-	return table, nil
-}
-
-func resolveConfigRelativePath(path string, configPath string) string {
-	if filepath.IsAbs(path) || strings.TrimSpace(configPath) == "" {
-		return path
-	}
-	return filepath.Join(filepath.Dir(configPath), path)
 }
 
 func shutdownOnStdinClose(httpServer *http.Server) {
@@ -395,56 +348,6 @@ func packagedToolsDir() (string, bool) {
 		return "", false
 	}
 	return candidate, true
-}
-
-func resolveProtectedPackImporterPath() (string, error) {
-	if _, err := promptPackPolicy(); err != nil {
-		return "", err
-	}
-	if configured := strings.TrimSpace(os.Getenv("MEDIAGO_PROMPT_PACK_IMPORTER_PATH")); configured != "" {
-		return configured, nil
-	}
-	toolsDir, ok := packagedToolsDir()
-	if !ok {
-		return "", nil
-	}
-	candidate := filepath.Join(toolsDir, "mediago-rights", protectedPackImporterExecutableName())
-	info, err := os.Stat(candidate)
-	if err != nil || !info.Mode().IsRegular() {
-		return "", nil
-	}
-	return candidate, nil
-}
-
-func unprotectedPromptPackImportAllowed() (bool, error) {
-	policy, err := promptPackPolicy()
-	if err != nil {
-		return false, err
-	}
-	return policy == "partner", nil
-}
-
-func promptPackPolicy() (string, error) {
-	policy := strings.ToLower(strings.TrimSpace(defaultPromptPackPolicy))
-	if policy == "" {
-		policy = "marketplace"
-	}
-	switch policy {
-	case "marketplace", "partner":
-		return policy, nil
-	default:
-		return "", fmt.Errorf(
-			"invalid embedded prompt-pack policy %q: expected marketplace or partner",
-			policy,
-		)
-	}
-}
-
-func protectedPackImporterExecutableName() string {
-	if runtime.GOOS == "windows" {
-		return "mediago-rights.exe"
-	}
-	return "mediago-rights"
 }
 
 func exitOnStdinCloseEnabled() bool {

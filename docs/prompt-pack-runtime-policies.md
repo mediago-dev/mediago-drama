@@ -1,181 +1,46 @@
-# Prompt pack runtime policies
+# Local prompt packs and OSS packaging
 
-MediaGo Drama has two build-time prompt-pack policies. The policy is embedded
-in `mediago-server`; it is not a user-facing runtime switch.
+The OSS server directly imports ordinary v1 `.mgpack` files. There is no
+marketplace/partner build policy, online entitlement check, private importer,
+or commercial Runtime dependency. Encrypted v2 containers return an explicit
+unsupported-format error; they are never handed to another executable.
 
-## Marketplace policy
+## Local workflow
 
-`marketplace` is the official ToC build policy. Export remains compatible with
-the unprotected v1 format, but direct v1 import is rejected with guidance to
-publish and encrypt the package on MediaGo. Protected v2 packages are delegated
-to the private `mediago-rights` executable.
+Import a v1 pack, inspect its contents, copy it into a local authoring pack,
+edit the copy, and export it as v1. Built-in packs and imported snapshots remain
+read-only so upgrades and edits do not overwrite their source. Packs with legacy
+release identities retain their existing snapshot management restrictions.
 
-The private executable owns protected-package inspection, signature checking,
-website authorization, entitlement resolution, package-key unwrapping, and
-decryption. The open-source server only accepts its framed, digest-checked v1
-result. Composer releases one v2 shape and every Drama edition uses this same
-authorization path.
+Re-importing identical content is idempotent. Conflicting content with an
+existing ID is rejected rather than overwriting a local draft or installed pack.
 
-Official CI uses:
+## Historical data
 
-```bash
-MEDIAGO_PROMPT_PACK_POLICY=marketplace
-MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME=1
-```
+Existing project, generation-task, token, prompt-pack, and source-provenance
+columns remain in place. Starting the OSS server does not convert old installed
+releases into authoring packs or rewrite their content. Already-installed packs
+continue serving their saved local entries without a remote entitlement check.
+Old price overlay YAML keys are ignored, and no price table is loaded.
 
-The release inputs have deliberately separate scopes:
+Usage summaries expose calls and token counts at `/api/v1/usage/summary` and
+`/api/v1/projects/{projectId}/usage/summary`. They read existing generation task
+records, including retired providers, without storing or returning monetary data.
 
-| Name                                     | Scope                                          | Purpose                                                                                         |
-| ---------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `MEDIAGO_PRIVATE_ARTIFACT_TOKEN`         | GitHub `official-release` environment secret   | Lets only the dedicated download step read the private Release assets.                          |
-| `MEDIAGO_RIGHTS_RELEASE_TAG`             | GitHub `official-release` environment variable | Pins the private Release tag downloaded by the workflow.                                        |
-| `MEDIAGO_PROMPT_PACK_POLICY`             | Build-step environment                         | Embeds `marketplace` or `partner` into `mediago-server`; changing it after build has no effect. |
-| `MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME` | Build-step environment                         | Requires the already verified Runtime to be copied into Electron resources.                     |
-| `MEDIAGO_PROMPT_PACK_IMPORTER_PATH`      | Local development process only                 | Points a locally built server at a Runtime executable.                                          |
+## Public build
 
-None of these values are read by `Taskfile.yml`. The open-source Task tasks build
-the ordinary server and cannot download private repository assets.
+The vendor tasks prepare Codex, ffmpeg, ffprobe, Dreamina, and LibTV from public
+artifacts. Desktop builds do not download `mediago-drama-private` or require
+`MEDIAGO_PRIVATE_ARTIFACT_TOKEN` or a rights release tag. There is no commercial
+policy flag in the Go linker arguments or Electron resource selection.
 
-The protected `official-release` environment exposes
-`MEDIAGO_PRIVATE_ARTIFACT_TOKEN` only to the dedicated GitHub Release download
-step. The token is not inherited by Task, Node, Go, or Electron build scripts.
-That step downloads the pinned manifest and archive from
-`mediago-drama-private`. `scripts/stage-private-runtime.py` validates and stages
-the executable before the normal public build starts. The generic vendor tool
-preparer never receives private-repository credentials.
+macOS code signing and optional notarization remain release security features.
+Official macOS CI verifies the signed application before uploading artifacts.
+Local development builds do not require signing credentials.
 
-The private release manifest pins the archive URL, size, SHA-256, binary path,
-version, and `marketplace` runtime policy. Release preparation verifies those
-inputs before staging `mediago-rights`. Runtime initialization then checks that
-the configured path is a regular file. If initialization fails, the rest of the
-local server remains available while protected imports fail closed as Runtime
-unavailable.
+The desktop starts the local server with a fresh sidecar token. Renderer API
+requests must present it, and Agent subprocesses use a separate bridge token.
+These local security boundaries and Agent approvals remain enabled.
 
-Store `MEDIAGO_PRIVATE_ARTIFACT_TOKEN` in the protected `official-release`
-GitHub environment, require a reviewer for that environment, and grant the
-token only `Contents: read` on `mediago-drama-private`. Do not use a personal
-token with organization-wide write access.
-
-Official macOS releases fail closed unless signing credentials exist in the
-same protected environment. macOS signing requires `MEDIAGO_MAC_CSC_LINK` and
-`MEDIAGO_MAC_CSC_KEY_PASSWORD`. Local development builds do not require signing
-secrets.
-
-The desktop runtime does not maintain a separate sidecar or protected-Runtime
-checksum/signature manifest. On macOS, Electron Builder signs the application and
-`forceCodeSigning` makes a signing failure fail the build. The application only
-checks that packaged executables exist and reports the real initialization or
-process launch error if execution fails. Windows releases are currently
-unsigned and therefore do not claim a cryptographically verified publisher
-identity; add Authenticode verification when a Windows signing certificate
-becomes available.
-
-Official macOS CI recursively verifies the completed App bundle with
-`codesign --verify --deep --strict` before uploading release artifacts. This is
-a release-time gate; the installed application does not repeat it at runtime.
-
-For macOS direct distribution, create a `Developer ID Application` certificate
-in the Apple Developer account, install it together with its private key, and
-export both as a password-protected `.p12`. Store the base64-encoded `.p12` as
-`MEDIAGO_MAC_CSC_LINK` and its export password as
-`MEDIAGO_MAC_CSC_KEY_PASSWORD`. Never commit the certificate or either value to
-the repository. The release workflow signs macOS artifacts by default and does
-not submit them for Apple notarization.
-
-Notarization is opt-in. Set the `official-release` environment variable
-`MEDIAGO_MAC_NOTARIZE` to `1` only after Apple has enabled notarization for the
-developer team. An enabled notarization build additionally requires the
-`MEDIAGO_APPLE_ID`, `MEDIAGO_APPLE_APP_SPECIFIC_PASSWORD`, and
-`MEDIAGO_APPLE_TEAM_ID` environment secrets. When the variable is absent or is
-not `1`, those three secrets are not injected into the build.
-
-After downloading and unpacking an official macOS release, verify the app
-before publishing it:
-
-```bash
-codesign --verify --deep --strict --verbose=2 "/path/to/MediaGo Drama.app"
-codesign -dv --verbose=4 "/path/to/MediaGo Drama.app"
-```
-
-For a notarized release, additionally verify Gatekeeper acceptance and the
-stapled notarization ticket:
-
-```bash
-spctl --assess --verbose --type exec "/path/to/MediaGo Drama.app"
-xcrun stapler validate "/path/to/MediaGo Drama.app"
-```
-
-The signature details must show the expected `Developer ID Application`
-authority and Apple team ID. For notarized builds, Gatekeeper must report
-`accepted` and stapler must report a valid notarization ticket.
-
-Packaged Electron starts the local server with a fresh
-`MEDIAGO_SIDECAR_TOKEN` for each process and sends it in
-`X-MediaGo-Sidecar-Token` on renderer API requests. The Go server rejects
-requests that do not present that token. Agent subprocesses use a separate
-random bridge token, which is accepted only by the internal Agent routes and
-cannot authorize normal workspace APIs. Standalone development mode leaves
-this check disabled unless the server is explicitly started as a sidecar.
-
-## Cooperation policy
-
-`partner` is the internal build-policy value for a separately delivered
-cooperation build. It allows direct import of unprotected v1 packages. This is
-the only difference from the marketplace build.
-
-```bash
-MEDIAGO_PROMPT_PACK_POLICY=partner \
-MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME=1 \
-node scripts/build-server-target.mjs darwin-arm64
-```
-
-Protected v2 packages still use the shared marketplace `mediago-rights`
-artifact. It opens MediaGo authorization, verifies the Composer signature,
-checks the current account's entitlement, receives an import-scoped key grant,
-and decrypts only after access is allowed. Cooperation builds do not contain a
-Partner private key and cannot bypass purchase checks for marketplace packages.
-
-Changing `MEDIAGO_PROMPT_PACK_POLICY` after `mediago-server` has been built does
-not change that binary. Rebuild the server or desktop application to change the
-policy. This prevents an official retail installation from being converted to
-a cooperation build by setting a launch environment variable.
-
-## Local private Runtime
-
-For local integration testing, build `mediago-rights` in the private repository
-and point a local server process at that executable:
-
-```bash
-RUNTIME=/absolute/path/to/mediago-rights
-
-go build \
-  -ldflags "-X main.defaultPromptPackPolicy=marketplace" \
-  -o bin/mediago-server \
-  ./services/server/cmd/mediago-server
-
-MEDIAGO_PROMPT_PACK_IMPORTER_PATH="$RUNTIME" \
-  bin/mediago-server --config services/server/configs/server.yaml
-```
-
-`task build:server` intentionally remains a plain open-source build and does not
-consume private Runtime settings. Official release builds verify and stage the
-pinned GitHub Release asset before Electron Builder applies the platform release
-signature.
-
-## Seat terminology
-
-`SEAT_DISTRIBUTION` is a ToC distribution model. A publisher buys reusable
-distribution capacity and shares its protected package with selected MediaGo
-accounts. On an account's first explicit import, the MediaGo authorization page
-can bind that account to the package publisher and allocate one of that
-publisher's available seats. Another package from the same publisher reuses the
-active membership instead of consuming another seat. Membership is directional:
-it never grants the member any of the publisher's capacity. If that member
-publishes a package of their own, they must buy and allocate their own seats.
-
-Removing a member releases the allocation. Background update and protected
-content-use (`call`) never create or restore membership; only another explicit
-import confirmation can do that. In the MVP, a successfully imported package
-may be used locally without another online `call` entitlement check. Product and UI copy should use
-`分发席位`, not `企业席位`; it does not assert that either account belongs to an
-enterprise.
+TalkingData SDK loading, route tracking, and generation-event tracking have been
+removed from both browser and desktop builds.

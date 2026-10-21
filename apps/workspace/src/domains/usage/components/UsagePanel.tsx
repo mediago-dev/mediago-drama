@@ -1,9 +1,8 @@
-import { Loader2, Wallet } from "lucide-react";
+import { BarChart3, Loader2 } from "lucide-react";
 import type React from "react";
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { SettingsPanelLayout } from "@/domains/settings/components/SettingsPanelLayout";
-import { Badge } from "@/shared/components/ui/badge";
 import { Input } from "@/shared/components/ui/input";
 import {
 	Select,
@@ -13,22 +12,18 @@ import {
 	SelectValue,
 } from "@/shared/components/ui/select";
 import {
-	billingSummaryKey,
-	getBillingSummary,
-	type BillingSummaryParams,
-	type BillingSummaryRow,
-} from "../api/billing";
+	usageSummaryKey,
+	getUsageSummary,
+	type UsageSummaryParams,
+	type UsageSummaryRow,
+} from "../api/usage";
 
 type RangeMode = "7d" | "30d" | "custom";
 type GroupBy = "model" | "capability" | "kind" | "provider";
 
 const numberFormatter = new Intl.NumberFormat("zh-CN");
-const moneyFormatter = new Intl.NumberFormat("zh-CN", {
-	maximumFractionDigits: 6,
-	minimumFractionDigits: 0,
-});
 
-export const BillingPanel: React.FC = () => {
+export const UsagePanel: React.FC = () => {
 	const [rangeMode, setRangeMode] = useState<RangeMode>("30d");
 	const [groupBy, setGroupBy] = useState<GroupBy>("model");
 	const [customStart, setCustomStart] = useState(() => dateInputDaysAgo(30));
@@ -37,18 +32,14 @@ export const BillingPanel: React.FC = () => {
 		() => buildParams(rangeMode, customStart, customEnd, groupBy),
 		[customEnd, customStart, groupBy, rangeMode],
 	);
-	const { data, error, isLoading } = useSWR(billingSummaryKey(params), () =>
-		getBillingSummary(params),
-	);
+	const { data, error, isLoading } = useSWR(usageSummaryKey(params), () => getUsageSummary(params));
 	const rows = data?.rows ?? [];
-	const currencies = data?.currencies ?? [];
-	const totalCards = buildTotalCards(data?.totals, currencies);
 
 	return (
 		<SettingsPanelLayout
-			title="用量与账单"
-			description="按模型、能力和时间统计 Token 用量与花费。"
-			icon={<Wallet className="size-4" />}
+			title="用量统计"
+			description="按模型、能力和时间统计调用次数与 Token 用量。"
+			icon={<BarChart3 className="size-4" />}
 			actions={
 				<div className="flex flex-wrap items-center gap-2">
 					<Select value={rangeMode} onValueChange={(value) => setRangeMode(value as RangeMode)}>
@@ -93,7 +84,7 @@ export const BillingPanel: React.FC = () => {
 
 				{error ? (
 					<div className="rounded-sm border border-error-border bg-error-surface px-4 py-3 text-sm text-error-foreground">
-						计费汇总加载失败
+						用量统计加载失败
 					</div>
 				) : null}
 
@@ -104,9 +95,6 @@ export const BillingPanel: React.FC = () => {
 					<MetricCard label="输出 Token" value={formatNumber(data?.totals.outputTokens ?? 0)} />
 					<MetricCard label="缓存 Token" value={formatNumber(data?.totals.cachedTokens ?? 0)} />
 					<MetricCard label="推理 Token" value={formatNumber(data?.totals.reasoningTokens ?? 0)} />
-					{totalCards.map((card) => (
-						<MetricCard key={card.label} label={card.label} value={card.value} />
-					))}
 				</div>
 
 				<section className="overflow-hidden rounded-sm border border-border bg-card">
@@ -130,19 +118,18 @@ export const BillingPanel: React.FC = () => {
 									<th className="px-3 py-2 text-right font-medium">缓存</th>
 									<th className="px-3 py-2 text-right font-medium">推理</th>
 									<th className="px-3 py-2 text-right font-medium">总量</th>
-									<th className="px-3 py-2 text-right font-medium">花费</th>
 								</tr>
 							</thead>
 							<tbody>
 								{rows.length === 0 && !isLoading ? (
 									<tr>
-										<td className="px-3 py-6 text-center text-muted-foreground" colSpan={8}>
+										<td className="px-3 py-6 text-center text-muted-foreground" colSpan={7}>
 											暂无用量记录
 										</td>
 									</tr>
 								) : null}
 								{rows.map((row) => (
-									<BillingRow key={row.key} row={row} currencies={currencies} />
+									<UsageRow key={row.key} row={row} />
 								))}
 							</tbody>
 						</table>
@@ -160,22 +147,11 @@ const MetricCard: React.FC<{ label: string; value: string }> = ({ label, value }
 	</div>
 );
 
-const BillingRow: React.FC<{ currencies: string[]; row: BillingSummaryRow }> = ({
-	currencies,
-	row,
-}) => (
+const UsageRow: React.FC<{ row: UsageSummaryRow }> = ({ row }) => (
 	<tr className="border-t border-border first:border-t-0">
 		<td className="max-w-64 px-3 py-2">
 			<div className="flex min-w-0 items-center gap-2">
 				<span className="truncate text-foreground">{row.label || row.key}</span>
-				{!row.priced ? (
-					<Badge
-						variant="outline"
-						className="shrink-0 border-warning-border text-warning-foreground"
-					>
-						未定价
-					</Badge>
-				) : null}
 			</div>
 			<p className="mt-0.5 truncate text-muted-foreground">{row.key}</p>
 		</td>
@@ -185,25 +161,15 @@ const BillingRow: React.FC<{ currencies: string[]; row: BillingSummaryRow }> = (
 		<td className="px-3 py-2 text-right text-foreground">{formatNumber(row.cachedTokens)}</td>
 		<td className="px-3 py-2 text-right text-foreground">{formatNumber(row.reasoningTokens)}</td>
 		<td className="px-3 py-2 text-right text-foreground">{formatNumber(row.totalTokens)}</td>
-		<td className="px-3 py-2 text-right text-foreground">{formatCosts(row.costs, currencies)}</td>
 	</tr>
 );
-
-const buildTotalCards = (
-	totals: { costs: Record<string, number> } | undefined,
-	currencies: string[],
-) =>
-	currencies.map((currency) => ({
-		label: `${currency} 花费`,
-		value: formatMoney(totals?.costs[currency] ?? 0, currency),
-	}));
 
 const buildParams = (
 	rangeMode: RangeMode,
 	customStart: string,
 	customEnd: string,
 	groupBy: GroupBy,
-): BillingSummaryParams => {
+): UsageSummaryParams => {
 	if (rangeMode === "custom") {
 		return {
 			start: startOfDate(customStart),
@@ -233,12 +199,3 @@ const endExclusiveDate = (value: string) => {
 };
 
 const formatNumber = (value: number) => numberFormatter.format(value);
-
-const formatMoney = (value: number, currency: string) =>
-	`${currency} ${moneyFormatter.format(value)}`;
-
-const formatCosts = (costs: Record<string, number>, currencies: string[]) => {
-	const visible = currencies.length > 0 ? currencies : Object.keys(costs).sort();
-	if (visible.length === 0) return "-";
-	return visible.map((currency) => formatMoney(costs[currency] ?? 0, currency)).join(" / ");
-};

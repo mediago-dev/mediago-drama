@@ -108,10 +108,6 @@ func (workflow *GenerationService) RetryGenerationTask(ctx context.Context, id s
 		ReferenceAssetIDs: task.ReferenceAssetIDs,
 		Params:            task.Params,
 	}
-	if status, err := workflow.authorizeContentUse(ctx, "call", payload.SourceRefs); err != nil {
-		_ = workflow.generationTasks.RecordAttempt(task.ID, "retry", task.Status, "技能包权益校验失败。", err)
-		return generationMessageResponse{}, status, err
-	}
 	// Promote a legacy result-derived title into the retry request so later
 	// status transitions keep the same user-facing task summary.
 	task.Params = generationParamsWithAssetTitle(task.Params, payload.AssetTitle)
@@ -266,9 +262,6 @@ func (workflow *GenerationService) generationRequestForTask(
 		ReferenceURLs:     task.ReferenceURLs,
 		ReferenceAssetIDs: task.ReferenceAssetIDs,
 		Params:            task.Params,
-	}
-	if _, err := workflow.authorizeContentUse(ctx, "call", payload.SourceRefs); err != nil {
-		return coregeneration.Request{}, err
 	}
 	payload.ProjectName = workflow.generationProjectName(payload.ProjectID)
 	if payload.Model == "" {

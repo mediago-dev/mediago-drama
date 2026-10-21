@@ -59,6 +59,7 @@ describe("SkillsEditorPanel layout", () => {
 			},
 			{
 				id: "marketplace.hidden-pack",
+				releaseId: "legacy-release",
 				name: "导入包",
 				version: "1.0.0",
 				source: "imported",

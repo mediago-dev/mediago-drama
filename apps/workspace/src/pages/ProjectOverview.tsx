@@ -79,10 +79,10 @@ import {
 } from "@/domains/generation/lib/resource-generation-status";
 import { taskTypeForCategory } from "@/domains/generation/lib/prompt-categories";
 import {
-	billingSummaryKey,
-	getBillingSummary,
-	type BillingSummaryResponse,
-} from "@/domains/billing/api/billing";
+	usageSummaryKey,
+	getUsageSummary,
+	type UsageSummaryResponse,
+} from "@/domains/usage/api/usage";
 import { getProjectConfig, projectConfigKey } from "@/domains/projects/api/projects";
 import {
 	getWorkspaceDocumentResources,
@@ -114,10 +114,6 @@ import { apiResourceURL } from "@/shared/lib/api-base";
 import { cn } from "@/shared/lib/utils";
 
 const numberFormatter = new Intl.NumberFormat("zh-CN");
-const moneyFormatter = new Intl.NumberFormat("zh-CN", {
-	maximumFractionDigits: 6,
-	minimumFractionDigits: 0,
-});
 
 type OverviewBatchGenerationDialogState =
 	| {
@@ -189,8 +185,8 @@ export const ProjectOverview: React.FC = () => {
 		data: usageSummary,
 		error: usageError,
 		isLoading: isUsageLoading,
-	} = useSWR(usageParams ? billingSummaryKey(usageParams) : null, () =>
-		getBillingSummary(usageParams ?? { groupBy: "capability" }),
+	} = useSWR(usageParams ? usageSummaryKey(usageParams) : null, () =>
+		getUsageSummary(usageParams ?? { groupBy: "capability" }),
 	);
 	const { assets: selectedGenerationAssets, mutate: mutateSelectedResources } =
 		useSelectedGenerationAssets(projectId);
@@ -1538,19 +1534,17 @@ const StoryboardReelVideoCard: React.FC<{
 };
 
 const ProjectUsageSummary: React.FC<{
-	data?: BillingSummaryResponse;
+	data?: UsageSummaryResponse;
 	error?: unknown;
 	isLoading: boolean;
 }> = ({ data, error, isLoading }) => {
-	const currencies = data?.currencies ?? [];
-
 	return (
 		<section className="bg-card">
 			<div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
 				<div className="flex min-w-0 items-center gap-2">
 					<ReceiptText className="size-4 shrink-0 text-muted-foreground" />
 					<div className="min-w-0">
-						<h2 className="text-sm font-semibold text-foreground">项目消耗</h2>
+						<h2 className="text-sm font-semibold text-foreground">项目用量</h2>
 					</div>
 				</div>
 				{isLoading ? (
@@ -1562,11 +1556,10 @@ const ProjectUsageSummary: React.FC<{
 			</div>
 			{error ? (
 				<div className="mt-3 rounded-sm border border-error-border bg-error-surface px-3 py-2 text-xs text-error-foreground">
-					项目消耗加载失败。
+					项目用量加载失败。
 				</div>
 			) : null}
 			<div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-				<UsageMetric label="累计花费" value={formatCostTotals(data?.totals.costs, currencies)} />
 				<UsageMetric label="总 Token" value={formatNumber(data?.totals.totalTokens ?? 0)} />
 				<UsageMetric label="调用次数" value={formatNumber(data?.totals.calls ?? 0)} />
 				<UsageMetric
@@ -1996,15 +1989,3 @@ const selectedAssetCountForResourceType = (
 ) => assets.filter((asset) => asset.kind === "image" && asset.resourceType === resourceType).length;
 
 const formatNumber = (value: number | undefined) => numberFormatter.format(value ?? 0);
-
-const formatMoney = (value: number, currency: string) =>
-	`${currency} ${moneyFormatter.format(value)}`;
-
-const formatCosts = (costs: Record<string, number>, currencies: string[]) => {
-	const visible = currencies.length > 0 ? currencies : Object.keys(costs).sort();
-	if (visible.length === 0) return "-";
-	return visible.map((currency) => formatMoney(costs[currency] ?? 0, currency)).join(" / ");
-};
-
-const formatCostTotals = (costs: Record<string, number> | undefined, currencies: string[]) =>
-	formatCosts(costs ?? {}, currencies);

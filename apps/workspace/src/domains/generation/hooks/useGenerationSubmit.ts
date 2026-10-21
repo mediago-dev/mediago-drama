@@ -24,7 +24,6 @@ import {
 	streamGenerationText,
 } from "@/domains/generation/api/generation";
 import type { GenerationTaskType } from "@/domains/generation/lib/prompt-categories";
-import { analytics, AnalyticsEvent } from "@/shared/analytics";
 import {
 	generationParamsWithRequestDetails,
 	generatedAssetsIncludeMediaAssets,
@@ -270,24 +269,6 @@ export const useGenerationSubmit = ({
 			setError(null);
 			setActiveSubmitCount((count) => count + 1);
 			const requestKind = requestRoute.kind;
-			analytics.track(AnalyticsEvent.SubmitGeneration, {
-				conversation_scope_id: resolvedConversationScopeId,
-				document_id: requestDocumentId,
-				family_id: requestFamilyId,
-				has_prompt_optimization: Boolean(overrides.promptOptimization),
-				has_references:
-					requestReferenceUrls.length > 0 ||
-					requestReferenceAssetIds.length > 0 ||
-					requestReferenceBindings.length > 0,
-				kind: requestKind,
-				project_id: mediaAssetProjectId,
-				provider: requestRoute.provider,
-				reference_count: requestReferenceCount,
-				route_id: requestRoute.id,
-				section_id: requestSectionId,
-				task_type: requestTaskType,
-				version_id: requestVersionId,
-			});
 			if (requestKind === "image" || requestKind === "video" || requestKind === "audio") {
 				try {
 					if (!overrides.selectedRoute) rememberSelectedModel?.();
@@ -452,12 +433,6 @@ export const useGenerationSubmit = ({
 					void mutateSWR(generationConversationsQueryKey(requestKind, resolvedConversationScopeId));
 					void mutateSWR(generationConversationsQueryKey(requestKind, "", { allScopes: true }));
 					notifySubmitCallback(onSubmitSuccess, requestKind);
-					analytics.track(AnalyticsEvent.GenerationSubmitSuccess, {
-						kind: requestKind,
-						project_id: mediaAssetProjectId,
-						section_id: requestSectionId,
-						status: "completed",
-					});
 					return;
 				}
 
@@ -541,13 +516,6 @@ export const useGenerationSubmit = ({
 					void mutateMediaAssets();
 				}
 				notifySubmitCallback(onSubmitSuccess, requestKind);
-				analytics.track(AnalyticsEvent.GenerationSubmitSuccess, {
-					kind: requestKind,
-					project_id: mediaAssetProjectId,
-					response_id: response.id,
-					section_id: requestSectionId,
-					status: response.status,
-				});
 			} catch (err) {
 				const message = err instanceof Error ? err.message : "生成请求失败。";
 				const errorMessageId = `${localID}:error`;
@@ -563,11 +531,6 @@ export const useGenerationSubmit = ({
 					kind: requestKind,
 					localMessageId: loadingMessage.id,
 					message,
-				});
-				analytics.track(AnalyticsEvent.GenerationSubmitFailure, {
-					kind: requestKind,
-					project_id: mediaAssetProjectId,
-					section_id: requestSectionId,
 				});
 				if (shouldResetPrompt && (promptRef?.current ?? "").trim() === "") {
 					setPrompt(promptInput);

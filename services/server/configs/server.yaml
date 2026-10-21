@@ -22,8 +22,6 @@ workspace_dir: "~/mediago-drama-oss-dev/workspace" # Open-source dev data; empty
 # internal_api:
 #   url: ""    # ONE_INTERNAL_API_URL overrides this when set.
 #   token: ""  # ONE_INTERNAL_API_TOKEN overrides this when set.
-billing:
-  price_overlay_path: "pricing.overlay.json" # Optional JSON file with {"prices":[...]} route price overrides.
 # document_mcp:
 #   session_id: ""
 #   run_id: ""

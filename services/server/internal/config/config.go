@@ -24,7 +24,6 @@ type ServerConfig struct {
 	Jimeng JimengConfig   `yaml:"jimeng"`
 	LibTV  LocalCLIConfig `yaml:"libtv"`
 
-	Billing     BillingConfig     `yaml:"billing"`
 	Prompt      PromptConfig      `yaml:"prompt"`
 	InternalAPI InternalAPIConfig `yaml:"internal_api"`
 	DocumentMCP DocumentMCPConfig `yaml:"document_mcp"`
@@ -59,11 +58,6 @@ type LocalCLIConfig struct {
 type PromptConfig struct {
 	MaxSectionChars     int    `yaml:"max_section_chars"`
 	InstructionDelivery string `yaml:"instruction_delivery"`
-}
-
-// BillingConfig contains billing and pricing configuration.
-type BillingConfig struct {
-	PriceOverlayPath string `yaml:"price_overlay_path"`
 }
 
 // DocumentMCPConfig contains stdio document MCP runtime configuration loaded
@@ -128,7 +122,6 @@ func normalize(config ServerConfig) ServerConfig {
 	config.Jimeng = normalizeJimengConfig(config.Jimeng)
 	config.LibTV = normalizeLocalCLIConfig(config.LibTV)
 
-	config.Billing = normalizeBillingConfig(config.Billing)
 	config.InternalAPI = normalizeInternalAPIConfig(config.InternalAPI)
 	config.DocumentMCP = normalizeDocumentMCPConfig(config.DocumentMCP)
 	if config.Prompt.MaxSectionChars <= 0 {
@@ -163,11 +156,6 @@ func normalizeLocalCLIConfig(config LocalCLIConfig) LocalCLIConfig {
 	config.Path = strings.TrimSpace(config.Path)
 	config.BinDir = strings.TrimSpace(config.BinDir)
 	config.ProjectID = strings.TrimSpace(config.ProjectID)
-	return config
-}
-
-func normalizeBillingConfig(config BillingConfig) BillingConfig {
-	config.PriceOverlayPath = strings.TrimSpace(config.PriceOverlayPath)
 	return config
 }
 

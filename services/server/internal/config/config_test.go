@@ -31,7 +31,7 @@ libtv:
 pippit:
   path: " /opt/pippit-tool-cli "
   bin_dir: " /opt/vendor/pippit "
-billing:
+usage:
   price_overlay_path: " ./pricing.json "
 prompt:
   max_section_chars: 9000
@@ -72,7 +72,6 @@ document_mcp:
 		config.LibTV.Path != "/opt/libtv" ||
 		config.LibTV.BinDir != "/opt/vendor/libtv" ||
 		config.LibTV.ProjectID != "libtv-project-123" ||
-		config.Billing.PriceOverlayPath != "./pricing.json" ||
 		config.Prompt.MaxSectionChars != 9000 ||
 		config.Prompt.InstructionDelivery != "inline" ||
 		config.InternalAPI.URL != "http://internal.test" ||

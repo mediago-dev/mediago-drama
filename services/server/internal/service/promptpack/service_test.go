@@ -273,13 +273,6 @@ func TestServiceCreatesLocalAuthoringPackAndExportsV1(t *testing.T) {
 	if len(exported.Data) == 0 || exported.Pack.ID != created.ID {
 		t.Fatalf("exported = %#v, want encoded local pack", exported)
 	}
-	recorded, err := store.RecordSubmittedRelease(ctx, created.ID, "release-1", "1.0.0")
-	if err != nil {
-		t.Fatalf("RecordSubmittedRelease() error = %v", err)
-	}
-	if recorded.ReleaseID != "release-1" || recorded.Version != "1.0.0" {
-		t.Fatalf("recorded = %#v, want latest release provenance", recorded)
-	}
 }
 
 func TestServiceUpdatesOnlyLocalPackMetadata(t *testing.T) {
@@ -320,54 +313,6 @@ func TestServiceUpdatesOnlyLocalPackMetadata(t *testing.T) {
 		Name: "Changed imported",
 	}); !errors.Is(err, ErrPackReadonly) {
 		t.Fatalf("UpdatePackMetadata(imported) error = %v, want ErrPackReadonly", err)
-	}
-}
-
-func TestServiceFormalReimportPreservesExistingLocalAuthoringPack(t *testing.T) {
-	ctx := context.Background()
-	store := newTestService(t)
-	local, err := store.CreatePack(ctx, Pack{
-		ID: "com.example.test", Name: "My Test Pack", Version: "0.9.0", Description: "Local draft",
-	})
-	if err != nil {
-		t.Fatalf("CreatePack() error = %v", err)
-	}
-	draft, err := store.CreatePackEntryDraft(ctx, local.ID, instructionpack.KindSkill, "test-skill", "")
-	if err != nil {
-		t.Fatalf("CreatePackEntryDraft() error = %v", err)
-	}
-	if _, err := store.SavePackEntry(ctx, local.ID, draft.ID, EntryUpdate{
-		Name: "Local Skill", Description: "Locally authored", Body: "local working copy",
-	}); err != nil {
-		t.Fatalf("SavePackEntry() error = %v", err)
-	}
-	raw, err := os.ReadFile(writeTestMGPack(t))
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
-
-	reimported, err := store.InstallDataWithProvenance(ctx, "reviewed.mgpack", raw, InstallProvenance{
-		PackageID: local.ID, ReleaseID: "release-reviewed", Version: "1.0.0",
-	})
-	if err != nil {
-		t.Fatalf("InstallDataWithProvenance() error = %v", err)
-	}
-	if reimported.Source != packSourceLocal || reimported.Name != local.Name || reimported.Description != local.Description {
-		t.Fatalf("reimported = %#v, want existing local ownership and metadata", reimported)
-	}
-	if reimported.ReleaseID != "release-reviewed" || reimported.Version != "1.0.0" || reimported.Origin != "" {
-		t.Fatalf("reimported = %#v, want reviewed release linked without imported origin", reimported)
-	}
-	contents, err := store.GetPackContents(ctx, local.ID)
-	if err != nil {
-		t.Fatalf("GetPackContents() error = %v", err)
-	}
-	preserved, ok := findEntry(contents.Entries, "test-skill")
-	if !ok || preserved.Source != entrySourceUser || strings.TrimSpace(preserved.Body) != "local working copy" {
-		t.Fatalf("preserved entry = %#v, want untouched local working copy", preserved)
-	}
-	if _, err := store.ExportPack(ctx, local.ID); err != nil {
-		t.Fatalf("ExportPack(reimported local) error = %v", err)
 	}
 }
 
@@ -875,56 +820,6 @@ func TestServiceRejectsCopyIntoNonLocalPack(t *testing.T) {
 	}
 }
 
-func TestServiceFormalPackExportsUnprotectedV1Snapshot(t *testing.T) {
-	ctx := context.Background()
-	store := newTestService(t)
-	raw, err := os.ReadFile(writeTestMGPack(t))
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
-	installed, err := store.InstallDataWithProvenance(ctx, "test.mgpack", raw, InstallProvenance{
-		PackageID: "com.example.test",
-		ReleaseID: "release-1",
-		Version:   "1.0.0",
-	})
-	if err != nil {
-		t.Fatalf("InstallDataWithProvenance() error = %v", err)
-	}
-	if _, err := store.ExportPack(ctx, installed.ID); !errors.Is(err, ErrPackReadonly) {
-		t.Fatalf("ExportPack() error = %v, want ErrPackReadonly", err)
-	}
-	exported, err := store.ExportPackSnapshot(ctx, installed.ID)
-	if err != nil {
-		t.Fatalf("ExportPackSnapshot() error = %v", err)
-	}
-	archive, err := codec.Decode(exported.Data)
-	if err != nil {
-		t.Fatalf("Decode(exported formal pack) error = %v", err)
-	}
-	exportedBundle, err := instructionpack.ParseZip(ctx, archive)
-	if err != nil {
-		t.Fatalf("ParseZip(exported formal pack) error = %v", err)
-	}
-	if exportedBundle.Manifest.ID != installed.ID {
-		t.Fatalf("exported package id = %q, want %q", exportedBundle.Manifest.ID, installed.ID)
-	}
-	versioned, err := store.ExportPackSnapshotAtVersion(ctx, installed.ID, "1.0.7")
-	if err != nil {
-		t.Fatalf("ExportPackSnapshotAtVersion() error = %v", err)
-	}
-	archive, err = codec.Decode(versioned.Data)
-	if err != nil {
-		t.Fatalf("Decode(versioned snapshot) error = %v", err)
-	}
-	bundle, err := instructionpack.ParseZip(ctx, archive)
-	if err != nil {
-		t.Fatalf("ParseZip(versioned snapshot) error = %v", err)
-	}
-	if bundle.Manifest.Version != "1.0.7" || versioned.Pack.Version != "1.0.7" {
-		t.Fatalf("versioned snapshot = %#v / %#v, want version 1.0.7", bundle.Manifest, versioned.Pack)
-	}
-}
-
 func TestServiceStacksInstalledPackOnDefault(t *testing.T) {
 	ctx := context.Background()
 	store := newTestService(t)
@@ -951,12 +846,20 @@ func TestServiceStacksInstalledPackOnDefault(t *testing.T) {
 	}
 }
 
-func TestServiceImportedPackManagementAccess(t *testing.T) {
+func TestServiceLegacyImportedPackManagementAccess(t *testing.T) {
 	ctx := context.Background()
 	store := newTestService(t)
 	installed, err := store.InstallPath(ctx, writeTestMGPack(t))
 	if err != nil {
 		t.Fatalf("InstallPath() error = %v", err)
+	}
+	model, err := store.repo.GetPack(installed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.ReleaseID = "legacy-release"
+	if err := store.repo.UpsertPack(model); err != nil {
+		t.Fatal(err)
 	}
 	entries, err := store.ListEntries(ctx, instructionpack.KindSkill)
 	if err != nil {
@@ -1170,16 +1073,13 @@ func TestServiceExportsAndImportsFullMGPack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
-	installed, err := source.InstallDataWithProvenance(ctx, "test.mgpack", data, InstallProvenance{
-		PackageID: "com.example.test",
-		ReleaseID: "release-export-test",
-		Version:   "1.0.0",
-	})
+	importedSource, err := source.InstallData(ctx, "test.mgpack", data)
 	if err != nil {
-		t.Fatalf("InstallDataWithProvenance() error = %v", err)
+		t.Fatal(err)
 	}
-	if _, err := source.PromoteImportedPackToLocal(ctx, installed.ID); err != nil {
-		t.Fatalf("PromoteImportedPackToLocal() error = %v", err)
+	installed, err := source.ForkPack(ctx, importedSource.ID, ForkPackInput{Name: "Test Pack", Version: "1.0.0"})
+	if err != nil {
+		t.Fatal(err)
 	}
 	if _, err := source.SaveEntry(ctx, instructionpack.KindSkill, "test-skill", Entry{
 		Slug:        "test-skill",
@@ -1271,87 +1171,6 @@ func TestReadablePackFileNamePreservesNameAndSanitizesPathCharacters(t *testing.
 				t.Fatalf("readablePackFileName() = %q, want %q", got, test.want)
 			}
 		})
-	}
-}
-
-func TestServiceInstallsFormalReleaseWithProvenance(t *testing.T) {
-	ctx := context.Background()
-	store := newTestService(t)
-	path := writeTestMGPack(t)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
-	pack, err := store.InstallDataWithProvenance(ctx, filepath.Base(path), data, InstallProvenance{
-		PackageID: "com.example.test",
-		ReleaseID: "release-1",
-		Version:   "1.0.1",
-	})
-	if err != nil {
-		t.Fatalf("InstallDataWithProvenance() error = %v", err)
-	}
-	if pack.ReleaseID != "release-1" || pack.Version != "1.0.1" {
-		t.Fatalf("pack release = %q v%s, want release-1 v1.0.1", pack.ReleaseID, pack.Version)
-	}
-	entry, err := store.GetEntry(ctx, instructionpack.KindSkill, "test-skill")
-	if err != nil {
-		t.Fatalf("GetEntry() error = %v", err)
-	}
-	if entry.PackID != pack.ID || entry.ReleaseID != "release-1" {
-		t.Fatalf("entry provenance = %s/%s, want %s/release-1", entry.PackID, entry.ReleaseID, pack.ID)
-	}
-	if entry.SourcePackageID != pack.ID || entry.SourceReleaseID != "release-1" {
-		t.Fatalf("content provenance = %s/%s, want %s/release-1", entry.SourcePackageID, entry.SourceReleaseID, pack.ID)
-	}
-	if _, err := store.SavePackEntry(ctx, pack.ID, entry.ID, EntryUpdate{
-		Description: entry.Description,
-		Body:        "local edit",
-	}); !errors.Is(err, ErrPackReadonly) {
-		t.Fatalf("SavePackEntry(imported) error = %v, want ErrPackReadonly", err)
-	}
-	if _, err := store.ExportPack(ctx, pack.ID); !errors.Is(err, ErrPackReadonly) {
-		t.Fatalf("ExportPack(imported formal pack) error = %v, want ErrPackReadonly", err)
-	}
-	recovered, err := store.PromoteImportedPackToLocal(ctx, pack.ID)
-	if err != nil {
-		t.Fatalf("PromoteImportedPackToLocal() error = %v", err)
-	}
-	if recovered.Source != packSourceLocal || recovered.ReleaseID != "release-1" || recovered.Origin != "" {
-		t.Fatalf("recovered = %#v, want local draft with formal release history", recovered)
-	}
-	updated, err := store.SavePackEntry(ctx, pack.ID, entry.ID, EntryUpdate{
-		Description: entry.Description,
-		Body:        "local edit",
-	})
-	if err != nil {
-		t.Fatalf("SavePackEntry(recovered) error = %v", err)
-	}
-	if updated.ReleaseID != "" || updated.SourcePackageID != pack.ID || updated.SourceReleaseID != "release-1" {
-		t.Fatalf("updated provenance = %#v, want original formal source", updated)
-	}
-	recoveredEntry, err := store.GetEntry(ctx, instructionpack.KindSkill, "test-skill")
-	if err != nil {
-		t.Fatalf("GetEntry(recovered) error = %v", err)
-	}
-	if recoveredEntry.Source != entrySourceUser || recoveredEntry.OverriddenFrom != "" || recoveredEntry.ReleaseID != "" || recoveredEntry.SourcePackageID != pack.ID || recoveredEntry.SourceReleaseID != "release-1" || strings.TrimSpace(recoveredEntry.Body) != "local edit" {
-		t.Fatalf("recovered entry = %#v, want standalone local edit", recoveredEntry)
-	}
-	if _, err := store.CreatePack(ctx, Pack{ID: "com.example.derivative", Name: "Derivative"}); err != nil {
-		t.Fatalf("CreatePack(derivative) error = %v", err)
-	}
-	copied, err := store.CopyEntries(ctx, "com.example.derivative", []EntryReference{{
-		PackID: pack.ID,
-		Kind:   instructionpack.KindSkill,
-		Slug:   recoveredEntry.Slug,
-	}})
-	if err != nil {
-		t.Fatalf("CopyEntries(formal source) error = %v", err)
-	}
-	if len(copied) != 1 || copied[0].SourcePackageID != pack.ID || copied[0].SourceReleaseID != "release-1" {
-		t.Fatalf("copied provenance = %#v, want original formal source", copied)
-	}
-	if err := store.RemoveEntry(ctx, recovered.ID, recoveredEntry.ID); err != nil {
-		t.Fatalf("RemoveEntry(recovered) error = %v", err)
 	}
 }
 
@@ -1615,7 +1434,6 @@ func newTestService(t *testing.T) *Service {
 		repository.NewPromptLibraryRepositoryFromDB(db),
 		nil,
 	).withTestPackFilesDir(t.TempDir())
-	store.SetUnprotectedImportAllowed(true)
 	return store
 }
 

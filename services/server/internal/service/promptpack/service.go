@@ -50,19 +50,11 @@ var (
 	ErrInvalidPack = errors.New("invalid prompt pack")
 	// ErrUnsupportedPackVersion reports a valid .mgpack version this build cannot import.
 	ErrUnsupportedPackVersion = errors.New("unsupported prompt pack version")
-	// ErrProtectedPackAccessDenied reports that the active account cannot import a protected pack.
-	ErrProtectedPackAccessDenied = errors.New("protected prompt pack access denied")
-	// ErrProtectedPackAuthorizationExpired reports an incomplete protected-pack authorization.
-	ErrProtectedPackAuthorizationExpired = errors.New("protected prompt pack authorization expired")
-	// ErrProtectedPackUnavailable reports that the optional protected-pack importer cannot be reached.
-	ErrProtectedPackUnavailable = errors.New("protected prompt pack importer unavailable")
-	// ErrUnprotectedPackImportDenied reports that this build only imports Composer-protected packs.
-	ErrUnprotectedPackImportDenied = errors.New("unprotected prompt pack import denied")
 	// ErrPackNotFound reports a missing installed pack.
 	ErrPackNotFound = errors.New("prompt pack not found")
 	// ErrPackExists reports an attempt to reuse an installed pack ID.
 	ErrPackExists = errors.New("prompt pack already exists")
-	// ErrPackReadonly reports attempts to view or modify protected pack content.
+	// ErrPackReadonly reports attempts to modify built-in or installed snapshots.
 	ErrPackReadonly = errors.New("prompt pack is read-only")
 	// ErrPackConflict reports that content changed after an editor draft started.
 	ErrPackConflict = errors.New("prompt pack content revision conflict")
@@ -207,15 +199,12 @@ type UpdatePackMetadataInput struct {
 
 // Service coordinates prompt pack persistence and built-in seeding.
 type Service struct {
-	mu                 sync.Mutex
-	repo               *repository.PackRepository
-	legacyRepo         *repository.PromptLibraryRepository
-	protectedImporter  ProtectedImporter
-	protectedImportErr error
-	allowUnprotected   bool
-	initErr            error
-	seeded             bool
-	packFilesDir       string
+	mu           sync.Mutex
+	repo         *repository.PackRepository
+	legacyRepo   *repository.PromptLibraryRepository
+	initErr      error
+	seeded       bool
+	packFilesDir string
 }
 
 // NewServiceFromRepository creates a prompt pack service from settings repositories.
@@ -289,120 +278,6 @@ func (store *Service) GetPack(ctx context.Context, packID string) (Pack, error) 
 		return Pack{}, err
 	}
 	return packFromModel(model), nil
-}
-
-// RecordSubmittedRelease records the latest platform submission for a local
-// authoring pack so its next release can advance without changing package ID.
-func (store *Service) RecordSubmittedRelease(
-	ctx context.Context,
-	packID string,
-	releaseID string,
-	version string,
-) (Pack, error) {
-	if err := store.ensureSeeded(ctx); err != nil {
-		return Pack{}, err
-	}
-	packID = strings.TrimSpace(packID)
-	releaseID = strings.TrimSpace(releaseID)
-	version = strings.TrimSpace(version)
-	if packID == "" || releaseID == "" || version == "" {
-		return Pack{}, fmt.Errorf("%w: pack, release, and version are required", ErrInvalidPack)
-	}
-	model, err := store.repo.GetPack(packID)
-	if repository.IsRecordNotFound(err) {
-		return Pack{}, fmt.Errorf("%w: %s", ErrPackNotFound, packID)
-	}
-	if err != nil {
-		return Pack{}, err
-	}
-	if normalizePackSource(model.Source, model.ID) != packSourceLocal {
-		return Pack{}, fmt.Errorf("%w: only local authoring packs can record releases", ErrPackReadonly)
-	}
-	if err := store.repo.SetPackReleaseVersion(packID, releaseID, version); err != nil {
-		return Pack{}, err
-	}
-	return store.GetPack(ctx, packID)
-}
-
-// PromoteImportedPackToLocal converts an installed formal release snapshot
-// into a standalone authoring draft. Callers must authorize the publisher
-// before invoking this local state transition.
-func (store *Service) PromoteImportedPackToLocal(ctx context.Context, packID string) (Pack, error) {
-	if err := store.ensureSeeded(ctx); err != nil {
-		return Pack{}, err
-	}
-	packID = strings.TrimSpace(packID)
-	if packID == "" {
-		return Pack{}, fmt.Errorf("%w: pack id is required", ErrInvalidPack)
-	}
-
-	err := store.repo.WithTransaction(ctx, func(tx *repository.PackRepository) error {
-		pack, err := tx.GetPack(packID)
-		if repository.IsRecordNotFound(err) {
-			return fmt.Errorf("%w: %s", ErrPackNotFound, packID)
-		}
-		if err != nil {
-			return err
-		}
-		if strings.TrimSpace(pack.ReleaseID) == "" {
-			return fmt.Errorf("%w: only formal releases can recover an authoring draft", ErrPackReadonly)
-		}
-		source := normalizePackSource(pack.Source, pack.ID)
-		if source == packSourceLocal {
-			return nil
-		}
-		if source != packSourceImported {
-			return fmt.Errorf("%w: only imported formal releases can recover an authoring draft", ErrPackReadonly)
-		}
-
-		entries, err := tx.ListEntries()
-		if err != nil {
-			return err
-		}
-		for _, entry := range entries {
-			if entry.PackID != packID {
-				continue
-			}
-			if entryIsHidden(entryFromModel(entry)) {
-				if err := tx.DeleteEntry(entry.ID); err != nil {
-					return err
-				}
-				continue
-			}
-			metadata := metadataFromJSON(entry.Metadata)
-			delete(metadata, entryMetadataHidden)
-			entry.Metadata = mustJSON(metadata)
-			entry.Source = entrySourceUser
-			entry.OverriddenFrom = ""
-			entry.ReleaseID = ""
-			if err := tx.UpsertEntry(entry); err != nil {
-				return err
-			}
-		}
-
-		categories, err := tx.ListCategories()
-		if err != nil {
-			return err
-		}
-		for _, category := range categories {
-			if category.PackID != packID {
-				continue
-			}
-			category.Source = entrySourceUser
-			category.Builtin = false
-			if err := tx.UpsertCategory(category); err != nil {
-				return err
-			}
-		}
-
-		pack.Source = packSourceLocal
-		pack.Origin = ""
-		return tx.UpsertPack(pack)
-	})
-	if err != nil {
-		return Pack{}, err
-	}
-	return store.GetPack(ctx, packID)
 }
 
 // GetPackContents returns one pack and its direct or linked entries, including
@@ -1324,9 +1199,6 @@ func (store *Service) InstallPath(ctx context.Context, path string) (Pack, error
 	if err := store.ensureSeeded(ctx); err != nil {
 		return Pack{}, err
 	}
-	if !store.allowUnprotected {
-		return Pack{}, ErrUnprotectedPackImportDenied
-	}
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return Pack{}, fmt.Errorf("%w: path is required", ErrInvalidPack)
@@ -1915,7 +1787,7 @@ func validatePackCategory(category Category) error {
 }
 
 func rejectImportedPackManagement(pack domain.PackModel) error {
-	if normalizePackSource(pack.Source, pack.ID) == packSourceImported {
+	if normalizePackSource(pack.Source, pack.ID) == packSourceImported && strings.TrimSpace(pack.ReleaseID) != "" {
 		return fmt.Errorf("%w: imported pack %s cannot be viewed or modified", ErrPackReadonly, pack.ID)
 	}
 	return nil
@@ -2235,18 +2107,11 @@ func (store *Service) seedBuiltinPack(ctx context.Context) error {
 }
 
 func (store *Service) installBundle(ctx context.Context, bundle instructionpack.Bundle, source string, origin string) error {
-	return store.installBundleWithProvenance(ctx, bundle, source, origin, InstallProvenance{})
-}
-
-func (store *Service) installBundleWithProvenance(ctx context.Context, bundle instructionpack.Bundle, source string, origin string, provenance InstallProvenance) error {
 	return store.repo.WithTransaction(ctx, func(tx *repository.PackRepository) error {
 		transactional := &Service{repo: tx, legacyRepo: store.legacyRepo, initErr: store.initErr}
 		// Importing a pack is additive: it is enabled and stacks on top of the
 		// always-enabled default pack, without disabling any other pack.
 		if _, err := transactional.upsertPackFromBundle(bundle, source, origin); err != nil {
-			return err
-		}
-		if err := tx.SetPackRelease(bundle.Manifest.ID, provenance.ReleaseID); err != nil {
 			return err
 		}
 		if err := tx.DeleteEntriesByPack(bundle.Manifest.ID); err != nil {
@@ -2269,11 +2134,6 @@ func (store *Service) installBundleWithProvenance(ctx context.Context, bundle in
 		}
 		for _, entry := range bundle.Entries {
 			model := entryModelFromPackEntry(entry, entrySourcePack)
-			model.ReleaseID = provenance.ReleaseID
-			if provenance.ReleaseID != "" {
-				model.SourcePackageID = provenance.PackageID
-				model.SourceReleaseID = provenance.ReleaseID
-			}
 			if err := tx.UpsertEntry(model); err != nil {
 				return err
 			}

@@ -8,13 +8,13 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestBillingRepositoryListUsageBucketsAggregatesTokenColumns(t *testing.T) {
+func TestUsageRepositoryListUsageBucketsAggregatesTokenColumns(t *testing.T) {
 	repos, err := OpenWorkspaceRepositories(filepath.Join(t.TempDir(), "workspace.sqlite"))
 	if err != nil {
 		t.Fatalf("OpenWorkspaceRepositories() error = %v", err)
 	}
-	ensureBillingProjectFixture(t, repos.DB, "project-a")
-	ensureBillingProjectFixture(t, repos.DB, "project-b")
+	ensureUsageProjectFixture(t, repos.DB, "project-a")
+	ensureUsageProjectFixture(t, repos.DB, "project-b")
 
 	tasks := []domain.GenerationTaskModel{
 		{
@@ -122,7 +122,7 @@ func TestBillingRepositoryListUsageBucketsAggregatesTokenColumns(t *testing.T) {
 		}
 	}
 
-	rows, err := repos.Billing.ListUsageBuckets(UsageQuery{
+	rows, err := repos.Usage.ListUsageBuckets(UsageQuery{
 		Start:     "2026-06-01T00:00:00Z",
 		End:       "2026-06-02T00:00:00Z",
 		Kind:      "text",
@@ -146,7 +146,7 @@ func TestBillingRepositoryListUsageBucketsAggregatesTokenColumns(t *testing.T) {
 	}
 }
 
-func ensureBillingProjectFixture(t *testing.T, db *gorm.DB, id string) {
+func ensureUsageProjectFixture(t *testing.T, db *gorm.DB, id string) {
 	t.Helper()
 	now := domain.TimeFromString("2026-06-01T00:00:00Z")
 	if err := db.Create(&domain.WorkspaceProjectModel{

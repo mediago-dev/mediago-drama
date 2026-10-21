@@ -10,19 +10,17 @@ import (
 
 func TestEdition(t *testing.T) {
 	tests := []struct {
-		name  string
-		value string
-		want  string
+		name string
+		want string
 	}{
 		{name: "defaults to community", want: "community"},
-		{name: "normalizes commercial", value: " Commercial ", want: "commercial"},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			gin.SetMode(gin.ReleaseMode)
 			router := gin.New()
-			router.Use(Edition(test.value))
+			router.Use(Edition())
 			router.GET("/health", func(context *gin.Context) {
 				context.Status(http.StatusNoContent)
 			})

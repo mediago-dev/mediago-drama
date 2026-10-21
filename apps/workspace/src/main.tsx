@@ -6,7 +6,6 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { SWRProvider } from "./providers/SWRProvider";
 import { ThemeProvider } from "./providers/ThemeProvider";
 import { DialogCallHost } from "@/shared/components/callable/DialogCallHost";
-import { analytics } from "@/shared/analytics";
 import { desktopRuntime } from "@/shared/desktop/runtime";
 import "@/styles/index.css";
 
@@ -24,8 +23,6 @@ const isMacLikePlatform =
 document.documentElement.classList.toggle("is-desktop", isDesktop);
 document.documentElement.classList.toggle("is-electron", runtime === "electron");
 document.documentElement.classList.toggle("is-desktop-macos", isDesktop && isMacLikePlatform);
-
-analytics.init();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 	<React.StrictMode>

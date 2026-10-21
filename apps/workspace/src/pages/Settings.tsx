@@ -39,7 +39,7 @@ import { generationModelsKey } from "@/domains/generation/api/generation";
 import { CodexAccessPanel } from "@/domains/settings/components/CodexAccessPanel";
 import { CodexSkillsPanel } from "@/domains/settings/components/CodexSkillsPanel";
 import { ShortcutKeysPanel } from "@/domains/settings/components/ShortcutKeysPanel";
-import { BillingPanel } from "@/domains/billing/components/BillingPanel";
+import { UsagePanel } from "@/domains/usage/components/UsagePanel";
 import { Button } from "@/shared/components/ui/button";
 import { confirmDialog } from "@/shared/components/callable/ConfirmDialog";
 import { DialogDismissButton } from "@/shared/components/ui/dialog-dismiss";
@@ -81,7 +81,7 @@ const providerRowClassName = settingsInsetRowClassName;
 type SettingsTabValue =
 	| "appearance"
 	| "api-keys"
-	| "billing"
+	| "usage"
 	| "codex-access"
 	| "codex-skills"
 	| "jianying-draft"
@@ -92,7 +92,7 @@ type SettingsTabValue =
 const isSettingsTabValue = (value: string): value is SettingsTabValue =>
 	value === "appearance" ||
 	value === "api-keys" ||
-	value === "billing" ||
+	value === "usage" ||
 	value === "codex-access" ||
 	value === "codex-skills" ||
 	value === "updates" ||
@@ -101,15 +101,17 @@ const isSettingsTabValue = (value: string): value is SettingsTabValue =>
 	debugTabs.some((tab) => tab.value === value);
 
 const normalizeSettingsTab = (value: string) =>
-	value === "codex-relay"
-		? "codex-access"
-		: value === "agent-model-profiles"
-			? "api-keys"
-			: value === "prompt-templates" || value === "instructions"
-				? "instructions"
-				: value === "prompts" || value === "skills" || value === "prompt-library"
-					? "prompt-packs"
-					: value;
+	value === "billing"
+		? "usage"
+		: value === "codex-relay"
+			? "codex-access"
+			: value === "agent-model-profiles"
+				? "api-keys"
+				: value === "prompt-templates" || value === "instructions"
+					? "instructions"
+					: value === "prompts" || value === "skills" || value === "prompt-library"
+						? "prompt-packs"
+						: value;
 
 export const Settings: React.FC = () => {
 	const location = useLocation();
@@ -132,7 +134,7 @@ export const Settings: React.FC = () => {
 				<JianyingDraftPanel />
 			) : null}
 			{visibleTab === "api-keys" ? <APIKeysPanel /> : null}
-			{visibleTab === "billing" ? <BillingPanel /> : null}
+			{visibleTab === "usage" ? <UsagePanel /> : null}
 			{visibleTab === "codex-access" ? <CodexAccessPanel /> : null}
 			{visibleTab === "codex-skills" ? <CodexSkillsPanel /> : null}
 			{visibleTab === "updates" ? <UpdatesPanel /> : null}

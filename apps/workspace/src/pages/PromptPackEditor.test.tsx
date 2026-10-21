@@ -111,7 +111,6 @@ describe("PromptPackEditor", () => {
 		openExternal.mockResolvedValue(undefined);
 		revealPath.mockResolvedValue(undefined);
 		savePromptPack.mockResolvedValue({ canceled: false, path: "/tmp/draft.mgpack" });
-		vi.stubEnv("VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL", "http://localhost:4321/account#promptPacks");
 		window.mediagoDesktop = {
 			isElectron: true,
 			onPromptPackEditorCloseRequested: (
@@ -486,11 +485,29 @@ describe("PromptPackEditor", () => {
 		fireEvent.pointerUp(window);
 	});
 
-	it("separates imported packs and exposes only lifecycle actions", async () => {
+	it("opens ordinary imported packs without a commercial release identity", async () => {
+		const imported = {
+			...localPack,
+			id: "community.visual",
+			name: "本地导入包",
+			source: "imported" as const,
+		};
+		vi.mocked(listPromptPacks).mockResolvedValue([imported]);
+		vi.mocked(getPromptPackContents).mockResolvedValue({ pack: imported, entries: [] });
+		renderEditor("/prompt-pack-editor");
+		fireEvent.click(await screen.findByRole("button", { name: `打开技能包 ${imported.name}` }));
+		await waitFor(() => expect(getPromptPackContents).toHaveBeenCalledWith(imported.id));
+		fireEvent.click(await screen.findByRole("button", { name: "返回技能包列表" }));
+		fireEvent.click(await screen.findByRole("button", { name: `复制技能包 ${imported.name}` }));
+		expect(await screen.findByRole("heading", { name: "复制技能包" })).toBeInTheDocument();
+	});
+
+	it("separates legacy imported snapshots and exposes only lifecycle actions", async () => {
 		const importedPack = {
 			...localPack,
 			description: "来自审核市场的视觉能力。",
 			id: "marketplace.visual-pack",
+			releaseId: "legacy-release",
 			name: "视觉增强包",
 			source: "imported" as const,
 		};
@@ -531,7 +548,7 @@ describe("PromptPackEditor", () => {
 		fireEvent.click(importedRow);
 		expect(getPromptPackContents).not.toHaveBeenCalledWith(importedPack.id);
 
-		const manageableSection = screen.getByRole("region", { name: "默认和本地技能包" });
+		const manageableSection = screen.getByRole("region", { name: "默认、本地和普通导入技能包" });
 		expect(
 			within(manageableSection)
 				.getAllByRole("article")
@@ -614,6 +631,7 @@ describe("PromptPackEditor", () => {
 			...localPack,
 			description: "   ",
 			id: "marketplace.no-description",
+			releaseId: "legacy-release",
 			name: "无描述导入包",
 			source: "imported" as const,
 		};
@@ -646,6 +664,7 @@ describe("PromptPackEditor", () => {
 		const importedPack = {
 			...localPack,
 			id: "marketplace.visual-pack",
+			releaseId: "legacy-release",
 			name: "视觉增强包",
 			source: "imported" as const,
 		};
@@ -713,7 +732,7 @@ describe("PromptPackEditor", () => {
 		renderEditor();
 
 		const packNames = () =>
-			within(screen.getByRole("region", { name: "默认和本地技能包" }))
+			within(screen.getByRole("region", { name: "默认、本地和普通导入技能包" }))
 				.getAllByRole("article")
 				.map((article) => within(article).getByRole("heading", { level: 3 }).textContent);
 		expect(await screen.findByRole("switch", { name: "停用技能包 Zulu 技能包" })).toBeEnabled();
@@ -839,7 +858,7 @@ describe("PromptPackEditor", () => {
 		expect(screen.queryByText("全部已安装与本地创作")).not.toBeInTheDocument();
 		expect(maxWidthContainer).toHaveClass("max-w-5xl");
 		expect(scrollContainer).toHaveClass("px-6", "py-8", "xl:px-8");
-		const manageableRegion = screen.getByRole("region", { name: "默认和本地技能包" });
+		const manageableRegion = screen.getByRole("region", { name: "默认、本地和普通导入技能包" });
 		expect(manageableRegion.querySelector(".grid")).toHaveClass("lg:grid-cols-2");
 		expect(screen.getAllByRole("article")).toHaveLength(1);
 		expect(
@@ -1029,18 +1048,14 @@ describe("PromptPackEditor", () => {
 		completeSave?.({ canceled: false, path: "/tmp/draft.mgpack" });
 		const completionDialog = await screen.findByRole("alertdialog");
 		expect(screen.getByRole("heading", { name: "技能包已导出" })).toBeInTheDocument();
-		expect(completionDialog).toHaveTextContent(
-			"“draft.mgpack”已保存。前往 MediaGo「我的技能包」上传，设置公开售卖或席位分发并提交审核。",
-		);
+		expect(completionDialog).toHaveTextContent("“draft.mgpack”已保存，可在本地导入或分享。");
 		expect(openExternal).not.toHaveBeenCalled();
 		expect(toastSuccess).not.toHaveBeenCalledWith("技能包已导出", expect.anything());
 
 		fireEvent.click(screen.getByRole("button", { name: "在文件夹中显示" }));
 		await waitFor(() => expect(revealPath).toHaveBeenCalledWith("/tmp/draft.mgpack"));
-		fireEvent.click(screen.getByRole("button", { name: "前往发布" }));
-		await waitFor(() =>
-			expect(openExternal).toHaveBeenCalledWith("http://localhost:4321/account#promptPacks"),
-		);
+		expect(screen.queryByRole("button", { name: "前往发布" })).not.toBeInTheDocument();
+		fireEvent.click(screen.getByRole("button", { name: "完成" }));
 		await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
 		expect(screen.queryByRole("radio", { name: "公开售卖" })).not.toBeInTheDocument();
 		expect(screen.queryByRole("radio", { name: "席位分发" })).not.toBeInTheDocument();
@@ -1063,7 +1078,7 @@ describe("PromptPackEditor", () => {
 		expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
 	});
 
-	it("keeps the publish page closed when export follow-up is deferred", async () => {
+	it("completes export without opening an external site", async () => {
 		vi.mocked(exportPromptPack).mockResolvedValue({
 			blob: new Blob(["MGPK"]),
 			fileName: "draft.mgpack",
@@ -1071,48 +1086,10 @@ describe("PromptPackEditor", () => {
 		renderEditor("/prompt-pack-editor?packId=local.test-pack");
 
 		fireEvent.click(await screen.findByRole("button", { name: "导出" }));
-		fireEvent.click(await screen.findByRole("button", { name: "稍后处理" }));
+		fireEvent.click(await screen.findByRole("button", { name: "完成" }));
 
 		await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
 		expect(openExternal).not.toHaveBeenCalled();
-	});
-
-	it("uses the production publish page when no override is configured", async () => {
-		vi.stubEnv("VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL", "");
-		vi.mocked(exportPromptPack).mockResolvedValue({
-			blob: new Blob(["MGPK"]),
-			fileName: "draft.mgpack",
-		});
-		renderEditor("/prompt-pack-editor?packId=local.test-pack");
-
-		fireEvent.click(await screen.findByRole("button", { name: "导出" }));
-		fireEvent.click(await screen.findByRole("button", { name: "前往发布" }));
-
-		await waitFor(() =>
-			expect(openExternal).toHaveBeenCalledWith(
-				"https://mediago.torchstellar.com/account#promptPacks",
-			),
-		);
-	});
-
-	it("rejects a non-http publish URL instead of handing it to Electron", async () => {
-		vi.stubEnv("VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL", "javascript:alert(1)");
-		vi.mocked(exportPromptPack).mockResolvedValue({
-			blob: new Blob(["MGPK"]),
-			fileName: "draft.mgpack",
-		});
-		renderEditor("/prompt-pack-editor?packId=local.test-pack");
-
-		fireEvent.click(await screen.findByRole("button", { name: "导出" }));
-		fireEvent.click(await screen.findByRole("button", { name: "前往发布" }));
-
-		await waitFor(() =>
-			expect(toastError).toHaveBeenCalledWith("未配置技能包发布地址", {
-				description: "请设置 VITE_MEDIAGO_PROMPT_PACK_PUBLISH_URL 后重试。",
-			}),
-		);
-		expect(openExternal).not.toHaveBeenCalled();
-		expect(screen.getByRole("alertdialog")).toBeInTheDocument();
 	});
 
 	it("opens an incomplete entry and explains which fields block export", async () => {
