@@ -1,12 +1,12 @@
 import { ChevronDown, ChevronUp, LoaderCircle } from "lucide-react";
 import type React from "react";
 import { useId, useMemo, useState } from "react";
-import type { AgentACPPlanEntry, AgentMessage } from "@/domains/agent/stores";
+import type { AgentRuntimePlanEntry, AgentMessage } from "@/domains/agent/stores";
 import { cn } from "@/shared/lib/utils";
 import { PlanBlock } from "../timeline/PlanBlock";
 
 export interface ActiveAgentPlan {
-	entries: AgentACPPlanEntry[];
+	entries: AgentRuntimePlanEntry[];
 	currentStep: number;
 }
 
@@ -87,7 +87,7 @@ export const AgentLivePlan: React.FC<AgentLivePlanProps> = ({ isRunning, message
 	);
 };
 
-const planCurrentEntryIndex = (entries: readonly AgentACPPlanEntry[]) => {
+const planCurrentEntryIndex = (entries: readonly AgentRuntimePlanEntry[]) => {
 	const inProgressIndex = entries.findIndex((entry) => entry.status === "in_progress");
 	if (inProgressIndex >= 0) return inProgressIndex;
 

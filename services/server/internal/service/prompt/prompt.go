@@ -37,9 +37,9 @@ type SkillDescriptor struct {
 	Description string
 }
 
-// BuildWorkspaceACPPrompt renders fixed ACP runtime instructions.
-func BuildWorkspaceACPPrompt(request AgentRunRequest) string {
-	return BuildACPPrompt(request, WorkspacePromptBuildOptions(request))
+// BuildWorkspaceRuntimePrompt renders fixed Runtime runtime instructions.
+func BuildWorkspaceRuntimePrompt(request AgentRunRequest) string {
+	return BuildRuntimePrompt(request, WorkspacePromptBuildOptions(request))
 }
 
 // WorkspacePromptBuildOptions returns the default fixed prompt options.
@@ -49,8 +49,8 @@ func WorkspacePromptBuildOptions(_ AgentRunRequest) PromptBuildOptions {
 	}
 }
 
-// BuildACPPrompt renders fixed runtime instructions for an ACP agent run.
-func BuildACPPrompt(_ AgentRunRequest, options PromptBuildOptions) string {
+// BuildRuntimePrompt renders fixed runtime instructions for an Runtime agent run.
+func BuildRuntimePrompt(_ AgentRunRequest, options PromptBuildOptions) string {
 	descriptors := SectionDescriptors()
 	maxSectionChars := options.MaxSectionChars
 	if maxSectionChars <= 0 {

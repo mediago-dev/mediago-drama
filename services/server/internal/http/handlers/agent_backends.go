@@ -6,7 +6,7 @@ import (
 	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
 )
 
-// AgentBackends handles configured ACP backend routes.
+// AgentBackends handles configured Runtime backend routes.
 type AgentBackends struct {
 	store *serviceagent.AgentBackendService
 }
@@ -18,7 +18,7 @@ func NewAgentBackends(store *serviceagent.AgentBackendService) AgentBackends {
 
 // HandleListBackends godoc
 // @Summary 获取 Agent 后端
-// @Description 返回当前可用的 ACP 兼容 Agent 后端及激活状态。
+// @Description 返回当前可用的 Runtime 兼容 Agent 后端及激活状态。
 // @Tags Agent
 // @Produce json
 // @Success 200 {object} SwaggerEnvelope

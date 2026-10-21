@@ -7,7 +7,7 @@ import {
 	withAgentItemIdentity,
 } from "./conversation";
 import type {
-	AgentACPContentBlock,
+	AgentRuntimeContentBlock,
 	AgentConversationState,
 	AgentItemIdentity,
 	AgentMessage,
@@ -19,7 +19,7 @@ export const upsertRuntimeLogInConversation = (
 	conversation: AgentConversationState,
 	input: {
 		content?: string;
-		outputBlocks?: AgentACPContentBlock[];
+		outputBlocks?: AgentRuntimeContentBlock[];
 		outputJson?: unknown;
 		status?: AgentToolCallStatus;
 		toolCallId?: string;
@@ -124,7 +124,7 @@ const messageStatusFromRuntimeStatus = (
 const isTerminalStatus = (status: AgentToolCallStatus | undefined) =>
 	status === "completed" || status === "failed";
 
-const measureRuntimeLogOutput = (blocks?: AgentACPContentBlock[], outputJson?: unknown) => {
+const measureRuntimeLogOutput = (blocks?: AgentRuntimeContentBlock[], outputJson?: unknown) => {
 	const text = [
 		...(blocks ?? []).map(runtimeLogBlockText),
 		outputJson === undefined ? "" : stringifyOutput(outputJson),
@@ -137,7 +137,7 @@ const measureRuntimeLogOutput = (blocks?: AgentACPContentBlock[], outputJson?: u
 	};
 };
 
-const runtimeLogBlockText = (block: AgentACPContentBlock) => {
+const runtimeLogBlockText = (block: AgentRuntimeContentBlock) => {
 	if (block.type === "diff") return [block.oldText, block.newText].filter(Boolean).join("\n");
 	return block.text ?? block.terminalId ?? "";
 };

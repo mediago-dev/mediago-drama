@@ -48,21 +48,22 @@ type AgentSessionsResponse struct {
 
 // AgentSessionStatus is the current run status for an agent session.
 type AgentSessionStatus struct {
-	SessionID          string                      `json:"sessionId"`
-	ProjectID          string                      `json:"-"`
-	RunID              string                      `json:"-"`
-	Running            bool                        `json:"running"`
-	LastStatus         string                      `json:"lastStatus,omitempty"`
-	LastMessage        string                      `json:"lastMessage,omitempty"`
-	PendingPermissions []AgentACPPermissionRequest `json:"pendingPermissions,omitempty"`
+	SessionID          string                          `json:"sessionId"`
+	ProjectID          string                          `json:"-"`
+	RunID              string                          `json:"-"`
+	Running            bool                            `json:"running"`
+	LastStatus         string                          `json:"lastStatus,omitempty"`
+	LastMessage        string                          `json:"lastMessage,omitempty"`
+	PendingPermissions []AgentRuntimePermissionRequest `json:"pendingPermissions,omitempty"`
 }
 
-// AgentPermissionDecisionRequest resolves one ACP permission request.
+// AgentPermissionDecisionRequest resolves one Runtime permission request.
 type AgentPermissionDecisionRequest struct {
-	SessionID string `json:"sessionId"`
-	RequestID string `json:"requestId"`
-	OptionID  string `json:"optionId,omitempty"`
-	Cancelled bool   `json:"cancelled,omitempty"`
+	SessionID string              `json:"sessionId"`
+	RequestID string              `json:"requestId"`
+	OptionID  string              `json:"optionId,omitempty"`
+	Cancelled bool                `json:"cancelled,omitempty"`
+	Answers   map[string][]string `json:"answers,omitempty"`
 }
 
 // AgentDocumentContext is the compact document context sent to agent runtimes.
@@ -78,14 +79,14 @@ type AgentDocumentContext struct {
 
 // AgentChatStateResponse is the full chat projection returned to the workspace UI.
 type AgentChatStateResponse struct {
-	ProjectID          string                      `json:"projectId,omitempty"`
-	SessionID          string                      `json:"sessionId,omitempty"`
-	Running            bool                        `json:"running,omitempty"`
-	Messages           []AgentChatMessageRecord    `json:"messages"`
-	Activity           []AgentChatActivityRecord   `json:"activity"`
-	PendingPermissions []AgentACPPermissionRequest `json:"pendingPermissions,omitempty"`
-	LastEventID        string                      `json:"lastEventId,omitempty"`
-	UpdatedAt          string                      `json:"updatedAt,omitempty"`
+	ProjectID          string                          `json:"projectId,omitempty"`
+	SessionID          string                          `json:"sessionId,omitempty"`
+	Running            bool                            `json:"running,omitempty"`
+	Messages           []AgentChatMessageRecord        `json:"messages"`
+	Activity           []AgentChatActivityRecord       `json:"activity"`
+	PendingPermissions []AgentRuntimePermissionRequest `json:"pendingPermissions,omitempty"`
+	LastEventID        string                          `json:"lastEventId,omitempty"`
+	UpdatedAt          string                          `json:"updatedAt,omitempty"`
 }
 
 // AgentChatAppendRequest appends chat messages.
@@ -181,8 +182,8 @@ type AgentEvent struct {
 	Phase             AgentMessagePhase                     `json:"phase,omitempty"`
 	Delta             string                                `json:"delta,omitempty"`
 	Content           string                                `json:"content,omitempty"`
-	ACPSessionID      string                                `json:"acpSessionId,omitempty"`
-	ACP               *AgentACPEvent                        `json:"acp,omitempty"`
+	CodexThreadID     string                                `json:"codexThreadId,omitempty"`
+	Runtime           *AgentRuntimeEvent                    `json:"runtime,omitempty"`
 	DocumentEdit      *AgentDocumentEditEvent               `json:"documentEdit,omitempty"`
 	DocumentSelection *mediamcp.AgentDocumentSelectionEvent `json:"documentSelection,omitempty"`
 	DocumentProposal  *AgentDocumentProposal                `json:"documentProposal,omitempty"`
@@ -215,25 +216,25 @@ type AgentA2UIPayload struct {
 	Intent    json.RawMessage `json:"intent,omitempty"`
 }
 
-// AgentACPEvent describes one ACP runtime event.
-type AgentACPEvent struct {
-	Kind              string                     `json:"kind"`
-	ToolCallID        string                     `json:"toolCallId,omitempty"`
-	ToolKind          string                     `json:"toolKind,omitempty"`
-	Title             string                     `json:"title,omitempty"`
-	Status            string                     `json:"status,omitempty"`
-	Locations         []AgentACPLocation         `json:"locations,omitempty"`
-	RawInput          json.RawMessage            `json:"rawInput,omitempty"`
-	RawOutput         json.RawMessage            `json:"rawOutput,omitempty"`
-	Content           []AgentACPContentBlock     `json:"content,omitempty"`
-	Thought           string                     `json:"thought,omitempty"`
-	Plan              []AgentACPPlanEntry        `json:"plan,omitempty"`
-	PermissionRequest *AgentACPPermissionRequest `json:"permissionRequest,omitempty"`
-	RuntimeAlert      *AgentACPRuntimeAlert      `json:"runtimeAlert,omitempty"`
+// AgentRuntimeEvent describes one Runtime runtime event.
+type AgentRuntimeEvent struct {
+	Kind              string                         `json:"kind"`
+	ToolCallID        string                         `json:"toolCallId,omitempty"`
+	ToolKind          string                         `json:"toolKind,omitempty"`
+	Title             string                         `json:"title,omitempty"`
+	Status            string                         `json:"status,omitempty"`
+	Locations         []AgentRuntimeLocation         `json:"locations,omitempty"`
+	RawInput          json.RawMessage                `json:"rawInput,omitempty"`
+	RawOutput         json.RawMessage                `json:"rawOutput,omitempty"`
+	Content           []AgentRuntimeContentBlock     `json:"content,omitempty"`
+	Thought           string                         `json:"thought,omitempty"`
+	Plan              []AgentRuntimePlanEntry        `json:"plan,omitempty"`
+	PermissionRequest *AgentRuntimePermissionRequest `json:"permissionRequest,omitempty"`
+	RuntimeAlert      *AgentRuntimeAlert             `json:"runtimeAlert,omitempty"`
 }
 
-// AgentACPRuntimeAlert describes an important ACP runtime alert shown in chat.
-type AgentACPRuntimeAlert struct {
+// AgentRuntimeAlert describes an important Runtime runtime alert shown in chat.
+type AgentRuntimeAlert struct {
 	Severity string `json:"severity,omitempty"`
 	Title    string `json:"title"`
 	Message  string `json:"message"`
@@ -241,31 +242,50 @@ type AgentACPRuntimeAlert struct {
 	Detail   string `json:"detail,omitempty"`
 }
 
-// AgentACPPermissionRequest describes an ACP per-tool permission request.
-type AgentACPPermissionRequest struct {
-	RequestID string                     `json:"requestId"`
-	ToolCall  *AgentACPToolCallSummary   `json:"toolCall,omitempty"`
-	Options   []AgentACPPermissionOption `json:"options"`
-	CreatedAt string                     `json:"createdAt,omitempty"`
+// AgentRuntimePermissionRequest describes an Runtime per-tool permission request.
+type AgentRuntimePermissionRequest struct {
+	RequestID string                         `json:"requestId"`
+	ToolCall  *AgentRuntimeToolCallSummary   `json:"toolCall,omitempty"`
+	Options   []AgentRuntimePermissionOption `json:"options"`
+	CreatedAt string                         `json:"createdAt,omitempty"`
+	Questions []AgentInputQuestion           `json:"questions,omitempty"`
+	URL       string                         `json:"url,omitempty"`
 }
 
-// AgentACPToolCallSummary describes the tool asking for permission.
-type AgentACPToolCallSummary struct {
+// AgentInputQuestion describes a structured question from Codex or an MCP server.
+type AgentInputQuestion struct {
+	ID       string             `json:"id"`
+	Header   string             `json:"header,omitempty"`
+	Question string             `json:"question"`
+	Secret   bool               `json:"secret,omitempty"`
+	Required bool               `json:"required,omitempty"`
+	Type     string             `json:"type,omitempty"`
+	Options  []AgentInputOption `json:"options,omitempty"`
+}
+
+// AgentInputOption describes one answer option.
+type AgentInputOption struct {
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+// AgentRuntimeToolCallSummary describes the tool asking for permission.
+type AgentRuntimeToolCallSummary struct {
 	ID     string `json:"id,omitempty"`
 	Title  string `json:"title,omitempty"`
 	Kind   string `json:"kind,omitempty"`
 	Status string `json:"status,omitempty"`
 }
 
-// AgentACPPermissionOption describes one selectable permission outcome.
-type AgentACPPermissionOption struct {
+// AgentRuntimePermissionOption describes one selectable permission outcome.
+type AgentRuntimePermissionOption struct {
 	OptionID string `json:"optionId"`
 	Kind     string `json:"kind"`
 	Name     string `json:"name"`
 }
 
-// AgentACPContentBlock describes ACP tool-call content.
-type AgentACPContentBlock struct {
+// AgentRuntimeContentBlock describes Runtime tool-call content.
+type AgentRuntimeContentBlock struct {
 	Type       string `json:"type"`
 	Text       string `json:"text,omitempty"`
 	Path       string `json:"path,omitempty"`
@@ -275,14 +295,14 @@ type AgentACPContentBlock struct {
 	TerminalID string `json:"terminalId,omitempty"`
 }
 
-// AgentACPLocation describes a source location from ACP.
-type AgentACPLocation struct {
+// AgentRuntimeLocation describes a source location from Runtime.
+type AgentRuntimeLocation struct {
 	Path string `json:"path"`
 	Line *int   `json:"line,omitempty"`
 }
 
-// AgentACPPlanEntry describes one ACP plan entry.
-type AgentACPPlanEntry struct {
+// AgentRuntimePlanEntry describes one Runtime plan entry.
+type AgentRuntimePlanEntry struct {
 	Content  string `json:"content"`
 	Status   string `json:"status"`
 	Priority string `json:"priority,omitempty"`
@@ -342,27 +362,27 @@ type AgentMessageRequest struct {
 	// DisplayMetadata carries structured rendering data for the transcript
 	// bubble (attachment cards, mention/skill chips). Stored verbatim on the
 	// projected user message.
-	DisplayMetadata map[string]any             `json:"displayMetadata,omitempty"`
-	AgentTag        string                     `json:"-"`
-	SystemPrompt    string                     `json:"-"`
-	AnchorText      string                     `json:"anchorText,omitempty"`
-	CommentID       string                     `json:"commentId,omitempty"`
-	Comments        []mediamcp.DocumentComment `json:"comments,omitempty"`
-	Document        *AgentDocumentContext      `json:"document,omitempty"`
-	Documents       []AgentDocumentContext     `json:"documents,omitempty"`
-	References      []AgentReference           `json:"references,omitempty"`
-	SelectionText   string                     `json:"selectionText,omitempty"`
-	Model           AgentACPConfigSelection    `json:"model,omitempty"`
-	Reasoning       AgentACPConfigSelection    `json:"reasoning,omitempty"`
-	Permission      AgentACPConfigSelection    `json:"permission,omitempty"`
+	DisplayMetadata map[string]any              `json:"displayMetadata,omitempty"`
+	AgentTag        string                      `json:"-"`
+	SystemPrompt    string                      `json:"-"`
+	AnchorText      string                      `json:"anchorText,omitempty"`
+	CommentID       string                      `json:"commentId,omitempty"`
+	Comments        []mediamcp.DocumentComment  `json:"comments,omitempty"`
+	Document        *AgentDocumentContext       `json:"document,omitempty"`
+	Documents       []AgentDocumentContext      `json:"documents,omitempty"`
+	References      []AgentReference            `json:"references,omitempty"`
+	SelectionText   string                      `json:"selectionText,omitempty"`
+	Model           AgentRuntimeConfigSelection `json:"model,omitempty"`
+	Reasoning       AgentRuntimeConfigSelection `json:"reasoning,omitempty"`
+	Permission      AgentRuntimeConfigSelection `json:"permission,omitempty"`
 }
 
 // AgentRunRequest is the normalized runtime request passed to an agent runner.
 type AgentRunRequest struct {
 	SessionID             string
 	RunID                 string
-	ACPSessionID          string
-	ACPInstructionHash    string
+	CodexThreadID         string
+	CodexInstructionHash  string
 	ProjectID             string
 	Prompt                string
 	AgentTag              string
@@ -380,23 +400,23 @@ type AgentRunRequest struct {
 	BridgeURL             string
 	BridgeToken           string
 	DocumentMCPConfigPath string
-	Model                 AgentACPConfigSelection
-	Reasoning             AgentACPConfigSelection
-	Permission            AgentACPConfigSelection
+	Model                 AgentRuntimeConfigSelection
+	Reasoning             AgentRuntimeConfigSelection
+	Permission            AgentRuntimeConfigSelection
 }
 
 // AgentRunResult is returned by an agent runner.
 type AgentRunResult struct {
-	ACPSessionID       string
-	ACPInstructionHash string
-	Message            string
-	MessageItemID      string
-	StreamedMessage    bool
-	DocumentProposal   *AgentDocumentProposal
-	A2UI               *AgentA2UIPayload
+	CodexThreadID        string
+	CodexInstructionHash string
+	Message              string
+	MessageItemID        string
+	StreamedMessage      bool
+	DocumentProposal     *AgentDocumentProposal
+	A2UI                 *AgentA2UIPayload
 }
 
-// AgentFinalResponse is the JSON shape an ACP agent may emit at the end of a turn.
+// AgentFinalResponse is the JSON shape an Runtime agent may emit at the end of a turn.
 type AgentFinalResponse struct {
 	Message          string                 `json:"message"`
 	ProposedDocument *AgentDocumentProposal `json:"proposedDocument"`
@@ -408,8 +428,8 @@ type AgentMessageResponse struct {
 	Accepted bool `json:"accepted"`
 }
 
-// AgentACPConfigSelection selects an ACP runtime config option.
-type AgentACPConfigSelection struct {
+// AgentRuntimeConfigSelection selects an Runtime runtime config option.
+type AgentRuntimeConfigSelection struct {
 	ConfigID string `json:"configId,omitempty"`
 	Source   string `json:"source,omitempty"`
 	Value    string `json:"value,omitempty"`

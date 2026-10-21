@@ -107,7 +107,10 @@ describe("SectionMediaPreview", () => {
 
 	it("renders section media URLs against the packaged desktop server", () => {
 		vi.stubEnv("DEV", false);
-		window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
+		window.mediagoDesktop = {
+			isElectron: true,
+			serverOrigin: "http://127.0.0.1:49157",
+		} as typeof window.mediagoDesktop;
 		const editor = new Editor({
 			extensions: [StarterKit, SectionMediaPreview, Markdown],
 			content: "[章节视频：陈远](</api/v1/media-assets/video-1/content>)",
@@ -118,7 +121,7 @@ describe("SectionMediaPreview", () => {
 
 		expect(screen.getByTestId("video-player")).toHaveAttribute(
 			"data-src",
-			"http://127.0.0.1:48273/api/v1/media-assets/video-1/content",
+			"http://127.0.0.1:49157/api/v1/media-assets/video-1/content",
 		);
 		expect(editor.getMarkdown()).toContain(
 			"[章节视频：陈远](</api/v1/media-assets/video-1/content>)",

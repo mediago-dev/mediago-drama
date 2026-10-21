@@ -215,8 +215,8 @@ func (fakeStreamingDocumentAgentRunner) Run(_ context.Context, request agentRunR
 		documentID = request.Document.ID
 	}
 	return agentRunResult{
-		ACPSessionID: "acp-stream-session",
-		Message:      "第一幕已改写。",
+		CodexThreadID: "runtime-stream-session",
+		Message:       "第一幕已改写。",
 		DocumentProposal: &agentDocumentProposal{
 			DocumentID: documentID,
 			Content:    "# 第一幕\n\n新正文",

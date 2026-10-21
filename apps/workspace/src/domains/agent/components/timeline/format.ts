@@ -1,4 +1,4 @@
-import type { AgentACPContentBlock } from "@/domains/agent/stores";
+import type { AgentRuntimeContentBlock } from "@/domains/agent/stores";
 
 export type DiffLine =
 	| { kind: "add" | "remove"; text: string }
@@ -43,7 +43,7 @@ export const cleanToolTitle = (title: string, toolCallId?: string) => {
 	return trimmed;
 };
 
-export const outputBlockPlainText = (block: AgentACPContentBlock) => {
+export const outputBlockPlainText = (block: AgentRuntimeContentBlock) => {
 	if (block.type === "diff") return [block.oldText, block.newText].filter(Boolean).join("\n");
 	return block.text || block.terminalId || "";
 };

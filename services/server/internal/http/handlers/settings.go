@@ -216,7 +216,7 @@ func (handler Settings) HandleDeleteCodexAccount(context *gin.Context) {
 
 // HandleCodexRelaySettings godoc
 // @Summary 获取 Codex 中转配置
-// @Description 返回 Codex ACP 使用的中转配置和脱敏密钥状态。
+// @Description 返回 Codex Runtime 使用的中转配置和脱敏密钥状态。
 // @Tags Settings
 // @Produce json
 // @Success 200 {object} SwaggerEnvelope
@@ -234,7 +234,7 @@ func (handler Settings) HandleCodexRelaySettings(context *gin.Context) {
 
 // HandlePutCodexRelaySettings godoc
 // @Summary 保存 Codex 中转配置
-// @Description 保存 Codex ACP 使用的非密钥中转配置。
+// @Description 保存 Codex Runtime 使用的非密钥中转配置。
 // @Tags Settings
 // @Accept json
 // @Produce json
@@ -346,7 +346,7 @@ func (handler Settings) HandleDeleteCodexRelayProfileAPIKey(context *gin.Context
 
 // HandleCodexRelayProxy godoc
 // @Summary Codex 中转代理
-// @Description 将 Codex ACP 发出的 Responses 兼容请求代理到当前启用的中转平台。
+// @Description 将 Codex Runtime 发出的 Responses 兼容请求代理到当前启用的中转平台。
 // @Tags Settings
 // @Accept json
 // @Produce json

@@ -1,193 +1,66 @@
 package agent
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
-func TestAgentBackendServiceDefaultsToCodex(t *testing.T) {
-	store := NewAgentBackendService("")
-
-	payload := store.ListBackends()
-	if payload.ActiveID != "codex" {
-		t.Fatalf("ActiveID = %q, want codex", payload.ActiveID)
+func TestAgentBackendServiceOnlyOffersCodex(t *testing.T) {
+	s := NewAgentBackendServiceWithBinDir("", t.TempDir(), "retired-backend")
+	p := s.ListBackends()
+	if p.ActiveID != "codex" || len(p.Backends) != 1 || p.Backends[0].Command != "codex app-server" {
+		t.Fatalf("unexpected backends: %#v", p)
 	}
-	if len(payload.Backends) != 2 {
-		t.Fatalf("len(Backends) = %d, want 2", len(payload.Backends))
+	if _, err := s.CodexExecutable(); err == nil {
+		t.Fatal("missing bundle must fail")
 	}
-	if command := store.ActiveCommand(); command != "codex-acp" {
-		t.Fatalf("ActiveCommand() = %q, want codex-acp", command)
-	}
-	assertArgv(t, store.ActiveArgv(), []string{"codex-acp"})
-}
-
-func TestAgentBackendServiceMatchesInitialBuiltinCommand(t *testing.T) {
-	store := NewAgentBackendService("  opencode   acp  ")
-
-	payload := store.ListBackends()
-	if payload.ActiveID != "opencode" {
-		t.Fatalf("ActiveID = %q, want opencode", payload.ActiveID)
-	}
-	if command := store.ActiveCommand(); command != "opencode acp" {
-		t.Fatalf("ActiveCommand() = %q, want opencode command", command)
-	}
-	assertArgv(t, store.ActiveArgv(), []string{"opencode", "acp"})
-}
-
-func TestAgentBackendServiceKeepsCustomInitialCommand(t *testing.T) {
-	store := NewAgentBackendService("custom-acp --profile local")
-
-	payload := store.ListBackends()
-	if payload.ActiveID != "custom" {
-		t.Fatalf("ActiveID = %q, want custom", payload.ActiveID)
-	}
-	if len(payload.Backends) != 3 {
-		t.Fatalf("len(Backends) = %d, want 3", len(payload.Backends))
-	}
-	if command := store.ActiveCommand(); command != "custom-acp --profile local" {
-		t.Fatalf("ActiveCommand() = %q, want custom command", command)
-	}
-	assertArgv(t, store.ActiveArgv(), []string{"custom-acp", "--profile", "local"})
-}
-
-func TestAgentBackendServiceUsesInitialActiveBackendID(t *testing.T) {
-	store := NewAgentBackendServiceWithBinDir("", "", "opencode")
-
-	payload := store.ListBackends()
-	if payload.ActiveID != "opencode" {
-		t.Fatalf("ActiveID = %q, want opencode", payload.ActiveID)
-	}
-	assertArgv(t, store.ActiveArgv(), []string{"opencode", "acp"})
-}
-
-func TestAgentBackendServiceFallsBackWhenManifestMissing(t *testing.T) {
-	binDir := filepath.Join(t.TempDir(), "agent dist")
-	store := NewAgentBackendServiceWithBinDir("", binDir, "opencode")
-
-	assertArgv(t, store.ActiveArgv(), []string{"opencode", "acp"})
-}
-
-func TestAgentBackendServiceReadsVendoredManifest(t *testing.T) {
-	binDir := filepath.Join(t.TempDir(), "agent dist")
-	agentDir := filepath.Join(binDir, "opencode")
-	if err := os.MkdirAll(agentDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	manifest := `{"id":"opencode","bin":"opencode","args":["acp"],"version":"v1.2.3"}`
-	if err := os.WriteFile(filepath.Join(agentDir, "agent.json"), []byte(manifest), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	store := NewAgentBackendServiceWithBinDir("", binDir, "opencode")
-
-	assertArgv(t, store.ActiveArgv(), []string{filepath.Join(binDir, "opencode", "opencode"), "acp"})
-}
-
-func TestAgentBackendServiceKeepsSpacesInsideVendoredExecutablePath(t *testing.T) {
-	binDir := filepath.Join(t.TempDir(), "MediaGo Drama Resources")
-	agentDir := filepath.Join(binDir, "codex")
-	if err := os.MkdirAll(agentDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	manifest := `{"id":"codex","bin":"codex-acp","args":[],"version":"1.1.2"}`
-	if err := os.WriteFile(filepath.Join(agentDir, "agent.json"), []byte(manifest), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	store := NewAgentBackendServiceWithBinDir("", binDir, "codex")
-	argv := store.ActiveArgv()
-
-	assertArgv(t, argv, []string{filepath.Join(binDir, "codex", "codex-acp")})
-	if len(argv) != 1 {
-		t.Fatalf("len(ActiveArgv()) = %d, want 1", len(argv))
+	if s.ActiveCommand() != "" {
+		t.Fatal("must not fall back to a global executable")
 	}
 }
-
-func TestAgentBackendServiceResolvesVendoredCodexEnvironment(t *testing.T) {
-	binDir := filepath.Join(t.TempDir(), "MediaGo Drama Resources")
-	agentDir := filepath.Join(binDir, "codex")
-	if err := os.MkdirAll(agentDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
+func TestAgentBackendServiceUsesNativeBinaryWithSpaces(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "MediaGo Drama Resources")
+	name := "codex"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
 	}
-	manifest := `{"id":"codex","bin":"codex-acp","args":[],"version":"1.1.2","codexBin":"codex/vendor/aarch64-apple-darwin/bin/codex","codexVersion":"0.144.0"}`
-	if err := os.WriteFile(filepath.Join(agentDir, "agent.json"), []byte(manifest), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
+	relative := filepath.Join("runtime", "bin", name)
+	path := filepath.Join(dir, "codex", relative)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
 	}
-
-	store := NewAgentBackendServiceWithBinDir("", binDir, "codex")
-	env := store.ActiveEnv()
-	want := filepath.Join(agentDir, "codex", "vendor", "aarch64-apple-darwin", "bin", "codex")
-	if env["CODEX_PATH"] != want {
-		t.Fatalf("CODEX_PATH = %q, want %q", env["CODEX_PATH"], want)
+	if err := os.WriteFile(path, []byte("binary"), 0755); err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := env["DEFAULT_AUTH_REQUEST"]; ok {
-		t.Fatalf("vendored backend env should not force an authentication method: %#v", env)
+	manifest, _ := json.Marshal(agentManifest{ID: "codex", Bin: relative, CodexBin: relative, Version: "0.144.0"})
+	if err := os.WriteFile(filepath.Join(dir, "codex", "agent.json"), manifest, 0600); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestAgentBackendServiceCodexExecutable(t *testing.T) {
-	binDir := t.TempDir()
-	agentDir := filepath.Join(binDir, "codex")
-	codexPath := filepath.Join(agentDir, "vendor", "bin", "codex")
-	if err := os.MkdirAll(filepath.Dir(codexPath), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	manifest := `{"id":"codex","bin":"codex-acp","args":[],"version":"1.1.2","codexBin":"vendor/bin/codex"}`
-	if err := os.WriteFile(filepath.Join(agentDir, "agent.json"), []byte(manifest), 0o644); err != nil {
-		t.Fatalf("WriteFile(agent.json) error = %v", err)
-	}
-	if err := os.WriteFile(codexPath, []byte("binary"), 0o755); err != nil {
-		t.Fatalf("WriteFile(codex) error = %v", err)
-	}
-
-	store := NewAgentBackendServiceWithBinDir("", binDir, "opencode")
-	got, err := store.CodexExecutable()
+	s := NewAgentBackendServiceWithBinDir("", dir, "")
+	got, err := s.CodexExecutable()
 	if err != nil {
-		t.Fatalf("CodexExecutable() error = %v", err)
+		t.Fatal(err)
 	}
-	if got != codexPath {
-		t.Fatalf("CodexExecutable() = %q, want %q", got, codexPath)
-	}
-}
-
-func TestAgentBackendServiceCodexExecutableRejectsMissingBinary(t *testing.T) {
-	binDir := t.TempDir()
-	agentDir := filepath.Join(binDir, "codex")
-	if err := os.MkdirAll(agentDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	manifest := `{"id":"codex","bin":"codex-acp","args":[],"version":"1.1.2","codexBin":"vendor/bin/codex"}`
-	if err := os.WriteFile(filepath.Join(agentDir, "agent.json"), []byte(manifest), 0o644); err != nil {
-		t.Fatalf("WriteFile(agent.json) error = %v", err)
-	}
-
-	store := NewAgentBackendServiceWithBinDir("", binDir, "codex")
-	if _, err := store.CodexExecutable(); err == nil {
-		t.Fatal("CodexExecutable() error = nil, want missing binary error")
+	if got != path || !reflect.DeepEqual(s.ActiveArgv(), []string{path}) {
+		t.Fatalf("native argv: %#v", s.ActiveArgv())
 	}
 }
-
-func TestLoadAgentManifestRejectsEscapingCodexPath(t *testing.T) {
-	binDir := t.TempDir()
-	agentDir := filepath.Join(binDir, "codex")
-	if err := os.MkdirAll(agentDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	manifest := `{"id":"codex","bin":"codex-acp","args":[],"version":"1.1.2","codexBin":"../codex"}`
-	if err := os.WriteFile(filepath.Join(agentDir, "agent.json"), []byte(manifest), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	if _, err := loadAgentManifest(binDir, "codex"); err == nil {
-		t.Fatal("loadAgentManifest() error = nil, want escaping path rejection")
+func TestAgentBackendRejectsInvalidManifestPaths(t *testing.T) {
+	for _, path := range []string{"", "../outside", `..\outside`, "/absolute", `C:\outside`, "a/../../b"} {
+		t.Run(path, func(t *testing.T) {
+			if _, err := cleanAgentManifestPath(path); err == nil {
+				t.Fatalf("accepted %q", path)
+			}
+		})
 	}
 }
-
-func assertArgv(t *testing.T, got []string, want []string) {
-	t.Helper()
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("ActiveArgv() = %#v, want %#v", got, want)
+func TestAgentBackendRejectsShellCommand(t *testing.T) {
+	s := NewAgentBackendService("codex --dangerously-bypass-approvals-and-sandbox")
+	if _, err := s.CodexExecutable(); err == nil {
+		t.Fatal("configuration must be one executable path")
 	}
 }

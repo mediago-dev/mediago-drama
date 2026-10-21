@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -21,23 +20,16 @@ import (
 )
 
 const (
-	bunCompileAttempts = 3
-	defaultAgentID     = "codex"
-	npmRegistryURL     = "https://registry.npmjs.org"
+	defaultAgentID = "codex"
+	npmRegistryURL = "https://registry.npmjs.org"
 )
 
 type agentSpec struct {
-	Distribution string   `json:"distribution,omitempty"`
-	Repo         string   `json:"repo,omitempty"`
-	Package      string   `json:"package,omitempty"`
-	Bin          string   `json:"bin"`
-	Args         []string `json:"args"`
-	Version      string   `json:"version"`
-	CodexPackage string   `json:"codexPackage,omitempty"`
-	CodexVersion string   `json:"codexVersion,omitempty"`
-	BunVersion   string   `json:"bunVersion,omitempty"`
+	Package string   `json:"package"`
+	Bin     string   `json:"bin"`
+	Args    []string `json:"args"`
+	Version string   `json:"version"`
 }
-
 type agentManifest struct {
 	ID           string   `json:"id"`
 	Bin          string   `json:"bin"`
@@ -46,321 +38,8 @@ type agentManifest struct {
 	CodexBin     string   `json:"codexBin,omitempty"`
 	CodexVersion string   `json:"codexVersion,omitempty"`
 }
-
-type codexBundlePlatform struct {
-	BunTarget           string
-	CodexPackageVersion string
-	CodexTarget         string
-	CodexBin            string
-}
-
-type platform struct {
-	OS   string
-	Arch string
-}
-
-func main() {
-	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-}
-
-func run(args []string) error {
-	flags := flag.NewFlagSet("prepare-agent", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
-	agentID := flags.String("agent", defaultAgentID, "Agent id to prepare: codex or opencode")
-	targetPlatform := flags.String("platform", "", "Target platform to prepare, e.g. darwin-arm64 or windows-x64")
-	root := flags.String("root", "", "Vendor directory containing agents.json")
-	if err := flags.Parse(args); err != nil {
-		return err
-	}
-	if flags.NArg() > 1 {
-		return fmt.Errorf("unexpected arguments: %s", strings.Join(flags.Args(), " "))
-	}
-	if flags.NArg() == 1 && strings.TrimSpace(*agentID) == defaultAgentID {
-		*agentID = flags.Arg(0)
-	}
-
-	vendorDir, err := resolveVendorDir(*root)
-	if err != nil {
-		return err
-	}
-	specs, err := loadAgentSpecs(filepath.Join(vendorDir, "agents.json"))
-	if err != nil {
-		return err
-	}
-
-	agentIDValue := strings.TrimSpace(*agentID)
-	spec, ok := specs[agentIDValue]
-	if !ok {
-		return fmt.Errorf("unsupported agent %q; must be one of: %s", agentIDValue, strings.Join(agentIDs(specs), ", "))
-	}
-
-	currentPlatform, err := resolvePlatform(*targetPlatform)
-	if err != nil {
-		return err
-	}
-	tag := strings.TrimSpace(spec.Version)
-	if tag == "" {
-		return fmt.Errorf("agent %q has no pinned version in agents.json", agentIDValue)
-	}
-	spec.Bin = agentBinaryName(spec.Bin, currentPlatform)
-
-	distDir := filepath.Join(vendorDir, "dist", agentIDValue)
-	if strings.TrimSpace(*targetPlatform) != "" {
-		distDir = filepath.Join(vendorDir, "dist", currentPlatform.String(), agentIDValue)
-	}
-	if strings.TrimSpace(spec.Distribution) == "npm-bundle" {
-		if agentIDValue != "codex" {
-			return fmt.Errorf("npm-bundle distribution is only supported for codex")
-		}
-		bundlePlatform, err := codexNPMBundlePlatform(currentPlatform, spec.CodexVersion)
-		if err != nil {
-			return err
-		}
-		expected := agentManifest{
-			ID:           agentIDValue,
-			Bin:          spec.Bin,
-			Args:         spec.Args,
-			Version:      tag,
-			CodexBin:     bundlePlatform.CodexBin,
-			CodexVersion: strings.TrimSpace(spec.CodexVersion),
-		}
-		return prepareCodexNPMBundle(spec, bundlePlatform, expected, distDir)
-	}
-
-	asset, err := releaseAssetName(agentIDValue, tag, currentPlatform)
-	if err != nil {
-		return err
-	}
-	if err := prepareAgent(agentIDValue, spec, tag, asset, distDir); err != nil {
-		return err
-	}
-	return nil
-}
-
-func prepareCodexNPMBundle(spec agentSpec, bundlePlatform codexBundlePlatform, expected agentManifest, distDir string) error {
-	if cached, err := hasPreparedAgent(distDir, expected); err != nil {
-		return err
-	} else if cached {
-		fmt.Printf("Using cached codex@%s with Codex %s in %s\n", expected.Version, expected.CodexVersion, distDir)
-		return nil
-	}
-
-	packageName := strings.TrimSpace(spec.Package)
-	codexPackage := strings.TrimSpace(spec.CodexPackage)
-	bunVersion := strings.TrimSpace(spec.BunVersion)
-	if packageName == "" || codexPackage == "" || bunVersion == "" {
-		return fmt.Errorf("codex npm bundle requires package, codexPackage, and bunVersion")
-	}
-
-	tmpDir, err := os.MkdirTemp("", "mediago-codex-agent-*")
-	if err != nil {
-		return fmt.Errorf("creating Codex agent temp dir: %w", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	client := &http.Client{Timeout: 10 * time.Minute}
-	adapterTarball, err := npmPackageTarballURL(client, npmRegistryURL, packageName, strings.TrimPrefix(expected.Version, "v"))
-	if err != nil {
-		return err
-	}
-	codexTarball, err := npmPackageTarballURL(client, npmRegistryURL, codexPackage, bundlePlatform.CodexPackageVersion)
-	if err != nil {
-		return err
-	}
-
-	adapterArchive := filepath.Join(tmpDir, "adapter.tgz")
-	codexArchive := filepath.Join(tmpDir, "codex.tgz")
-	fmt.Printf("Downloading %s@%s\n", packageName, expected.Version)
-	if err := downloadURL(client, adapterTarball, adapterArchive); err != nil {
-		return err
-	}
-	fmt.Printf("Downloading %s@%s\n", codexPackage, bundlePlatform.CodexPackageVersion)
-	if err := downloadURL(client, codexTarball, codexArchive); err != nil {
-		return err
-	}
-
-	adapterExtract := filepath.Join(tmpDir, "adapter")
-	codexExtract := filepath.Join(tmpDir, "codex")
-	if err := extractArchive(adapterArchive, adapterExtract); err != nil {
-		return err
-	}
-	if err := extractArchive(codexArchive, codexExtract); err != nil {
-		return err
-	}
-	adapterEntry := filepath.Join(adapterExtract, "package", "dist", "index.js")
-	if info, statErr := os.Stat(adapterEntry); statErr != nil || info.IsDir() {
-		if statErr == nil {
-			statErr = fmt.Errorf("entry is a directory")
-		}
-		return fmt.Errorf("locating Codex ACP npm entry %s: %w", adapterEntry, statErr)
-	}
-	codexVendorSource := filepath.Join(codexExtract, "package", "vendor", bundlePlatform.CodexTarget)
-	if info, statErr := os.Stat(codexVendorSource); statErr != nil || !info.IsDir() {
-		if statErr == nil {
-			statErr = fmt.Errorf("vendor target is not a directory")
-		}
-		return fmt.Errorf("locating Codex npm vendor target %s: %w", codexVendorSource, statErr)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(distDir), 0o755); err != nil {
-		return fmt.Errorf("creating agent dist parent: %w", err)
-	}
-	stagingDir, err := os.MkdirTemp(filepath.Dir(distDir), ".codex-stage-*")
-	if err != nil {
-		return fmt.Errorf("creating Codex staging dir: %w", err)
-	}
-	defer os.RemoveAll(stagingDir)
-
-	adapterOutput := filepath.Join(stagingDir, expected.Bin)
-	if err := compileCodexACPWithBun(adapterEntry, adapterOutput, bunVersion, bundlePlatform.BunTarget); err != nil {
-		return err
-	}
-	codexVendorDest := filepath.Join(stagingDir, "codex", "vendor", bundlePlatform.CodexTarget)
-	if err := copyDirectory(codexVendorSource, codexVendorDest); err != nil {
-		return fmt.Errorf("installing Codex vendor target: %w", err)
-	}
-	if err := writeManifest(stagingDir, expected); err != nil {
-		return err
-	}
-	if err := ensureExecutable(adapterOutput); err != nil {
-		return fmt.Errorf("validating compiled Codex ACP: %w", err)
-	}
-	if err := ensureExecutable(filepath.Join(stagingDir, expected.CodexBin)); err != nil {
-		return fmt.Errorf("validating packaged Codex: %w", err)
-	}
-
-	if err := os.RemoveAll(distDir); err != nil {
-		return fmt.Errorf("cleaning %s: %w", distDir, err)
-	}
-	if err := os.Rename(stagingDir, distDir); err != nil {
-		return fmt.Errorf("installing prepared Codex agent: %w", err)
-	}
-	fmt.Printf("Prepared codex@%s with Codex %s in %s\n", expected.Version, expected.CodexVersion, distDir)
-	return nil
-}
-
-func compileCodexACPWithBun(entry string, output string, bunVersion string, target string) error {
-	npx, err := exec.LookPath("npx")
-	if err != nil {
-		return fmt.Errorf("finding npx for pinned Bun build: %w", err)
-	}
-
-	workDir, cleanup, err := bunCompileWorkDir()
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	if err := runCodexBunCompile(npx, entry, output, bunVersion, target, workDir, runCommand, cleanBunCompileCache, time.Sleep); err != nil {
-		return fmt.Errorf("compiling Codex ACP with Bun %s for %s: %w", bunVersion, target, err)
-	}
-	if err := os.Chmod(output, 0o755); err != nil && !errors.Is(err, os.ErrPermission) {
-		return fmt.Errorf("marking compiled Codex ACP executable: %w", err)
-	}
-	return nil
-}
-
-type commandRunner func(command *exec.Cmd) error
-
-type bunCacheCleaner func(target string, bunVersion string) error
-
-type sleeper func(duration time.Duration)
-
-func runCommand(command *exec.Cmd) error {
-	return command.Run()
-}
-
-func runCodexBunCompile(
-	npx string,
-	entry string,
-	output string,
-	bunVersion string,
-	target string,
-	workDir string,
-	runner commandRunner,
-	cacheCleaner bunCacheCleaner,
-	sleep sleeper,
-) error {
-	bunVersion = strings.TrimSpace(bunVersion)
-	target = strings.TrimSpace(target)
-	args := []string{
-		"--yes",
-		"bun@" + bunVersion,
-		"build",
-		entry,
-		"--compile",
-		"--target=" + target,
-		"--outfile=" + output,
-	}
-
-	var lastErr error
-	for attempt := 1; attempt <= bunCompileAttempts; attempt++ {
-		command := exec.Command(npx, args...)
-		command.Stdout = os.Stdout
-		command.Stderr = os.Stderr
-		command.Dir = workDir
-		if err := runner(command); err == nil {
-			return nil
-		} else {
-			lastErr = err
-		}
-
-		if attempt == bunCompileAttempts {
-			break
-		}
-		if err := cacheCleaner(target, bunVersion); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: cleaning Bun compile cache after attempt %d failed: %v\n", attempt, err)
-		}
-		delay := time.Duration(attempt) * 2 * time.Second
-		fmt.Fprintf(os.Stderr, "Bun compile attempt %d/%d failed: %v; retrying in %s\n", attempt, bunCompileAttempts, lastErr, delay)
-		sleep(delay)
-	}
-	return lastErr
-}
-
-func bunCompileWorkDir() (string, func(), error) {
-	if runtime.GOOS != "windows" {
-		return "", func() {}, nil
-	}
-
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", nil, fmt.Errorf("resolving user home for Bun compile workdir: %w", err)
-	}
-	workDir, err := os.MkdirTemp(homeDir, ".mediago-bun-build-*")
-	if err != nil {
-		return "", nil, fmt.Errorf("creating Bun compile workdir: %w", err)
-	}
-	return workDir, func() {
-		if err := os.RemoveAll(workDir); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: cleaning Bun compile workdir %s: %v\n", workDir, err)
-		}
-	}, nil
-}
-
-func cleanBunCompileCache(target string, bunVersion string) error {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("resolving user home: %w", err)
-	}
-	cachePath := filepath.Join(
-		homeDir,
-		".bun",
-		"install",
-		"cache",
-		fmt.Sprintf("%s-v%s", strings.TrimSpace(target), strings.TrimPrefix(strings.TrimSpace(bunVersion), "v")),
-	)
-	return os.RemoveAll(cachePath)
-}
-
-type npmPackageVersionMetadata struct {
-	Dist struct {
-		Tarball string `json:"tarball"`
-	} `json:"dist"`
-}
+type platform struct{ OS, Arch string }
+type npmPackageVersionMetadata struct{ Dist struct{ Tarball string } }
 
 func npmRegistryPackageVersionURL(registryBase string, packageName string, version string) (string, error) {
 	registryBase = strings.TrimRight(strings.TrimSpace(registryBase), "/")
@@ -495,26 +174,6 @@ func (value platform) String() string {
 	return value.OS + "-" + value.Arch
 }
 
-func releaseAssetName(agentID string, tag string, detected platform) (string, error) {
-	switch agentID {
-	case "codex":
-		target, err := codexTarget(detected)
-		if err != nil {
-			return "", err
-		}
-		version := strings.TrimPrefix(tag, "v")
-		extension := "tar.gz"
-		if detected.OS == "windows" {
-			extension = "zip"
-		}
-		return fmt.Sprintf("codex-acp-%s-%s.%s", version, target, extension), nil
-	case "opencode":
-		return opencodeAsset(detected)
-	default:
-		return "", fmt.Errorf("unsupported agent %q", agentID)
-	}
-}
-
 func codexTarget(detected platform) (string, error) {
 	switch detected {
 	case platform{OS: "darwin", Arch: "arm64"}:
@@ -522,9 +181,9 @@ func codexTarget(detected platform) (string, error) {
 	case platform{OS: "darwin", Arch: "x64"}:
 		return "x86_64-apple-darwin", nil
 	case platform{OS: "linux", Arch: "arm64"}:
-		return "aarch64-unknown-linux-gnu", nil
+		return "aarch64-unknown-linux-musl", nil
 	case platform{OS: "linux", Arch: "x64"}:
-		return "x86_64-unknown-linux-gnu", nil
+		return "x86_64-unknown-linux-musl", nil
 	case platform{OS: "windows", Arch: "arm64"}:
 		return "aarch64-pc-windows-msvc", nil
 	case platform{OS: "windows", Arch: "x64"}:
@@ -532,119 +191,6 @@ func codexTarget(detected platform) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported platform: %s/%s", detected.OS, detected.Arch)
 	}
-}
-
-func codexNPMBundlePlatform(detected platform, codexVersion string) (codexBundlePlatform, error) {
-	codexVersion = strings.TrimSpace(codexVersion)
-	if codexVersion == "" {
-		return codexBundlePlatform{}, fmt.Errorf("Codex npm version is empty")
-	}
-
-	var result codexBundlePlatform
-	var packagePlatform string
-	var codexBinary string
-	switch detected {
-	case platform{OS: "darwin", Arch: "arm64"}:
-		result.BunTarget = "bun-darwin-arm64"
-		result.CodexTarget = "aarch64-apple-darwin"
-		packagePlatform = "darwin-arm64"
-		codexBinary = "codex"
-	case platform{OS: "darwin", Arch: "x64"}:
-		result.BunTarget = "bun-darwin-x64-baseline"
-		result.CodexTarget = "x86_64-apple-darwin"
-		packagePlatform = "darwin-x64"
-		codexBinary = "codex"
-	case platform{OS: "linux", Arch: "arm64"}:
-		result.BunTarget = "bun-linux-arm64"
-		result.CodexTarget = "aarch64-unknown-linux-musl"
-		packagePlatform = "linux-arm64"
-		codexBinary = "codex"
-	case platform{OS: "linux", Arch: "x64"}:
-		result.BunTarget = "bun-linux-x64-baseline"
-		result.CodexTarget = "x86_64-unknown-linux-musl"
-		packagePlatform = "linux-x64"
-		codexBinary = "codex"
-	case platform{OS: "windows", Arch: "arm64"}:
-		result.BunTarget = "bun-windows-arm64"
-		result.CodexTarget = "aarch64-pc-windows-msvc"
-		packagePlatform = "win32-arm64"
-		codexBinary = "codex.exe"
-	case platform{OS: "windows", Arch: "x64"}:
-		result.BunTarget = "bun-windows-x64-baseline"
-		result.CodexTarget = "x86_64-pc-windows-msvc"
-		packagePlatform = "win32-x64"
-		codexBinary = "codex.exe"
-	default:
-		return codexBundlePlatform{}, fmt.Errorf("unsupported platform: %s/%s", detected.OS, detected.Arch)
-	}
-	result.CodexPackageVersion = codexVersion + "-" + packagePlatform
-	result.CodexBin = filepath.Join("codex", "vendor", result.CodexTarget, "bin", codexBinary)
-	return result, nil
-}
-
-func opencodeAsset(detected platform) (string, error) {
-	switch detected {
-	case platform{OS: "darwin", Arch: "arm64"}:
-		return "opencode-darwin-arm64.zip", nil
-	case platform{OS: "darwin", Arch: "x64"}:
-		return "opencode-darwin-x64.zip", nil
-	case platform{OS: "linux", Arch: "arm64"}:
-		return "opencode-linux-arm64.tar.gz", nil
-	case platform{OS: "linux", Arch: "x64"}:
-		return "opencode-linux-x64.tar.gz", nil
-	case platform{OS: "windows", Arch: "arm64"}:
-		return "opencode-windows-arm64.zip", nil
-	case platform{OS: "windows", Arch: "x64"}:
-		return "opencode-windows-x64.zip", nil
-	default:
-		return "", fmt.Errorf("unsupported platform: %s/%s", detected.OS, detected.Arch)
-	}
-}
-
-func prepareAgent(id string, spec agentSpec, tag string, asset string, distDir string) error {
-	expected := agentManifest{
-		ID:      id,
-		Bin:     spec.Bin,
-		Args:    spec.Args,
-		Version: tag,
-	}
-	if cached, err := hasPreparedAgent(distDir, expected); err != nil {
-		return err
-	} else if cached {
-		fmt.Printf("Using cached %s@%s in %s\n", id, tag, distDir)
-		return nil
-	}
-
-	tmpDir, err := os.MkdirTemp("", "mediago-agent-*")
-	if err != nil {
-		return fmt.Errorf("creating temp dir: %w", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	archivePath := filepath.Join(tmpDir, asset)
-	extractDir := filepath.Join(tmpDir, "extract")
-
-	fmt.Printf("Downloading %s@%s: %s\n", spec.Repo, tag, asset)
-	if err := downloadReleaseAsset(spec.Repo, tag, asset, archivePath); err != nil {
-		return err
-	}
-	if err := extractArchive(archivePath, extractDir); err != nil {
-		return err
-	}
-	if err := os.RemoveAll(distDir); err != nil {
-		return fmt.Errorf("cleaning %s: %w", distDir, err)
-	}
-	if err := os.MkdirAll(distDir, 0o755); err != nil {
-		return fmt.Errorf("creating %s: %w", distDir, err)
-	}
-	if err := installExtractedBinary(extractDir, spec.Bin, distDir); err != nil {
-		return err
-	}
-	if err := writeManifest(distDir, expected); err != nil {
-		return err
-	}
-	fmt.Printf("Prepared %s in %s\n", id, distDir)
-	return nil
 }
 
 func hasPreparedAgent(distDir string, expected agentManifest) (bool, error) {
@@ -708,12 +254,6 @@ func ensureExecutable(path string) error {
 		return fmt.Errorf("cached binary %s is not executable", path)
 	}
 	return nil
-}
-
-func downloadReleaseAsset(repo string, tag string, asset string, out string) error {
-	sourceURL := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", strings.TrimSpace(repo), tag, asset)
-	client := &http.Client{Timeout: 10 * time.Minute}
-	return downloadURL(client, sourceURL, out)
 }
 
 func downloadURL(client *http.Client, sourceURL string, out string) error {
@@ -857,6 +397,9 @@ func extractZip(archivePath string, destDir string) error {
 }
 
 func safeExtractPath(destDir string, name string) (string, error) {
+	if strings.HasPrefix(name, "/") || strings.HasPrefix(name, `\`) || strings.Contains(name, ":") {
+		return "", fmt.Errorf("invalid archive path: %s", name)
+	}
 	cleanName := filepath.Clean(name)
 	if cleanName == "." || filepath.IsAbs(cleanName) || strings.HasPrefix(cleanName, ".."+string(filepath.Separator)) || cleanName == ".." {
 		return "", fmt.Errorf("archive entry escapes destination: %s", name)
@@ -870,54 +413,6 @@ func safeExtractPath(destDir string, name string) (string, error) {
 		return "", fmt.Errorf("archive entry escapes destination: %s", name)
 	}
 	return target, nil
-}
-
-func installExtractedBinary(extractDir string, bin string, distDir string) error {
-	bin = strings.TrimSpace(bin)
-	if bin == "" {
-		return fmt.Errorf("agent bin is empty")
-	}
-
-	var found string
-	err := filepath.WalkDir(extractDir, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() || entry.Name() != bin || found != "" {
-			return nil
-		}
-		found = path
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("scanning extracted archive: %w", err)
-	}
-	if found == "" {
-		return fmt.Errorf("archive did not contain expected binary: %s", bin)
-	}
-
-	input, err := os.Open(found)
-	if err != nil {
-		return fmt.Errorf("opening extracted binary %s: %w", found, err)
-	}
-	defer input.Close()
-
-	dest := filepath.Join(distDir, bin)
-	output, err := os.OpenFile(dest, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
-	if err != nil {
-		return fmt.Errorf("creating %s: %w", dest, err)
-	}
-	if _, err := io.Copy(output, input); err != nil {
-		output.Close()
-		return fmt.Errorf("writing %s: %w", dest, err)
-	}
-	if err := output.Close(); err != nil {
-		return fmt.Errorf("closing %s: %w", dest, err)
-	}
-	if err := os.Chmod(dest, 0o755); err != nil {
-		return fmt.Errorf("marking %s executable: %w", dest, err)
-	}
-	return nil
 }
 
 func copyDirectory(source string, destination string) error {
@@ -990,4 +485,153 @@ func agentIDs(specs map[string]agentSpec) []string {
 	}
 	sort.Strings(ids)
 	return ids
+}
+
+func main() {
+	if err := run(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+func run(args []string) error {
+	flags := flag.NewFlagSet("prepare-agent", flag.ContinueOnError)
+	id := flags.String("agent", "codex", "Agent to prepare (codex)")
+	target := flags.String("platform", "", "Target platform")
+	root := flags.String("root", "", "Vendor directory")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() == 1 {
+		*id = flags.Arg(0)
+	} else if flags.NArg() > 1 {
+		return fmt.Errorf("unexpected arguments")
+	}
+	if *id != "codex" {
+		return fmt.Errorf("only the native Codex runtime is supported")
+	}
+	vendorDir, err := resolveVendorDir(*root)
+	if err != nil {
+		return err
+	}
+	specs, err := loadAgentSpecs(filepath.Join(vendorDir, "agents.json"))
+	if err != nil {
+		return err
+	}
+	spec, ok := specs["codex"]
+	if !ok || spec.Version == "" {
+		return fmt.Errorf("Codex version must be pinned")
+	}
+	detected, err := resolvePlatform(*target)
+	if err != nil {
+		return err
+	}
+	triple, err := codexTarget(detected)
+	if err != nil {
+		return err
+	}
+	dist := filepath.Join(vendorDir, "dist", "codex")
+	if *target != "" {
+		dist = filepath.Join(vendorDir, "dist", detected.String(), "codex")
+	}
+	// All removals are restricted to this resolved vendor output directory.
+	absolute, err := filepath.Abs(dist)
+	if err != nil {
+		return err
+	}
+	base, err := filepath.Abs(filepath.Join(vendorDir, "dist"))
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(base, absolute)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return fmt.Errorf("invalid vendor output path")
+	}
+	expected := agentManifest{ID: "codex", Bin: filepath.Join("runtime", "bin", agentBinaryName("codex", detected)), Args: []string{}, Version: spec.Version, CodexVersion: spec.Version}
+	expected.CodexBin = expected.Bin
+	if ready, err := hasPreparedAgent(dist, expected); err != nil {
+		return err
+	} else if ready {
+		fmt.Printf("Using cached native Codex %s in %s\n", spec.Version, dist)
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(dist), 0o755); err != nil {
+		return err
+	}
+	staging, err := os.MkdirTemp(filepath.Dir(dist), ".native-codex-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staging)
+	// A previous bundle may already contain the exact pinned native distribution.
+	reused := false
+	if raw, err := os.ReadFile(filepath.Join(dist, "agent.json")); err == nil {
+		var old agentManifest
+		if json.Unmarshal(raw, &old) == nil && old.CodexVersion == spec.Version && old.CodexBin != "" {
+			oldPath := filepath.Clean(filepath.Join(dist, old.CodexBin))
+			relative, err := filepath.Rel(dist, oldPath)
+			if err == nil && !strings.HasPrefix(relative, "..") && !filepath.IsAbs(relative) && ensureExecutable(oldPath) == nil {
+				source := filepath.Dir(filepath.Dir(oldPath))
+				if err := copyDirectory(source, filepath.Join(staging, "runtime")); err != nil {
+					return err
+				}
+				reused = true
+			}
+		}
+	}
+	if !reused {
+		packagePlatform := detected.OS + "-" + detected.Arch
+		if detected.OS == "windows" {
+			packagePlatform = "win32-" + detected.Arch
+		}
+		client := &http.Client{Timeout: 10 * time.Minute}
+		tarball, err := npmPackageTarballURL(client, npmRegistryURL, spec.Package, spec.Version+"-"+packagePlatform)
+		if err != nil {
+			return err
+		}
+		tmp, err := os.MkdirTemp("", "mediago-native-codex-")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tmp)
+		archive := filepath.Join(tmp, "codex.tgz")
+		if err := downloadURL(client, tarball, archive); err != nil {
+			return err
+		}
+		if err := extractArchive(archive, filepath.Join(tmp, "unpack")); err != nil {
+			return err
+		}
+		if err := copyDirectory(filepath.Join(tmp, "unpack", "package", "vendor", triple), filepath.Join(staging, "runtime")); err != nil {
+			return err
+		}
+	}
+	if err := ensureExecutable(filepath.Join(staging, expected.Bin)); err != nil {
+		return err
+	}
+	if err := writeManifest(staging, expected); err != nil {
+		return err
+	}
+	backup := dist + ".previous"
+	if _, err := os.Stat(backup); err == nil {
+		return fmt.Errorf("previous Codex installation backup exists: %s", backup)
+	}
+	hadOld := false
+	if _, err := os.Stat(dist); err == nil {
+		if err := os.Rename(dist, backup); err != nil {
+			return err
+		}
+		hadOld = true
+	}
+	if err := os.Rename(staging, dist); err != nil {
+		if hadOld {
+			_ = os.Rename(backup, dist)
+		}
+		return err
+	}
+	if hadOld {
+		if err := os.RemoveAll(backup); err != nil {
+			return err
+		}
+	}
+	fmt.Printf("Prepared native Codex %s in %s\n", spec.Version, dist)
+	return nil
 }

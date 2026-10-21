@@ -463,14 +463,14 @@ func (store *Service) upsertAgentSessionIndexUnlocked(event agentEvent) error {
 	message := FirstNonEmpty(event.Message, existing.LastMessage)
 	updatedAt := FirstNonEmpty(event.CreatedAt, domain.StringFromTime(existing.UpdatedAt), timestamp.NowRFC3339Nano())
 	return store.agentSessions.UpsertAgentSession(domain.AgentSessionModel{
-		SessionID:          sessionID,
-		ProjectID:          FirstNonEmpty(projectID, existing.ProjectID),
-		Title:              existing.Title,
-		ACPSessionID:       existing.ACPSessionID,
-		ACPInstructionHash: existing.ACPInstructionHash,
-		LastStatus:         status,
-		LastMessage:        message,
-		UpdatedAt:          domain.TimeFromString(updatedAt),
+		SessionID:            sessionID,
+		ProjectID:            FirstNonEmpty(projectID, existing.ProjectID),
+		Title:                existing.Title,
+		CodexThreadID:        existing.CodexThreadID,
+		CodexInstructionHash: existing.CodexInstructionHash,
+		LastStatus:           status,
+		LastMessage:          message,
+		UpdatedAt:            domain.TimeFromString(updatedAt),
 	})
 }
 

@@ -11,7 +11,7 @@ frameworks are kept behind internal adapters so upper layers do not depend on
 their types directly.
 
 Media generation is organized as model families first (Seedream, GPT Image,
-Gemini, Seedance), with official, DMX, OpenRouter, and MediaGo handled as
+Gemini, Seedance), with official providers, OpenRouter, Jimeng CLI, and LibTV CLI handled as
 execution channels for each route.
 
 ## Quick start
@@ -27,8 +27,6 @@ task test
 ```text
 pkg/generation/          # public media generation contracts and model catalog
 pkg/generation/runtime/  # route-aware runtime over provider execution channels
-pkg/generation/dmx/      # DMX provider adapter facade
-pkg/generation/mediago/  # MediaGo provider adapter facade
 pkg/generation/official/ # first-party provider adapter facade
 pkg/generation/openrouter/ # OpenRouter provider adapter facade
 pkg/multimodal/          # public multimodal provider contracts

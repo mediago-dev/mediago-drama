@@ -10,27 +10,27 @@ import (
 
 // ServerConfig contains local HTTP server configuration loaded from YAML.
 type ServerConfig struct {
-	Host           string            `yaml:"host"`
-	Port           int               `yaml:"port"`
-	LogPath        string            `yaml:"log_path"`
-	LogLevel       string            `yaml:"log_level"`
-	WorkspaceDir   string            `yaml:"workspace_dir"`
-	ACPCommand     string            `yaml:"acp_command"`
-	ModelPlatforms []string          `yaml:"model_platforms"`
-	GenerationCLIs []string          `yaml:"generation_clis"`
-	MediagoBaseURL string            `yaml:"mediago_base_url"`
-	Agent          AgentConfig       `yaml:"agent"`
-	FFmpeg         FFmpegConfig      `yaml:"ffmpeg"`
-	Jimeng         JimengConfig      `yaml:"jimeng"`
-	LibTV          LocalCLIConfig    `yaml:"libtv"`
-	Pippit         LocalCLIConfig    `yaml:"pippit"`
-	Billing        BillingConfig     `yaml:"billing"`
-	Prompt         PromptConfig      `yaml:"prompt"`
-	InternalAPI    InternalAPIConfig `yaml:"internal_api"`
-	DocumentMCP    DocumentMCPConfig `yaml:"document_mcp"`
+	Host           string   `yaml:"host"`
+	Port           int      `yaml:"port"`
+	LogPath        string   `yaml:"log_path"`
+	LogLevel       string   `yaml:"log_level"`
+	WorkspaceDir   string   `yaml:"workspace_dir"`
+	CodexPath      string   `yaml:"codex_path"`
+	ModelPlatforms []string `yaml:"model_platforms"`
+	GenerationCLIs []string `yaml:"generation_clis"`
+
+	Agent  AgentConfig    `yaml:"agent"`
+	FFmpeg FFmpegConfig   `yaml:"ffmpeg"`
+	Jimeng JimengConfig   `yaml:"jimeng"`
+	LibTV  LocalCLIConfig `yaml:"libtv"`
+
+	Billing     BillingConfig     `yaml:"billing"`
+	Prompt      PromptConfig      `yaml:"prompt"`
+	InternalAPI InternalAPIConfig `yaml:"internal_api"`
+	DocumentMCP DocumentMCPConfig `yaml:"document_mcp"`
 }
 
-// AgentConfig contains ACP agent binary selection and vendored bin settings.
+// AgentConfig contains Runtime agent binary selection and vendored bin settings.
 type AgentConfig struct {
 	ID     string `yaml:"id"`
 	BinDir string `yaml:"bin_dir"`
@@ -119,15 +119,15 @@ func normalize(config ServerConfig) ServerConfig {
 	config.LogPath = strings.TrimSpace(config.LogPath)
 	config.LogLevel = strings.TrimSpace(config.LogLevel)
 	config.WorkspaceDir = strings.TrimSpace(config.WorkspaceDir)
-	config.ACPCommand = strings.TrimSpace(config.ACPCommand)
+	config.CodexPath = strings.TrimSpace(config.CodexPath)
 	config.ModelPlatforms = normalizeStringList(config.ModelPlatforms)
 	config.GenerationCLIs = normalizeStringList(config.GenerationCLIs)
-	config.MediagoBaseURL = strings.TrimRight(strings.TrimSpace(config.MediagoBaseURL), "/")
+
 	config.Agent = normalizeAgentConfig(config.Agent)
 	config.FFmpeg = normalizeFFmpegConfig(config.FFmpeg)
 	config.Jimeng = normalizeJimengConfig(config.Jimeng)
 	config.LibTV = normalizeLocalCLIConfig(config.LibTV)
-	config.Pippit = normalizeLocalCLIConfig(config.Pippit)
+
 	config.Billing = normalizeBillingConfig(config.Billing)
 	config.InternalAPI = normalizeInternalAPIConfig(config.InternalAPI)
 	config.DocumentMCP = normalizeDocumentMCPConfig(config.DocumentMCP)

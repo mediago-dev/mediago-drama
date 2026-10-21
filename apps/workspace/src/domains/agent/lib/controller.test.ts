@@ -58,14 +58,16 @@ const eventContext = () => ({
 	setLatestDelta: () => {},
 });
 
-const acpEvent = (acp: NonNullable<Extract<AgentRuntimeEvent, { type: "agent.acp" }>["acp"]>) =>
+const runtimeEvent = (
+	runtime: NonNullable<Extract<AgentRuntimeEvent, { type: "agent.runtime" }>["runtime"]>,
+) =>
 	({
 		id: "event-1",
 		sessionId: "session-1",
-		type: "agent.acp",
+		type: "agent.runtime",
 		message: "",
 		createdAt: new Date().toISOString(),
-		acp,
+		runtime,
 	}) satisfies AgentRuntimeEvent;
 
 const pendingRequest = (requestId: string) => ({
@@ -130,7 +132,7 @@ describe("agent controller", () => {
 		useAgentStore.getState().addPermissionRequest(pendingRequest("permission-1"));
 
 		handleStreamingAgentEvent(
-			acpEvent({
+			runtimeEvent({
 				kind: "permissionResolved",
 				status: "selected",
 				permissionRequest: { requestId: "permission-1", options: [] },
@@ -146,7 +148,7 @@ describe("agent controller", () => {
 		useAgentStore.getState().addPermissionRequest(pendingRequest("permission-1"));
 
 		handleStreamingAgentEvent(
-			acpEvent({
+			runtimeEvent({
 				kind: "permissionResolved",
 				status: "expired",
 				permissionRequest: { requestId: "permission-1", options: [] },

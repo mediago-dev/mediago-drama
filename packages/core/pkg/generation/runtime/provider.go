@@ -10,13 +10,10 @@ import (
 	"sync"
 
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation"
-	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/dmx"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/jimeng"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/libtv"
-	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/mediago"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/official"
 	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/openrouter"
-	"github.com/mediago-dev/mediago-drama/packages/core/pkg/generation/pippit"
 )
 
 // CredentialResolver loads credentials by catalog credential key.
@@ -43,8 +40,6 @@ type Config struct {
 
 	MultimodalTextProviderFactory MultimodalTextProviderFactory
 
-	MediagoBaseURL    string
-	DMXBaseURL        string
 	OpenRouterBaseURL string
 	OpenRouterAppURL  string
 	OpenRouterAppName string
@@ -62,9 +57,6 @@ type Config struct {
 	LibTVProjectID    string
 	LibTVProjectStore libtv.ProjectStore
 	LibTVRunner       libtv.CommandRunner
-	PippitBinPath     string
-	PippitBinDir      string
-	XiaoyunqueBaseURL string
 }
 
 // Provider routes generation requests to the route's configured provider.
@@ -143,12 +135,7 @@ func (provider *Provider) Get(ctx context.Context, id string) (generation.Respon
 
 	prefix, _ := splitTaskID(id)
 	if prefix == "" {
-		routeProvider, err := provider.dmxProvider(ctx)
-		if err != nil {
-			return generation.Response{}, err
-		}
-
-		return routeProvider.Get(ctx, id)
+		return generation.Response{}, fmt.Errorf("generation task ID has no supported route prefix")
 	}
 
 	route, ok := generation.FindRouteByTaskPrefix(prefix)
@@ -187,10 +174,6 @@ func (provider *Provider) providerForRoute(ctx context.Context, route generation
 		return provider.officialProvider(ctx, route)
 	case generation.ProviderTypeAggregator:
 		switch route.Provider {
-		case generation.ProviderMediago:
-			return provider.mediagoProvider(ctx)
-		case generation.ProviderDMX:
-			return provider.dmxProvider(ctx)
 		case generation.ProviderOpenRouter:
 			return provider.openRouterProvider(ctx)
 		default:
@@ -202,8 +185,6 @@ func (provider *Provider) providerForRoute(ctx context.Context, route generation
 			return provider.jimengProvider()
 		case generation.ProviderLibTV:
 			return provider.libTVProvider()
-		case generation.ProviderXiaoyunque:
-			return provider.pippitProvider(ctx)
 		default:
 			return nil, fmt.Errorf("generation provider %q is not implemented", route.Provider)
 		}
@@ -242,77 +223,6 @@ func (provider *Provider) libTVProvider() (generation.Provider, error) {
 			ProjectID:    provider.config.LibTVProjectID,
 			ProjectStore: provider.config.LibTVProjectStore,
 			Runner:       provider.config.LibTVRunner,
-		})
-	})
-}
-
-func (provider *Provider) pippitProvider(ctx context.Context) (generation.Provider, error) {
-	apiKey, err := provider.credential(ctx, generation.ProviderXiaoyunque)
-	if err != nil {
-		return nil, err
-	}
-
-	cacheKey := provider.cacheKey(
-		generation.ProviderXiaoyunque,
-		apiKey,
-		provider.config.XiaoyunqueBaseURL,
-		provider.config.PippitBinPath,
-		provider.config.PippitBinDir,
-	)
-	return provider.cachedProvider(cacheKey, func() (generation.Provider, error) {
-		return pippit.NewProvider(pippit.Config{
-			APIKey:  apiKey,
-			BaseURL: provider.config.XiaoyunqueBaseURL,
-			BinPath: provider.config.PippitBinPath,
-			BinDir:  provider.config.PippitBinDir,
-		})
-	})
-}
-
-func (provider *Provider) mediagoProvider(ctx context.Context) (generation.Provider, error) {
-	apiKey, err := provider.credential(ctx, generation.ProviderMediago)
-	if err != nil {
-		return nil, err
-	}
-	baseURL := strings.TrimSpace(provider.config.MediagoBaseURL)
-	if baseURL == "" {
-		return nil, fmt.Errorf("mediago generation base URL is not configured")
-	}
-	cacheKey := provider.cacheKey(
-		generation.ProviderMediago,
-		apiKey,
-		baseURL,
-		provider.config.OpenRouterAppURL,
-		provider.config.OpenRouterAppName,
-	)
-	return provider.cachedProvider(cacheKey, func() (generation.Provider, error) {
-		return mediago.NewProvider(mediago.Config{
-			BaseURL:    baseURL,
-			APIKey:     apiKey,
-			AppURL:     provider.config.OpenRouterAppURL,
-			AppTitle:   provider.config.OpenRouterAppName,
-			HTTPClient: provider.config.HTTPClient,
-		})
-	})
-}
-
-func (provider *Provider) dmxProvider(ctx context.Context) (generation.Provider, error) {
-	apiKey, err := provider.credential(ctx, generation.ProviderDMX)
-	if err != nil {
-		return nil, err
-	}
-
-	cacheKey := provider.cacheKey(
-		generation.ProviderDMX,
-		generation.ProviderDMX,
-		apiKey,
-		provider.config.DMXBaseURL,
-	)
-	return provider.cachedProvider(cacheKey, func() (generation.Provider, error) {
-		return dmx.NewProvider(dmx.Config{
-			BaseURL:    provider.config.DMXBaseURL,
-			APIKey:     apiKey,
-			HTTPClient: provider.config.HTTPClient,
 		})
 	})
 }

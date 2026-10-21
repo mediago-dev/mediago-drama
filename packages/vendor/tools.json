@@ -53,22 +53,32 @@
   },
   "dreamina": {
     "bin": "dreamina",
-    "version": "1.4.8",
+    "version": "1.4.21",
     "platforms": {
       "darwin-arm64": {
-        "url": "https://lf3-static.bytednsdoc.com/obj/eden-cn/psj_hupthlyk/ljhwZthlaukjlkulzlp/dreamina_cli_beta/dreamina_cli_darwin_arm64"
+        "url": "https://lf3-static.bytednsdoc.com/obj/eden-cn/psj_hupthlyk/ljhwZthlaukjlkulzlp/dreamina_cli_beta/dreamina_cli_darwin_arm64",
+        "sizeBytes": 28183250,
+        "sha256": "24919089efc807b229cce9e577ba1b84c1be54a0265d9eef1e2ab3aed56b6fe8"
       },
       "darwin-x64": {
-        "url": "https://lf3-static.bytednsdoc.com/obj/eden-cn/psj_hupthlyk/ljhwZthlaukjlkulzlp/dreamina_cli_beta/dreamina_cli_darwin_amd64"
+        "url": "https://lf3-static.bytednsdoc.com/obj/eden-cn/psj_hupthlyk/ljhwZthlaukjlkulzlp/dreamina_cli_beta/dreamina_cli_darwin_amd64",
+        "sizeBytes": 31845472,
+        "sha256": "4cbd5b9f2f1328217848f1f10ce9fcb71b80d6b622b4e99ea80465daf8682f03"
       },
       "linux-arm64": {
-        "url": "https://lf3-static.bytednsdoc.com/obj/eden-cn/psj_hupthlyk/ljhwZthlaukjlkulzlp/dreamina_cli_beta/dreamina_cli_linux_arm64"
+        "url": "https://lf3-static.bytednsdoc.com/obj/eden-cn/psj_hupthlyk/ljhwZthlaukjlkulzlp/dreamina_cli_beta/dreamina_cli_linux_arm64",
+        "sizeBytes": 26869944,
+        "sha256": "9cac93c8a0f244ee70023167952cbfc6b8d171f7f7fafa13e726a0befe72168b"
       },
       "linux-x64": {
-        "url": "https://lf3-static.bytednsdoc.com/obj/eden-cn/psj_hupthlyk/ljhwZthlaukjlkulzlp/dreamina_cli_beta/dreamina_cli_linux_amd64"
+        "url": "https://lf3-static.bytednsdoc.com/obj/eden-cn/psj_hupthlyk/ljhwZthlaukjlkulzlp/dreamina_cli_beta/dreamina_cli_linux_amd64",
+        "sizeBytes": 31420600,
+        "sha256": "0a5fdc262ab44669e7db4ce67e6543ece6daf405804aca3d1d17d1345c146f69"
       },
       "win32-x64": {
-        "url": "https://lf3-static.bytednsdoc.com/obj/eden-cn/psj_hupthlyk/ljhwZthlaukjlkulzlp/dreamina_cli_beta/dreamina_cli_windows_amd64.exe"
+        "url": "https://lf3-static.bytednsdoc.com/obj/eden-cn/psj_hupthlyk/ljhwZthlaukjlkulzlp/dreamina_cli_beta/dreamina_cli_windows_amd64.exe",
+        "sizeBytes": 31603712,
+        "sha256": "039bc7a47258179f4a378db2d201c36f2db6b1ddd61ae2e600d1b18c197ff02d"
       }
     }
   },
@@ -105,42 +115,6 @@
         "archivePath": "libtv-win-x64/libtv.exe",
         "sizeBytes": 22637858,
         "sha256": "5a979946a6d6a7d6e704efb91f8246ca6cf1c9a587f00460fdade4518b4d74ac"
-      }
-    }
-  },
-  "pippit": {
-    "bin": "pippit-tool-cli",
-    "version": "1.0.10",
-    "platforms": {
-      "darwin-arm64": {
-        "url": "https://github.com/Pippit-dev/cli/releases/download/v1.0.10/pippit-tool-cli-1.0.10-darwin-arm64.tar.gz",
-        "archivePath": "pippit-tool-cli",
-        "sizeBytes": 3484980,
-        "sha256": "0d77c0aae453c3a64c61699823b775367816f7300aca04f0d47aec1151038092"
-      },
-      "darwin-x64": {
-        "url": "https://github.com/Pippit-dev/cli/releases/download/v1.0.10/pippit-tool-cli-1.0.10-darwin-amd64.tar.gz",
-        "archivePath": "pippit-tool-cli",
-        "sizeBytes": 4721648,
-        "sha256": "44e0b20d9ce770e4a1bfc8ae474aaec8b6fc7e17beb7e9c00468024caa3888dd"
-      },
-      "linux-arm64": {
-        "url": "https://github.com/Pippit-dev/cli/releases/download/v1.0.10/pippit-tool-cli-1.0.10-linux-arm64.tar.gz",
-        "archivePath": "pippit-tool-cli",
-        "sizeBytes": 3358436,
-        "sha256": "95c1b80c2e743eafce3ab91c94f86df727d236c859d8f9d581eb7a7d5b055125"
-      },
-      "linux-x64": {
-        "url": "https://github.com/Pippit-dev/cli/releases/download/v1.0.10/pippit-tool-cli-1.0.10-linux-amd64.tar.gz",
-        "archivePath": "pippit-tool-cli",
-        "sizeBytes": 4638961,
-        "sha256": "7ee3fd6064406864ce4f3bbb8886421dc1cde462cb678e3faac66d81c6e64cbb"
-      },
-      "win32-x64": {
-        "url": "https://github.com/Pippit-dev/cli/releases/download/v1.0.10/pippit-tool-cli-1.0.10-windows-amd64.zip",
-        "archivePath": "pippit-tool-cli.exe",
-        "sizeBytes": 4755768,
-        "sha256": "cd9997499e4a217c456b18b021e0215705bf5fba64325bc3461380fed315cf10"
       }
     }
   }

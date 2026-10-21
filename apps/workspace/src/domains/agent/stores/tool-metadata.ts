@@ -7,7 +7,7 @@ import {
 	withAgentItemIdentity,
 } from "./conversation";
 import type {
-	AgentACPContentBlock,
+	AgentRuntimeContentBlock,
 	AgentConversationState,
 	AgentItemIdentity,
 	AgentMessage,
@@ -22,7 +22,7 @@ export const upsertToolCallInConversation = (
 		title?: string;
 		content?: string;
 		status?: AgentToolCallStatus;
-		outputBlocks?: AgentACPContentBlock[];
+		outputBlocks?: AgentRuntimeContentBlock[];
 	},
 	identity?: AgentItemIdentity,
 ): AgentConversationState => {
@@ -47,7 +47,7 @@ export const upsertToolCallInConversation = (
 		patch.outputBlocks !== undefined ? patch.outputBlocks : previousMetadata.outputBlocks;
 	const outputJson =
 		patch.outputJson !== undefined ? patch.outputJson : previousMetadata.outputJson;
-	const measurement = measureACPOutput(outputBlocks, outputJson);
+	const measurement = measureRuntimeOutput(outputBlocks, outputJson);
 	const durationMs =
 		isTerminalToolCallStatus(nextStatus) && startedAt
 			? Math.max(0, new Date(now).getTime() - new Date(startedAt).getTime())
@@ -56,7 +56,7 @@ export const upsertToolCallInConversation = (
 		...previousMetadata,
 		...definedMetadata({
 			toolName: patch.toolName ?? patch.title,
-			acpKind: patch.acpKind,
+			runtimeKind: patch.runtimeKind,
 			toolCallId,
 			status: nextStatus,
 			durationMs,
@@ -74,7 +74,7 @@ export const upsertToolCallInConversation = (
 		toolCallContentSummary(nextMetadata) ??
 		existing?.content ??
 		patch.title ??
-		"ACP 工具调用";
+		"Runtime 工具调用";
 	const id = existing?.id ?? agentMessageId(normalizedIdentity, createId("tool"));
 	const message: AgentMessage = withAgentItemIdentity(
 		{
@@ -127,9 +127,9 @@ const toolCallContentSummary = (metadata: AgentMessageMetadata) => {
 	return [status, lines, bytes].filter(Boolean).join(" · ");
 };
 
-const measureACPOutput = (blocks?: AgentACPContentBlock[], outputJson?: unknown) => {
+const measureRuntimeOutput = (blocks?: AgentRuntimeContentBlock[], outputJson?: unknown) => {
 	const text = [
-		...(blocks ?? []).map(acpContentBlockText),
+		...(blocks ?? []).map(runtimeContentBlockText),
 		outputJson === undefined ? "" : stringifyMetadataJson(outputJson),
 	]
 		.filter(Boolean)
@@ -140,7 +140,7 @@ const measureACPOutput = (blocks?: AgentACPContentBlock[], outputJson?: unknown)
 	};
 };
 
-const acpContentBlockText = (block: AgentACPContentBlock) => {
+const runtimeContentBlockText = (block: AgentRuntimeContentBlock) => {
 	if (block.type === "diff") return [block.oldText, block.newText].filter(Boolean).join("\n");
 	return block.text ?? block.terminalId ?? "";
 };

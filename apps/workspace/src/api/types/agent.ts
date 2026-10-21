@@ -120,10 +120,11 @@ export interface AgentSessionStatus {
 	running: boolean;
 	lastStatus?: string;
 	lastMessage?: string;
-	pendingPermissions?: AgentACPPermissionRequest[];
+	pendingPermissions?: AgentRuntimePermissionRequest[];
 }
 
 export interface AgentPermissionDecisionRequest {
+	answers?: Record<string, string[]>;
 	sessionId: string;
 	requestId: string;
 	optionId?: string;
@@ -146,7 +147,7 @@ export interface AgentChatStateResponse {
 	running?: boolean;
 	messages: AgentChatMessageRecord[];
 	activity: AgentChatActivityRecord[];
-	pendingPermissions?: AgentACPPermissionRequest[];
+	pendingPermissions?: AgentRuntimePermissionRequest[];
 	lastEventId?: string;
 	updatedAt?: string;
 }
@@ -224,8 +225,8 @@ export interface AgentEvent {
 	runId?: string;
 	delta?: string;
 	content?: string;
-	acpSessionId?: string;
-	acp?: AgentACPEvent;
+	codexThreadId?: string;
+	runtime?: AgentRuntimeEvent;
 	documentEdit?: AgentDocumentEditEvent;
 	documentSelection?: AgentDocumentSelectionEvent;
 	documentProposal?: AgentDocumentProposal;
@@ -332,23 +333,23 @@ export interface AgentFormPayload {
 	intent?: AgentGenerationPlanIntent;
 }
 
-export interface AgentACPEvent {
+export interface AgentRuntimeEvent {
 	kind: string;
 	toolCallId?: string;
 	toolKind?: string;
 	title?: string;
 	status?: string;
-	locations?: AgentACPLocation[];
+	locations?: AgentRuntimeLocation[];
 	rawInput?: unknown;
 	rawOutput?: unknown;
-	content?: AgentACPContentBlock[];
+	content?: AgentRuntimeContentBlock[];
 	thought?: string;
-	plan?: AgentACPPlanEntry[];
-	permissionRequest?: AgentACPPermissionRequest;
-	runtimeAlert?: AgentACPRuntimeAlert;
+	plan?: AgentRuntimePlanEntry[];
+	permissionRequest?: AgentRuntimePermissionRequest;
+	runtimeAlert?: AgentRuntimeAlert;
 }
 
-export interface AgentACPRuntimeAlert {
+export interface AgentRuntimeAlert {
 	severity?: string;
 	title: string;
 	message: string;
@@ -356,27 +357,39 @@ export interface AgentACPRuntimeAlert {
 	detail?: string;
 }
 
-export interface AgentACPPermissionRequest {
+export interface AgentInputQuestion {
+	id: string;
+	header?: string;
+	question: string;
+	secret?: boolean;
+	required?: boolean;
+	type?: string;
+	options?: { label: string; description?: string }[];
+}
+
+export interface AgentRuntimePermissionRequest {
+	questions?: AgentInputQuestion[];
+	url?: string;
 	requestId: string;
-	toolCall?: AgentACPToolCallSummary;
-	options: AgentACPPermissionOption[];
+	toolCall?: AgentRuntimeToolCallSummary;
+	options: AgentRuntimePermissionOption[];
 	createdAt?: string;
 }
 
-export interface AgentACPToolCallSummary {
+export interface AgentRuntimeToolCallSummary {
 	id?: string;
 	title?: string;
 	kind?: string;
 	status?: string;
 }
 
-export interface AgentACPPermissionOption {
+export interface AgentRuntimePermissionOption {
 	optionId: string;
 	kind: string;
 	name: string;
 }
 
-export interface AgentACPContentBlock {
+export interface AgentRuntimeContentBlock {
 	type: string;
 	text?: string;
 	path?: string;
@@ -386,12 +399,12 @@ export interface AgentACPContentBlock {
 	terminalId?: string;
 }
 
-export interface AgentACPLocation {
+export interface AgentRuntimeLocation {
 	path: string;
 	line?: number;
 }
 
-export interface AgentACPPlanEntry {
+export interface AgentRuntimePlanEntry {
 	content: string;
 	status: string;
 	priority?: string;
@@ -449,9 +462,9 @@ export interface AgentMessageRequest {
 	documents?: AgentDocumentContext[];
 	references?: AgentReference[];
 	selectionText?: string;
-	model?: AgentACPConfigSelection;
-	reasoning?: AgentACPConfigSelection;
-	permission?: AgentACPConfigSelection;
+	model?: AgentRuntimeConfigSelection;
+	reasoning?: AgentRuntimeConfigSelection;
+	permission?: AgentRuntimeConfigSelection;
 }
 
 export interface AgentFinalResponse {
@@ -465,7 +478,7 @@ export interface AgentMessageResponse {
 	accepted: boolean;
 }
 
-export interface AgentACPConfigSelection {
+export interface AgentRuntimeConfigSelection {
 	configId?: string;
 	source?: string;
 	value?: string;

@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { showAgentPermissionSystemNotification } from "@/domains/agent/lib/permission-notifications";
-import type { AgentRuntimeACPPermissionRequest } from "@/domains/agent/api/agent";
+import type { AgentRuntimePermissionRequest } from "@/domains/agent/api/agent";
 
-const request: AgentRuntimeACPPermissionRequest = {
+const request: AgentRuntimePermissionRequest = {
 	requestId: "permission-1",
 	options: [{ optionId: "approved", kind: "allow_once", name: "允许一次" }],
 	toolCall: { title: "Edit 第一章 分镜脚本.md", kind: "edit" },

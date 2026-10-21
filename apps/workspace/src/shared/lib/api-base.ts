@@ -1,13 +1,21 @@
 import { isDesktopRuntime as detectDesktopRuntime } from "@/shared/desktop/runtime";
 
 const devLocalServerPort = "8080";
-const packagedLocalServerPort = "48273";
 
 const localServerPort = () =>
-	import.meta.env.VITE_MEDIAGO_SERVER_PORT?.trim() ||
-	(import.meta.env.DEV ? devLocalServerPort : packagedLocalServerPort);
+	import.meta.env.VITE_MEDIAGO_SERVER_PORT?.trim() || devLocalServerPort;
 
-const localServerOrigin = () => `http://127.0.0.1:${localServerPort()}`;
+const localServerOrigin = () => {
+	const origin = typeof window === "undefined" ? undefined : window.mediagoDesktop?.serverOrigin;
+	if (
+		origin &&
+		/^http:\/\/127\.0\.0\.1:[1-9]\d{0,4}$/.test(origin) &&
+		Number(new URL(origin).port) <= 65535
+	)
+		return origin;
+	if (!import.meta.env.DEV) throw new Error("桌面服务地址尚未就绪，请重新启动应用。");
+	return `http://127.0.0.1:${localServerPort()}`;
+};
 const apiBasePath = "/api/v1";
 
 export { detectDesktopRuntime as isDesktopRuntime };

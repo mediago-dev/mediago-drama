@@ -58,7 +58,7 @@ type EnvVar struct {
 	Value string
 }
 
-// DocumentLaunchConfig describes how an ACP client should launch the document MCP server.
+// DocumentLaunchConfig describes how a Codex client should launch the document MCP server.
 type DocumentLaunchConfig struct {
 	SessionID        string
 	RunID            string

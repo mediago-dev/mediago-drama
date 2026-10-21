@@ -97,7 +97,7 @@ Agent 会结合当前项目文档和对应 Skill，执行角色提取、场景�
 - Agent 可以读取当前项目和指定文档，并在项目上下文中执行任务。
 - 支持为剧本、角色、场景、道具和分镜任务装载对应 Skills。
 - 长任务的计划、执行过程、工具调用和文档修改可以在工作台中查看。
-- 支持 Codex、OpenCode 等 Agent 运行时。
+- 使用原生 Codex app-server，支持流式对话、工具调用、审批与会话续接。
 
 ### 结构化的角色、场景、道具和分镜
 
@@ -191,9 +191,9 @@ one run install-deps
 one dev
 ```
 
-该命令并行启动本地服务端和桌面开发任务。桌面任务会等待服务端健康检查通过，再启动前端并打开 Electron 窗口；首次准备工具和编译时可能需要稍等。按 `Ctrl+C` 停止开发任务。
+该命令先准备工具、编译后端，再启动前端和 Electron。Electron 持有本次后端进程，等待它就绪后打开窗口；后端自动分配可用端口，前端优先使用 `31420`，占用时自动换端口。实际地址会显示为 `[desktop] server: ...` 和 `[desktop] renderer: ...`。关闭桌面程序或按 `Ctrl+C` 会停止本次开发实例；首次准备工具和编译时可能需要稍等。
 
-浏览器开发使用 `one run dev:web`，同时启动服务端与浏览器前端。也可分别运行 `one run dev:server` 和 `one run dev:desktop`；桌面任务最多等待服务端 5 分钟。修改服务端或相关 Go 模块后，重启开发任务以重新编译。
+浏览器开发使用 `one run dev:web`，同时启动服务端与浏览器前端。也可分别运行 `one run dev:server` 和 `one run dev:desktop`，默认通过 `8080` 连接，桌面任务最多等待服务端 5 分钟。修改服务端或相关 Go 模块后，重启开发任务以重新编译。重新运行前请先停止旧开发任务，避免重复使用同一个开发工作区。
 
 ### 开源版数据目录
 
@@ -332,3 +332,23 @@ Agent 可以围绕项目原文生成或整理剧本、角色、场景、道具�
 ## 许可证
 
 本仓库自有源码采用 [Apache License 2.0](./LICENSE)。在遵守许可证条款的前提下，可以使用、修改和分发本仓库中的开源代码，也可以用于商业用途。第三方依赖仍分别遵循其原始许可证。
+
+## 开源版隔离与 Codex
+
+桌面版的应用标识为 `team.torchstellar.mediagodrama.oss`，显示名为 **MediaGo Drama OSS**。
+正式版数据存放在系统 appData 下的 `mediago-drama-oss/`；开发数据在 `~/mediago-drama-oss-dev/`。
+各自包含 `workspace/` 和 `electron/`，与商业版独立。打包桌面端使用系统分配的本地端口，页面只连接本次启动的服务。
+
+智能体仅使用打包的 **Codex 0.163.0 app-server**，通过双向 stdio JSON-RPC 处理流式消息、工具调用、审批、用户提问和中断。
+在「设置 → Codex 接入」登录 ChatGPT，或配置支持 Responses API 的 Codex 中转服务。
+开源版需要单独登录；账号与 Codex 会话保存在 `<workspace>/.mediago-drama/runtime/agents/codex/account-home/`。
+中转配置使用独立的 `relay-home/`，切换中转不会覆盖 ChatGPT 登录文件。
+
+升级会保留已有项目、聊天记录和工具历史。旧协议的会话标识不会作为 Codex thread ID 使用；第一次续聊会根据历史摘要创建新线程，此后原生续接。
+
+```bash
+one dev                       # 同时启动 server 和 desktop
+one exec -p vendor -- task prepare   # 准备原生 Codex CLI
+```
+
+实现与验证说明见 [Codex app-server 迁移记录](docs/adr/0003-oss-isolation-and-codex-app-server.md)。

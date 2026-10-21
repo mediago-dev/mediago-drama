@@ -109,11 +109,16 @@ func run(args []string) error {
 		return fmt.Errorf("loading embedded workspace assets: %w", err)
 	}
 	workspaceDir := server.ResolveWorkspaceDir(config.WorkspaceDir)
+	// Never share Codex credentials, sessions or configuration with another edition.
+	codexHome := filepath.Join(workspaceDir, ".mediago-drama", "runtime", "agents", "codex", "account-home")
+	if err := os.Setenv("CODEX_HOME", codexHome); err != nil {
+		return fmt.Errorf("configuring isolated Codex home: %w", err)
+	}
 	logPath := config.LogPath
 	if strings.TrimSpace(logPath) == "" {
 		logPath = filepath.Join(workspaceDir, ".mediago-drama", "logs", "server.log")
 	}
-	acpLogPath := filepath.Join(filepath.Dir(logPath), "acp.log")
+	runtimeLogPath := filepath.Join(filepath.Dir(logPath), "runtime.log")
 	logPath, closeLog, err := platformlogger.ConfigureDefaultLogger(logPath, config.LogLevel)
 	if err != nil {
 		return fmt.Errorf("configuring logger: %w", err)
@@ -123,18 +128,25 @@ func run(args []string) error {
 			slog.Error("closing log file", "error", err)
 		}
 	}()
-	acpLogger, acpLogPath, closeACPLog, err := platformlogger.NewComponentLogger("acp", acpLogPath)
+	runtimeLogger, runtimeLogPath, closeRuntimeLog, err := platformlogger.NewComponentLogger("runtime", runtimeLogPath)
 	if err != nil {
-		return fmt.Errorf("configuring ACP logger: %w", err)
+		return fmt.Errorf("configuring Runtime logger: %w", err)
 	}
 	defer func() {
-		if err := closeACPLog(); err != nil {
-			slog.Error("closing ACP log file", "error", err)
+		if err := closeRuntimeLog(); err != nil {
+			slog.Error("closing Runtime log file", "error", err)
 		}
 	}()
-	appagent.SetACPLogger(acpLogger)
+	appagent.SetRuntimeLogger(runtimeLogger)
 
 	addr := net.JoinHostPort(config.Host, strconv.Itoa(config.Port))
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("listening for workspace: %w", err)
+	}
+	defer listener.Close()
+	config.Port = listener.Addr().(*net.TCPAddr).Port
+	addr = net.JoinHostPort(config.Host, strconv.Itoa(config.Port))
 	bridgeAddr := net.JoinHostPort(agentBridgeHost(config.Host), strconv.Itoa(config.Port))
 	bridgeToken, err := generateServeInternalToken()
 	if err != nil {
@@ -164,15 +176,15 @@ func run(args []string) error {
 		return err
 	}
 	appConfig := server.Config{
-		Host:                       config.Host,
-		Port:                       config.Port,
-		WorkspaceDir:               workspaceDir,
-		ACPCommand:                 config.ACPCommand,
-		AgentID:                    config.Agent.ID,
-		AgentBinDir:                config.Agent.BinDir,
-		ModelPlatforms:             config.ModelPlatforms,
-		GenerationCLIs:             config.GenerationCLIs,
-		MediagoBaseURL:             config.MediagoBaseURL,
+		Host:           config.Host,
+		Port:           config.Port,
+		WorkspaceDir:   workspaceDir,
+		CodexPath:      config.CodexPath,
+		AgentID:        config.Agent.ID,
+		AgentBinDir:    config.Agent.BinDir,
+		ModelPlatforms: config.ModelPlatforms,
+		GenerationCLIs: config.GenerationCLIs,
+
 		SidecarToken:               sidecarToken,
 		ProtectedPackImporterPath:  protectedPackImporterPath,
 		AllowUnprotectedPackImport: allowUnprotectedPackImport,
@@ -183,14 +195,13 @@ func run(args []string) error {
 		LibTVBinPath:               config.LibTV.Path,
 		LibTVBinDir:                config.LibTV.BinDir,
 		LibTVProjectID:             config.LibTV.ProjectID,
-		PippitBinPath:              config.Pippit.Path,
-		PippitBinDir:               config.Pippit.BinDir,
-		DocumentMCPConfigPath:      configPath,
-		AgentBridgeURL:             internalAPIURL + "/api/v1/internal/agent/spawn",
-		AgentBridgeToken:           bridgeToken,
-		PromptMaxSectionChars:      config.Prompt.MaxSectionChars,
-		PromptDelivery:             config.Prompt.InstructionDelivery,
-		BillingPrices:              billingPrices,
+
+		DocumentMCPConfigPath: configPath,
+		AgentBridgeURL:        internalAPIURL + "/api/v1/internal/agent/spawn",
+		AgentBridgeToken:      bridgeToken,
+		PromptMaxSectionChars: config.Prompt.MaxSectionChars,
+		PromptDelivery:        config.Prompt.InstructionDelivery,
+		BillingPrices:         billingPrices,
 	}
 	if err := configureEdition(&appConfig); err != nil {
 		return fmt.Errorf("configuring server edition: %w", err)
@@ -211,14 +222,17 @@ func run(args []string) error {
 	}
 
 	fmt.Printf("Serving workspace at http://%s\n", addr)
+	if sidecarToken != "" {
+		fmt.Printf("MEDIAGO_SIDECAR_READY http://%s\n", addr)
+	}
 	fmt.Printf("MCP endpoint: http://%s/mcp\n", addr)
 	printDevelopmentDocsURL(addr)
 	fmt.Printf("Workspace: %s\n", workspaceDir)
 	fmt.Printf("Logs: %s\n", logPath)
-	fmt.Printf("ACP logs: %s\n", acpLogPath)
-	fmt.Printf("Agent runtime: acp\n")
+	fmt.Printf("Runtime logs: %s\n", runtimeLogPath)
+	fmt.Printf("Agent runtime: codex app-server\n")
 	fmt.Printf("Agent backend: %s (%s)\n", displayAgentID(config.Agent.ID), displayAgentMode(config.Agent.BinDir))
-	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("serving workspace: %w", err)
 	}
 	return nil
@@ -294,9 +308,7 @@ func applyEnvOverrides(config *serverconfig.ServerConfig) error {
 		}
 		config.GenerationCLIs = ids
 	}
-	if value := strings.TrimSpace(os.Getenv("MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL")); value != "" {
-		config.MediagoBaseURL = strings.TrimRight(value, "/")
-	}
+
 	if value := strings.TrimSpace(os.Getenv("MEDIAGO_FFMPEG_PATH")); value != "" {
 		config.FFmpeg.Path = value
 	}
@@ -318,12 +330,7 @@ func applyEnvOverrides(config *serverconfig.ServerConfig) error {
 	if value := strings.TrimSpace(os.Getenv("MEDIAGO_LIBTV_PROJECT_ID")); value != "" {
 		config.LibTV.ProjectID = value
 	}
-	if value := strings.TrimSpace(os.Getenv("MEDIAGO_PIPPIT_PATH")); value != "" {
-		config.Pippit.Path = value
-	}
-	if value := strings.TrimSpace(os.Getenv("MEDIAGO_PIPPIT_BIN_DIR")); value != "" {
-		config.Pippit.BinDir = value
-	}
+
 	if value := strings.TrimSpace(os.Getenv("MEDIAGO_SERVER_PORT")); value != "" {
 		port, err := parseServerPort(value)
 		if err != nil {
@@ -356,9 +363,7 @@ func applyPackagedToolDefaults(config *serverconfig.ServerConfig) {
 	if strings.TrimSpace(config.LibTV.BinDir) == "" {
 		config.LibTV.BinDir = toolsDir
 	}
-	if strings.TrimSpace(config.Pippit.BinDir) == "" {
-		config.Pippit.BinDir = toolsDir
-	}
+
 }
 
 func applySidecarDefaults(config *serverconfig.ServerConfig) {
@@ -460,8 +465,8 @@ func parseServerPort(value string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if port <= 0 || port > 65535 {
-		return 0, fmt.Errorf("port must be between 1 and 65535")
+	if port < 0 || port > 65535 {
+		return 0, fmt.Errorf("port must be between 0 and 65535")
 	}
 	return port, nil
 }

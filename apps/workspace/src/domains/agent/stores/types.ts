@@ -2,8 +2,8 @@ import type {
 	AgentReference,
 	AgentA2UIPayload,
 	AgentFormPayload,
-	AgentRuntimeACPPermissionRequest,
-	AgentRuntimeACPRuntimeAlert,
+	AgentRuntimePermissionRequest,
+	AgentRuntimeAlert as RuntimeAlertPayload,
 } from "@/domains/agent/api/agent";
 
 export type AgentMessageRole = "user" | "assistant";
@@ -33,7 +33,7 @@ export type AgentConversationStatus =
 	| "paused"
 	| "cancelled";
 
-export interface AgentACPContentBlock {
+export interface AgentRuntimeContentBlock {
 	type: "text" | "diff" | "terminal" | string;
 	text?: string;
 	path?: string;
@@ -43,12 +43,12 @@ export interface AgentACPContentBlock {
 	terminalId?: string;
 }
 
-export interface AgentACPLocation {
+export interface AgentRuntimeLocation {
 	path: string;
 	line?: number;
 }
 
-export interface AgentACPPlanEntry {
+export interface AgentRuntimePlanEntry {
 	content: string;
 	status: "pending" | "in_progress" | "completed" | string;
 	priority?: string;
@@ -77,16 +77,16 @@ export interface AgentMessageMetadata {
 	lineRange?: [number, number];
 	inputArgs?: string;
 	outputResult?: string;
-	acpKind?: string;
+	runtimeKind?: string;
 	runtimeLog?: boolean;
 	toolCallId?: string;
 	status?: AgentToolCallStatus;
 	durationMs?: number;
 	inputJson?: unknown;
 	outputJson?: unknown;
-	outputBlocks?: AgentACPContentBlock[];
-	locations?: AgentACPLocation[];
-	planEntries?: AgentACPPlanEntry[];
+	outputBlocks?: AgentRuntimeContentBlock[];
+	locations?: AgentRuntimeLocation[];
+	planEntries?: AgentRuntimePlanEntry[];
 	bytes?: number;
 	lines?: number;
 	startedAt?: string;
@@ -142,7 +142,7 @@ export interface AgentConversationState {
 }
 
 export interface AgentRuntimeStatus {
-	runtime: "acp" | "mock" | "frontend-mock" | "unknown";
+	runtime: "runtime" | "mock" | "frontend-mock" | "unknown";
 	fallback: boolean;
 	validated: boolean;
 	diagnostic?: string;
@@ -160,10 +160,10 @@ export interface AgentChatHydrationOptions {
 	lastEventId?: string | null;
 	running?: boolean;
 	conversations?: Record<string, AgentConversationState>;
-	pendingPermissions?: AgentRuntimeACPPermissionRequest[];
+	pendingPermissions?: AgentRuntimePermissionRequest[];
 }
 
-export type AgentRuntimeAlert = AgentRuntimeACPRuntimeAlert & {
+export type AgentRuntimeAlert = RuntimeAlertPayload & {
 	id: string;
 	createdAt?: string;
 };
@@ -181,13 +181,13 @@ export interface AgentState {
 	conversations: Record<string, AgentConversationState>;
 	streamingMessageId: string | null;
 	activity: AgentActivityItem[];
-	permissionRequests: AgentRuntimeACPPermissionRequest[];
+	permissionRequests: AgentRuntimePermissionRequest[];
 	runtimeAlerts: AgentRuntimeAlert[];
 	composerSeed: AgentComposerSeed | null;
 	runtimeMode: AgentRuntimeMode;
 	lastRuntimeStatus: AgentRuntimeStatus;
-	addPermissionRequest: (request: AgentRuntimeACPPermissionRequest) => void;
-	addRuntimeAlert: (alert: AgentRuntimeACPRuntimeAlert, runId?: string) => void;
+	addPermissionRequest: (request: AgentRuntimePermissionRequest) => void;
+	addRuntimeAlert: (alert: RuntimeAlertPayload, runId?: string) => void;
 	appendAssistantDelta: (content: string, runId?: string, identity?: AgentItemIdentity) => void;
 	bindRootRun: (runId: string) => void;
 	cancelRun: (message?: string, runId?: string) => void;
@@ -215,7 +215,7 @@ export interface AgentState {
 	removeMessage: (messageId: string) => void;
 	replaceMessage: (messageId: string, patch: Partial<AgentMessage>) => void;
 	removePermissionRequest: (requestId: string) => void;
-	syncPermissionRequests: (requests: AgentRuntimeACPPermissionRequest[]) => void;
+	syncPermissionRequests: (requests: AgentRuntimePermissionRequest[]) => void;
 	seedComposer: (seed: AgentComposerSeed) => void;
 	setSessionId: (sessionId: string) => void;
 	startRun: (content: string, metadata?: AgentMessageMetadata) => void;
@@ -235,14 +235,14 @@ export interface AgentState {
 	) => void;
 	addAssistantMessage: (content: string, runId?: string, identity?: AgentItemIdentity) => void;
 	appendThought: (thought: string, runId?: string, identity?: AgentItemIdentity) => void;
-	setPlan: (entries: AgentACPPlanEntry[], runId?: string, identity?: AgentItemIdentity) => void;
+	setPlan: (entries: AgentRuntimePlanEntry[], runId?: string, identity?: AgentItemIdentity) => void;
 	upsertToolCallMessage: (
 		toolCallId: string,
 		patch: Partial<AgentMessageMetadata> & {
 			title?: string;
 			content?: string;
 			status?: AgentToolCallStatus;
-			outputBlocks?: AgentACPContentBlock[];
+			outputBlocks?: AgentRuntimeContentBlock[];
 		},
 		runId?: string,
 		identity?: AgentItemIdentity,
@@ -252,7 +252,7 @@ export interface AgentState {
 	recordRuntimeLog: (
 		input: {
 			content?: string;
-			outputBlocks?: AgentACPContentBlock[];
+			outputBlocks?: AgentRuntimeContentBlock[];
 			outputJson?: unknown;
 			status?: AgentToolCallStatus;
 			toolCallId?: string;

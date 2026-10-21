@@ -32,6 +32,15 @@ vi.mock("./paths.js", () => ({
 }));
 
 class FakeChildProcess extends EventEmitter {
+	constructor(ready = true) {
+		super();
+		this.stdout.on("newListener", (event) => {
+			if (ready && event === "data")
+				queueMicrotask(() =>
+					this.stdout.emit("data", "MEDIAGO_SIDECAR_READY http://127.0.0.1:49153\n"),
+				);
+		});
+	}
 	exitCode: number | null = null;
 	pid: number | undefined;
 	stdout = new EventEmitter();
@@ -64,7 +73,7 @@ describe("server sidecar lifecycle", () => {
 		mocks.spawn.mockReturnValue(processChild);
 		const sidecar = await import("./sidecar.js");
 
-		sidecar.startServerSidecar();
+		await sidecar.startServerSidecar();
 
 		expect(mocks.spawn).toHaveBeenCalledOnce();
 		expect(mocks.spawn.mock.calls[0]?.[0]).toBe("/resources/bin/mediago-server");
@@ -79,7 +88,7 @@ describe("server sidecar lifecycle", () => {
 		mocks.exists = false;
 		const sidecar = await import("./sidecar.js");
 
-		expect(() => sidecar.startServerSidecar()).toThrow(
+		await expect(sidecar.startServerSidecar()).rejects.toThrow(
 			"missing server sidecar: /resources/bin/mediago-server",
 		);
 		expect(mocks.spawn).not.toHaveBeenCalled();
@@ -103,19 +112,19 @@ describe("server sidecar lifecycle", () => {
 		mocks.spawn.mockReturnValue(processChild);
 		const sidecar = await import("./sidecar.js");
 
-		const connection = sidecar.startServerSidecar();
+		const connection = await sidecar.startServerSidecar();
 
 		const spawnOptions = mocks.spawn.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
 		expect(spawnOptions.env).toMatchObject({
-			MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL: "",
-			MEDIAGO_SERVER_PORT: "48273",
+			MEDIAGO_SERVER_PORT: "0",
 			MEDIAGO_WORKSPACE_DIR: "/data/mediago-drama-oss/workspace",
 			MEDIAGO_SIDECAR_MODE: "1",
 		});
-		expect(connection?.origin).toBe("http://127.0.0.1:48273");
+		expect(connection?.origin).toBe("http://127.0.0.1:49153");
 		expect(connection?.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
 		expect(spawnOptions.env?.MEDIAGO_SIDECAR_TOKEN).toBe(connection?.token);
 		expect(spawnOptions.env?.MEDIAGO_SIDECAR_TOKEN).not.toBe("attacker-token");
+		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL");
 		expect(spawnOptions.env).not.toHaveProperty("MEDIAGO_PROMPT_PACK_SIGNING_PUBLIC_KEY");
 		expect(spawnOptions.env).not.toHaveProperty("ONE_INTERNAL_API_TOKEN");
 		expect(spawnOptions.env).not.toHaveProperty("DYLD_INSERT_LIBRARIES");
@@ -129,7 +138,7 @@ describe("server sidecar lifecycle", () => {
 		vi.stubEnv("MEDIAGO_WORKSPACE_DIR", "/custom/workspace");
 		mocks.spawn.mockReturnValue(new FakeChildProcess());
 		const sidecar = await import("./sidecar.js");
-		sidecar.startServerSidecar();
+		await sidecar.startServerSidecar();
 		expect(mocks.spawn.mock.calls[0]?.[2].env.MEDIAGO_WORKSPACE_DIR).toBe("/custom/workspace");
 	});
 
@@ -137,8 +146,61 @@ describe("server sidecar lifecycle", () => {
 		vi.stubEnv("ELECTRON_RENDERER_URL", "http://127.0.0.1:31420");
 		const sidecar = await import("./sidecar.js");
 
-		expect(sidecar.startServerSidecar()).toBeNull();
+		expect(await sidecar.startServerSidecar()).toBeNull();
 		expect(mocks.spawn).not.toHaveBeenCalled();
+	});
+
+	it("owns the configured development server even with a Vite renderer", async () => {
+		vi.stubEnv("ELECTRON_RENDERER_URL", "http://127.0.0.1:31421");
+		vi.stubEnv("MEDIAGO_DEV_SERVER_PATH", "/repo/bin/mediago-server");
+		vi.stubEnv("MEDIAGO_DEV_SERVER_CONFIG", "/repo/services/server/configs/server.yaml");
+		vi.stubEnv("MEDIAGO_SERVER_PORT", "0");
+		vi.stubEnv("MEDIAGO_AGENT_BIN_DIR", "/repo/packages/vendor/dist");
+		for (const tool of ["FFMPEG", "JIMENG", "LIBTV"]) {
+			vi.stubEnv(`MEDIAGO_${tool}_BIN_DIR`, "/repo/packages/vendor/dist/tools");
+		}
+		const child = new FakeChildProcess(false);
+		mocks.spawn.mockReturnValue(child);
+		vi.spyOn(console, "log").mockImplementation(() => undefined);
+		const sidecar = await import("./sidecar.js");
+		const pending = sidecar.startServerSidecar();
+		expect(mocks.spawn).toHaveBeenCalledWith(
+			"/repo/bin/mediago-server",
+			["--config", "/repo/services/server/configs/server.yaml"],
+			expect.objectContaining({
+				stdio: ["pipe", "pipe", "pipe"],
+				env: expect.objectContaining({
+					MEDIAGO_SERVER_PORT: "0",
+					MEDIAGO_SIDECAR_MODE: "1",
+					MEDIAGO_EXIT_ON_STDIN_CLOSE: "1",
+					MEDIAGO_AGENT_BIN_DIR: "/repo/packages/vendor/dist",
+					MEDIAGO_FFMPEG_BIN_DIR: "/repo/packages/vendor/dist/tools",
+					MEDIAGO_JIMENG_BIN_DIR: "/repo/packages/vendor/dist/tools",
+					MEDIAGO_LIBTV_BIN_DIR: "/repo/packages/vendor/dist/tools",
+				}),
+			}),
+		);
+		child.stdout.emit("data", "MEDIAGO_SIDECAR_READY http://127.0.0.1:49214\n");
+		expect((await pending)?.origin).toBe("http://127.0.0.1:49214");
+		expect(console.log).toHaveBeenCalledWith("[desktop] server: http://127.0.0.1:49214");
+		sidecar.stopServerSidecar();
+		expect(child.stdin.end).toHaveBeenCalledOnce();
+	});
+
+	it("ignores development binary and tool overrides in packaged builds", async () => {
+		mocks.isPackaged = true;
+		vi.stubEnv("MEDIAGO_DEV_SERVER_PATH", "/repo/bin/mediago-server");
+		vi.stubEnv("MEDIAGO_DEV_SERVER_CONFIG", "/repo/server.yaml");
+		vi.stubEnv("MEDIAGO_AGENT_BIN_DIR", "/unrelated/agents");
+		vi.stubEnv("MEDIAGO_FFMPEG_BIN_DIR", "/unrelated/tools");
+		mocks.spawn.mockReturnValue(new FakeChildProcess());
+		const sidecar = await import("./sidecar.js");
+		await sidecar.startServerSidecar();
+		expect(mocks.spawn.mock.calls[0]?.slice(0, 2)).toEqual(["/resources/bin/mediago-server", []]);
+		expect(mocks.spawn.mock.calls[0]?.[2].env).toMatchObject({
+			MEDIAGO_AGENT_BIN_DIR: "/resources/agents",
+			MEDIAGO_FFMPEG_BIN_DIR: "/resources/tools",
+		});
 	});
 
 	it("clears a failed spawn and allows retry", async () => {
@@ -148,9 +210,9 @@ describe("server sidecar lifecycle", () => {
 		vi.spyOn(console, "error").mockImplementation(() => undefined);
 		const sidecar = await import("./sidecar.js");
 
-		sidecar.startServerSidecar();
+		await sidecar.startServerSidecar();
 		first.emit("error", new Error("spawn failed"));
-		sidecar.startServerSidecar();
+		await sidecar.startServerSidecar();
 
 		expect(mocks.spawn).toHaveBeenCalledTimes(2);
 	});
@@ -162,11 +224,11 @@ describe("server sidecar lifecycle", () => {
 		vi.spyOn(console, "error").mockImplementation(() => undefined);
 		const sidecar = await import("./sidecar.js");
 
-		sidecar.startServerSidecar();
+		await sidecar.startServerSidecar();
 		first.emit("error", new Error("spawn failed"));
-		sidecar.startServerSidecar();
+		await sidecar.startServerSidecar();
 		first.exit();
-		sidecar.startServerSidecar();
+		await sidecar.startServerSidecar();
 
 		expect(mocks.spawn).toHaveBeenCalledTimes(2);
 	});
@@ -178,9 +240,9 @@ describe("server sidecar lifecycle", () => {
 		vi.spyOn(console, "error").mockImplementation(() => undefined);
 		const sidecar = await import("./sidecar.js");
 
-		sidecar.startServerSidecar();
+		await sidecar.startServerSidecar();
 		processChild.emit("error", new Error("kill EPERM"));
-		sidecar.startServerSidecar();
+		await sidecar.startServerSidecar();
 
 		expect(mocks.spawn).toHaveBeenCalledOnce();
 	});
@@ -189,11 +251,34 @@ describe("server sidecar lifecycle", () => {
 		const processChild = new FakeChildProcess();
 		mocks.spawn.mockReturnValue(processChild);
 		const sidecar = await import("./sidecar.js");
-		sidecar.startServerSidecar();
+		await sidecar.startServerSidecar();
 
 		sidecar.stopServerSidecar();
 
 		expect(processChild.stdin.end).toHaveBeenCalledOnce();
 		expect(processChild.kill).toHaveBeenCalledWith("SIGTERM");
+	});
+	it("waits for a complete owned readiness line", async () => {
+		const child = new FakeChildProcess(false);
+		mocks.spawn.mockReturnValue(child);
+		const sidecar = await import("./sidecar.js");
+		let settled = false;
+		const start = sidecar.startServerSidecar().then((result) => {
+			settled = true;
+			return result;
+		});
+		child.stdout.emit("data", "MEDIAGO_SIDECAR_READY http://127.0.0.1:492");
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		child.stdout.emit("data", "14\n");
+		expect((await start)?.origin).toBe("http://127.0.0.1:49214");
+	});
+	it("rejects startup if the child exits before readiness", async () => {
+		const child = new FakeChildProcess(false);
+		mocks.spawn.mockReturnValue(child);
+		const sidecar = await import("./sidecar.js");
+		const start = sidecar.startServerSidecar();
+		child.exit(1);
+		await expect(start).rejects.toThrow("before it was ready");
 	});
 });

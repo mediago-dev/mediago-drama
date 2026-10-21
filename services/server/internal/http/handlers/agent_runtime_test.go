@@ -5,14 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gin-gonic/gin"
+	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	acpsdk "github.com/coder/acp-go-sdk"
-	"github.com/gin-gonic/gin"
-	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
 )
 
 func TestHandleAgentRuntimeConfig(t *testing.T) {
@@ -55,8 +53,8 @@ func TestHandleAgentRuntimeConfig(t *testing.T) {
 			name: "authentication required",
 			inspect: func(context.Context, string) (serviceagent.AgentRuntimeConfigResponse, error) {
 				return serviceagent.AgentRuntimeConfigResponse{}, fmt.Errorf(
-					"creating ACP config probe session: %w",
-					&acpsdk.RequestError{Code: -32000, Message: "Authentication required"},
+					"creating Runtime config probe session: %w",
+					errors.New("Authentication required"),
 				)
 			},
 			wantStatus:  http.StatusServiceUnavailable,
@@ -65,7 +63,7 @@ func TestHandleAgentRuntimeConfig(t *testing.T) {
 		{
 			name: "generic runtime failure redacts internal details",
 			inspect: func(context.Context, string) (serviceagent.AgentRuntimeConfigResponse, error) {
-				return serviceagent.AgentRuntimeConfigResponse{}, errors.New("starting ACP with token " + secret)
+				return serviceagent.AgentRuntimeConfigResponse{}, errors.New("starting Runtime with token " + secret)
 			},
 			wantStatus:        http.StatusServiceUnavailable,
 			wantMessage:       "Agent 运行环境暂不可用，请检查运行配置后重试",

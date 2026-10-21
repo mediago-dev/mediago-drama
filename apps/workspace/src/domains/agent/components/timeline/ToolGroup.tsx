@@ -160,20 +160,20 @@ const summarizeTools = (messages: AgentMessage[]) => {
 
 const categorize = (message: AgentMessage): ToolCategory => {
 	const kind = message.kind ?? "tool";
-	const { acpKind } = getToolCallDetails(message);
-	if (acpKind === "read" || kind === "file") return "file";
-	if (acpKind === "search") return "search";
-	if (acpKind === "execute" || kind === "terminal") return "command";
+	const { runtimeKind } = getToolCallDetails(message);
+	if (runtimeKind === "read" || kind === "file") return "file";
+	if (runtimeKind === "search") return "search";
+	if (runtimeKind === "execute" || kind === "terminal") return "command";
 	if (
-		acpKind === "edit" ||
-		acpKind === "delete" ||
-		acpKind === "move" ||
+		runtimeKind === "edit" ||
+		runtimeKind === "delete" ||
+		runtimeKind === "move" ||
 		kind === "patch" ||
 		kind === "diff"
 	) {
 		return "edit";
 	}
-	if (acpKind === "fetch") return "fetch";
+	if (runtimeKind === "fetch") return "fetch";
 	return "call";
 };
 

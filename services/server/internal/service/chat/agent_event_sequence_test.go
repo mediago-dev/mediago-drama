@@ -13,7 +13,7 @@ func appendSequenceTestEvent(t *testing.T, store *Service, projectID string, ses
 		SessionID: sessionID,
 		ProjectID: projectID,
 		RunID:     "run-sequence",
-		Type:      "agent.acp",
+		Type:      "agent.runtime",
 		Message:   "思考：" + id,
 	})
 	if err != nil {

@@ -389,7 +389,7 @@ func TestAgentRuntimeSessionTitleUsesSelectedModel(t *testing.T) {
 	_, status, err := runtime.SubmitAgentMessage(AgentMessageRequest{
 		SessionID: "session-1",
 		Prompt:    "你好",
-		Model: AgentACPConfigSelection{
+		Model: AgentRuntimeConfigSelection{
 			ConfigID: "model",
 			Source:   "configOption",
 			Value:    "mediago/deepseek-v4-flash",

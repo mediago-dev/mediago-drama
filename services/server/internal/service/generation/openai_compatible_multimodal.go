@@ -15,11 +15,11 @@ import (
 )
 
 const (
-	defaultOpenAIChatBaseURL     = "https://api.openai.com/v1"
-	defaultGoogleChatBaseURL     = "https://generativelanguage.googleapis.com/v1beta/openai"
-	defaultMiniMaxChatBaseURL    = "https://api.minimaxi.com/v1"
-	defaultDeepSeekChatBaseURL   = "https://api.deepseek.com/v1"
-	defaultDMXChatBaseURL        = "https://www.dmxapi.cn/v1"
+	defaultOpenAIChatBaseURL   = "https://api.openai.com/v1"
+	defaultGoogleChatBaseURL   = "https://generativelanguage.googleapis.com/v1beta/openai"
+	defaultMiniMaxChatBaseURL  = "https://api.minimaxi.com/v1"
+	defaultDeepSeekChatBaseURL = "https://api.deepseek.com/v1"
+
 	defaultOpenRouterChatBaseURL = "https://openrouter.ai/api/v1"
 )
 
@@ -180,11 +180,6 @@ func defaultMultimodalTextProviderFactory(
 	}
 
 	switch route.Provider {
-	case coregeneration.ProviderDMX:
-		if route.Adapter != coregeneration.AdapterDMXChatText {
-			return nil, nil
-		}
-		return newOpenAICompatibleMultimodalProvider("dmx", defaultDMXChatBaseURL, apiKey, nil), nil
 	case coregeneration.ProviderOpenRouter:
 		if route.Adapter != coregeneration.AdapterOpenRouterChatText {
 			return nil, nil

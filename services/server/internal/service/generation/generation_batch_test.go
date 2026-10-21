@@ -179,7 +179,7 @@ func newGenerationBatchTestWorkflow(t *testing.T) (*GenerationService, *Generati
 		return fmt.Sprintf("%s-%d", prefix, idCounter.Add(1)), nil
 	})
 	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
-		values: map[string]string{coregeneration.ProviderDMX: "sk-image"},
+		values: map[string]string{coregeneration.ProviderLibTV: "sk-image"},
 	})
 	workflow := NewGenerationService(settingsSvc, store, nil)
 	workflow.generationProviderFactory = func(coregeneration.ModelRoute) (coregeneration.Provider, error) {
@@ -191,7 +191,7 @@ func newGenerationBatchTestWorkflow(t *testing.T) (*GenerationService, *Generati
 func generationBatchImageRequest(prompt string) GenerationMessageRequest {
 	return GenerationMessageRequest{
 		Kind:    string(coregeneration.KindImage),
-		RouteID: coregeneration.RouteDMXGPTImage2,
+		RouteID: coregeneration.RouteLibTVGPTImage2,
 		ModelID: coregeneration.ModelGPTImage2,
 		Model:   "gpt-image-2-ssvip",
 		Prompt:  prompt,

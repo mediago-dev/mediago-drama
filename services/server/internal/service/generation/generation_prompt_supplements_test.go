@@ -80,7 +80,7 @@ func TestCreateGenerationMessageAppliesPromptSupplements(t *testing.T) {
 	workflow := newPromptSupplementsTestWorkflow(t)
 	provider := &recordingPromptSupplementsProvider{started: make(chan coregeneration.Request, 1)}
 	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
-		if route.ID != coregeneration.RouteDMXGPTImage2 {
+		if route.ID != coregeneration.RouteLibTVGPTImage2 {
 			return nil, fmt.Errorf("unexpected route %q", route.ID)
 		}
 		return provider, nil
@@ -88,7 +88,7 @@ func TestCreateGenerationMessageAppliesPromptSupplements(t *testing.T) {
 
 	_, status, err := workflow.CreateGenerationMessage(context.Background(), GenerationMessageRequest{
 		Kind:    string(coregeneration.KindImage),
-		RouteID: coregeneration.RouteDMXGPTImage2,
+		RouteID: coregeneration.RouteLibTVGPTImage2,
 		Prompt:  "base prompt",
 		PromptSupplements: []GenerationPromptSupplementRequest{
 			{ReferenceID: "pack-style", ReferencePrompt: "cinematic lighting"},
@@ -115,7 +115,7 @@ func TestCreatePromptOptimizedGenerationMessageAppliesPromptSupplementsBeforeOpt
 	var textRequest coregeneration.Request
 	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
 		switch route.ID {
-		case coregeneration.RouteDMXGPT41MiniText:
+		case coregeneration.RouteOfficialGPT41MiniText:
 			return fakeTextStreamProvider{
 				request: &textRequest,
 				events: []coregeneration.TextStreamEvent{
@@ -123,7 +123,7 @@ func TestCreatePromptOptimizedGenerationMessageAppliesPromptSupplementsBeforeOpt
 					{Done: true},
 				},
 			}, nil
-		case coregeneration.RouteDMXGPTImage2:
+		case coregeneration.RouteLibTVGPTImage2:
 			return imageProvider, nil
 		default:
 			return nil, fmt.Errorf("unexpected route %q", route.ID)
@@ -132,13 +132,13 @@ func TestCreatePromptOptimizedGenerationMessageAppliesPromptSupplementsBeforeOpt
 
 	response, status, err := workflow.CreatePromptOptimizedGenerationMessage(context.Background(), GenerationMessageRequest{
 		Kind:    string(coregeneration.KindImage),
-		RouteID: coregeneration.RouteDMXGPTImage2,
+		RouteID: coregeneration.RouteLibTVGPTImage2,
 		Prompt:  "base prompt",
 		PromptSupplements: []GenerationPromptSupplementRequest{
 			{ReferenceID: "pack-style", ReferencePrompt: "cinematic lighting"},
 		},
 		PromptOptimization: &GenerationPromptOptimizationRequest{
-			RouteID:         coregeneration.RouteDMXGPT41MiniText,
+			RouteID:         coregeneration.RouteOfficialGPT41MiniText,
 			ReferencePrompt: "high quality",
 		},
 		Params: map[string]any{
@@ -182,7 +182,8 @@ func newPromptSupplementsTestWorkflow(t *testing.T) *GenerationService {
 	}
 	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
 	settingsService := settings.NewSettings(&generationTestAPIKeyStore{values: map[string]string{
-		coregeneration.ProviderDMX: "sk-test",
+		coregeneration.ProviderLibTV:  "sk-test",
+		coregeneration.ProviderOpenAI: "sk-text-test",
 	}})
 	return NewGenerationService(settingsService, store, media.NewMediaAssets(dbPath, t.TempDir()))
 }

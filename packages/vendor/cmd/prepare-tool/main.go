@@ -561,12 +561,7 @@ func normalizeArchivePath(value string) string {
 }
 
 func canonicalToolID(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "xiaoyunque", "pippit-tool-cli":
-		return "pippit"
-	default:
-		return strings.ToLower(strings.TrimSpace(value))
-	}
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
 func generationToolIDs(value string) []string {

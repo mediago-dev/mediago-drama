@@ -9,10 +9,10 @@ const testState = vi.hoisted(() => ({
 	runtimeConfig: {
 		model: {
 			configId: "model",
-			currentValue: "volc/glm-5.2",
+			currentValue: "gpt-5.4-mini",
 			options: [
-				{ name: "OpenCode Zen/Big Pickle", value: "opencode/big-pickle" },
-				{ name: "Volcano Engine (Agent Plan)/glm-5.2", value: "volc/glm-5.2" },
+				{ name: "GPT 5.4", value: "gpt-5.4" },
+				{ name: "GPT 5.4 Mini", value: "gpt-5.4-mini" },
 			],
 		},
 		permission: {
@@ -108,8 +108,8 @@ vi.mock("@/domains/agent/components/chat/AgentChatComposerForm", () => ({
 				data-runtime-error={runtimeConfigErrorMessage}
 				data-selected-model={selectedModel}
 			>
-				<button type="button" onClick={() => onModelChange("opencode/big-pickle")}>
-					Select Big Pickle
+				<button type="button" onClick={() => onModelChange("gpt-5.4")}>
+					Select GPT 5.4
 				</button>
 				<button type="button" onClick={onRunPrompt}>
 					Run Prompt
@@ -152,41 +152,16 @@ vi.mock("@/domains/agent/lib/controller", () => ({
 const defaultRuntimeConfig = () => ({
 	model: {
 		configId: "model",
-		currentValue: "volc/glm-5.2",
+		currentValue: "gpt-5.4-mini",
 		options: [
-			{ name: "OpenCode Zen/Big Pickle", value: "opencode/big-pickle" },
-			{ name: "Volcano Engine (Agent Plan)/glm-5.2", value: "volc/glm-5.2" },
+			{ name: "GPT 5.4", value: "gpt-5.4" },
+			{ name: "GPT 5.4 Mini", value: "gpt-5.4-mini" },
 		],
 	},
 	permission: {
 		configId: "permission",
 		currentValue: "build",
 		options: [{ name: "build", value: "build" }],
-	},
-});
-
-const runtimeConfigWithOpenCodeThinkingFallback = (currentValue: string) => ({
-	model: {
-		configId: "model",
-		currentValue,
-		options: [
-			{ name: "MediaGo/MiniMax M3", value: "mediago/MiniMax-M3" },
-			{ name: "MediaGo/Qwen3.5 27B", value: "mediago/qwen3.5-27b" },
-		],
-	},
-	permission: {
-		configId: "permission",
-		currentValue: "build",
-		options: [{ name: "build", value: "build" }],
-	},
-	reasoning: {
-		configId: "effort",
-		currentValue: "thinking",
-		options: [
-			{ name: "None", value: "none" },
-			{ name: "Thinking", value: "thinking" },
-		],
-		source: "opencodeThinkingFallback",
 	},
 });
 
@@ -252,7 +227,7 @@ describe("AgentChat runtime config persistence", () => {
 	it("uses the last saved model instead of the backend current value after reload", async () => {
 		vi.resetModules();
 		persistAgentState({
-			runtimeConfigDefaults: { model: "opencode/big-pickle" },
+			runtimeConfigDefaults: { model: "gpt-5.4" },
 			runtimeConfigByProject: {},
 		});
 
@@ -260,7 +235,7 @@ describe("AgentChat runtime config persistence", () => {
 		renderAgentChat(AgentChat);
 
 		await waitFor(() => {
-			expect(screen.getByTestId("composer-form").dataset.selectedModel).toBe("opencode/big-pickle");
+			expect(screen.getByTestId("composer-form").dataset.selectedModel).toBe("gpt-5.4");
 		});
 	});
 
@@ -269,59 +244,13 @@ describe("AgentChat runtime config persistence", () => {
 		const { AgentChat } = await import("./AgentChat");
 		renderAgentChat(AgentChat);
 
-		fireEvent.click(screen.getByRole("button", { name: "Select Big Pickle" }));
+		fireEvent.click(screen.getByRole("button", { name: "Select GPT 5.4" }));
 
 		expect(persistedAgentState().state).toMatchObject({
-			runtimeConfigDefaults: { model: "opencode/big-pickle" },
+			runtimeConfigDefaults: { model: "gpt-5.4" },
 			runtimeConfigByProject: {
-				"project-1": { model: "opencode/big-pickle" },
+				"project-1": { model: "gpt-5.4" },
 			},
-		});
-	});
-
-	it("sends fallback thinking only for supported MediaGo MiniMax M3 models", async () => {
-		vi.resetModules();
-		testState.runtimeConfig = runtimeConfigWithOpenCodeThinkingFallback("mediago/MiniMax-M3");
-		const { AgentChat } = await import("./AgentChat");
-		renderAgentChat(AgentChat);
-
-		await waitFor(() => {
-			expect(screen.getByTestId("composer-form").dataset.hasReasoning).toBe("true");
-		});
-		fireEvent.click(screen.getByRole("button", { name: "Run Prompt" }));
-
-		await waitFor(() => {
-			expect(testState.runAgentPrompt).toHaveBeenCalledWith(
-				"hello",
-				expect.objectContaining({
-					reasoning: {
-						configId: "effort",
-						source: "opencodeThinkingFallback",
-						value: "thinking",
-					},
-				}),
-			);
-		});
-	});
-
-	it("does not send fallback thinking for unsupported MediaGo models", async () => {
-		vi.resetModules();
-		testState.runtimeConfig = runtimeConfigWithOpenCodeThinkingFallback("mediago/qwen3.5-27b");
-		const { AgentChat } = await import("./AgentChat");
-		renderAgentChat(AgentChat);
-
-		await waitFor(() => {
-			expect(screen.getByTestId("composer-form").dataset.hasReasoning).toBe("false");
-		});
-		fireEvent.click(screen.getByRole("button", { name: "Run Prompt" }));
-
-		await waitFor(() => {
-			expect(testState.runAgentPrompt).toHaveBeenCalledWith(
-				"hello",
-				expect.objectContaining({
-					reasoning: undefined,
-				}),
-			);
 		});
 	});
 
@@ -363,7 +292,7 @@ describe("AgentChat runtime config persistence", () => {
 		expect(screen.getByTestId("location-probe")).toHaveTextContent("/settings");
 	});
 
-	it("opens API key settings for a non-Codex runtime error", async () => {
+	it("opens Codex settings for a stale backend selection", async () => {
 		vi.resetModules();
 		testState.activeBackendId = "opencode";
 		testState.runtimeConfig = undefined;
@@ -376,7 +305,7 @@ describe("AgentChat runtime config persistence", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: "Open runtime settings" }));
 
-		expect(testState.setSettingsTab).toHaveBeenCalledWith("api-keys");
+		expect(testState.setSettingsTab).toHaveBeenCalledWith("codex-access");
 		expect(screen.getByTestId("location-probe")).toHaveTextContent("/settings");
 	});
 });

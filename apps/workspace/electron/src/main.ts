@@ -29,7 +29,7 @@ import { configureAppDataPaths, preloadPath, rendererDistDir } from "./paths.js"
 import { parsePromptPackSaveRequest } from "./prompt-pack-save.js";
 import { normalizeExternalURL, resolveRendererNavigation } from "./navigation-security.js";
 import {
-	rendererContentSecurityPolicy,
+	rendererPolicyForServer,
 	rendererProtocolScheme,
 	resolveRendererAssetPath,
 } from "./renderer-protocol.js";
@@ -37,6 +37,9 @@ import { type SidecarConnection, startServerSidecar, stopServerSidecar } from ".
 import { registerDesktopUpdater } from "./updater.js";
 
 configureAppDataPaths();
+if (process.platform === "win32") app.setAppUserModelId("team.torchstellar.mediagodrama.oss");
+let serverOrigin: string | undefined;
+let startupReady = false;
 
 protocol.registerSchemesAsPrivileged([
 	{
@@ -124,7 +127,7 @@ const registerRendererProtocol = () => {
 			callback({
 				responseHeaders: {
 					...details.responseHeaders,
-					"Content-Security-Policy": [rendererContentSecurityPolicy],
+					"Content-Security-Policy": [rendererPolicyForServer(serverOrigin)],
 					"Referrer-Policy": ["no-referrer"],
 					"X-Content-Type-Options": ["nosniff"],
 				},
@@ -239,6 +242,7 @@ const openPromptPackEditorWindow = async (options: PromptPackEditorOpenOptions =
 		trafficLightPosition: { x: 16, y: 22 },
 		webPreferences: {
 			preload: preloadPath(),
+			additionalArguments: serverOrigin ? [`--mediago-server-origin=${serverOrigin}`] : [],
 			contextIsolation: true,
 			devTools: Boolean(rendererUrl),
 			nodeIntegration: false,
@@ -275,6 +279,7 @@ const createWindow = async () => {
 		trafficLightPosition: { x: 16, y: 25 },
 		webPreferences: {
 			preload: preloadPath(),
+			additionalArguments: serverOrigin ? [`--mediago-server-origin=${serverOrigin}`] : [],
 			contextIsolation: true,
 			devTools: Boolean(rendererUrl),
 			nodeIntegration: false,
@@ -312,6 +317,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("activate", () => {
+	if (!startupReady) return;
 	if (BrowserWindow.getAllWindows().length === 0) void createWindow();
 	else mainWindow?.show();
 });
@@ -500,14 +506,22 @@ const pathIsAvailable = async (path: string) => {
 const startApp = async () => {
 	registerRendererProtocol();
 	registerDesktopUpdater({ authorizeIpcSender: authorizeDesktopIpc, getWindow: () => mainWindow });
-	const sidecar = startServerSidecar();
+	const sidecar = await startServerSidecar();
+	serverOrigin = sidecar?.origin;
 	if (sidecar) authenticateSidecarRequests(sidecar);
+	startupReady = true;
 	await createWindow();
 };
 
 // Enforce a single running instance: activating the app again (Dock, `open`,
 // or clicking a notification from a previous run) focuses the existing window
 // instead of spawning a duplicate app + sidecar.
+if (!app.isPackaged && process.env.MEDIAGO_DEV_PARENT_IPC === "1") {
+	process.once("disconnect", () => {
+		stopServerSidecar();
+		app.exit(0);
+	});
+}
 if (!app.requestSingleInstanceLock()) {
 	app.quit();
 } else {

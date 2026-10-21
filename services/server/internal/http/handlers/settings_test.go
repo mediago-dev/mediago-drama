@@ -153,8 +153,8 @@ func TestSettingsHandlerModelPlatforms(t *testing.T) {
 		t.Fatalf("GET status = %d, body = %s", response.Code, response.Body.String())
 	}
 	if !strings.Contains(response.Body.String(), `"id":"openrouter"`) ||
-		!strings.Contains(response.Body.String(), `"id":"dmxapi"`) ||
-		!strings.Contains(response.Body.String(), `"apiKeyProviderId":"dmx"`) {
+		strings.Contains(response.Body.String(), `"id":"dmxapi"`) ||
+		strings.Contains(response.Body.String(), `"apiKeyProviderId":"dmx"`) {
 		t.Fatalf("GET body = %s, want enabled model platforms", response.Body.String())
 	}
 }

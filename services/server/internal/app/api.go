@@ -78,7 +78,7 @@ func (handler *apiHandler) SubmitAgentMessage(payload messageRequest) (messageRe
 	return handler.agentRuntime.SubmitAgentMessage(payload)
 }
 
-// ResolveAgentPermission resolves an in-flight ACP permission request.
+// ResolveAgentPermission resolves an in-flight Runtime permission request.
 func (handler *apiHandler) ResolveAgentPermission(payload agentPermissionDecisionRequest) (agentSessionStatus, int, error) {
 	return handler.agentRuntime.ResolvePermission(payload)
 }
@@ -93,8 +93,8 @@ func (handler *apiHandler) AgentSessionStatus(sessionID string) agentSessionStat
 	return status
 }
 
-// PendingAgentPermissions returns active ACP permission requests for a session.
-func (handler *apiHandler) PendingAgentPermissions(sessionID string) []agentACPPermissionRequest {
+// PendingAgentPermissions returns active Runtime permission requests for a session.
+func (handler *apiHandler) PendingAgentPermissions(sessionID string) []agentRuntimePermissionRequest {
 	if handler == nil || handler.agentRuntime == nil {
 		return nil
 	}

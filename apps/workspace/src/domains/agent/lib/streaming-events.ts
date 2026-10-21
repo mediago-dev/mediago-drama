@@ -8,7 +8,7 @@ import {
 import type { RemoteAgentRuntimeEventMeta } from "@/domains/agent/lib/remote-runtime";
 import { runtimeEventTypes } from "@/domains/agent/lib/remote-runtime";
 import {
-	acpRuntimeStatus,
+	runtimeStatus,
 	debugAgentError,
 	eventRunId,
 	fallbackAgentDocument,
@@ -16,9 +16,9 @@ import {
 	refreshWorkspaceStateFromBackend,
 } from "@/domains/agent/lib/runtime-shared";
 import {
-	acpRuntimeLogText,
+	runtimeLogText,
 	containsRuntimeLogMarkers,
-	isACPToolRuntimeLog,
+	isRuntimeToolRuntimeLog,
 } from "@/domains/agent/lib/runtime-log";
 import { syncAgentSessionStatus } from "@/domains/agent/lib/session-sync";
 import { inferToolKind } from "@/domains/agent/lib/tool-kind";
@@ -33,7 +33,7 @@ import {
 } from "@/domains/documents/stores";
 
 // Routes live and resumed SSE runtime events into the agent store: assistant
-// delta buffering, ACP updates, document streaming, run lifecycle, and the
+// delta buffering, Runtime updates, document streaming, run lifecycle, and the
 // resumed-session event streams.
 
 const resumedEventStreams = new Map<string, () => void>();
@@ -217,29 +217,34 @@ const identityWithFallbackItem = (
 	itemId: identity.itemId || fallbackItemId.trim() || undefined,
 });
 
-const handleACPAgentEvent = (event: Extract<AgentRuntimeEvent, { type: "agent.acp" }>) => {
+const handleRuntimeAgentEvent = (event: Extract<AgentRuntimeEvent, { type: "agent.runtime" }>) => {
 	const agentStore = useAgentStore.getState();
-	const acp = event.acp;
+	const runtime = event.runtime;
 	const runId = eventRunId(event);
 	const itemIdentity = eventItemIdentity(event);
-	if (!acp) {
-		agentStore.recordActivity("runtime", "ACP", event.message || "ACP 更新缺少负载。", runId);
+	if (!runtime) {
+		agentStore.recordActivity(
+			"runtime",
+			"Runtime",
+			event.message || "Runtime 更新缺少负载。",
+			runId,
+		);
 		return;
 	}
 
-	if (acp.kind === "thought") {
-		agentStore.appendThought(acp.thought || event.message, runId, itemIdentity);
+	if (runtime.kind === "thought") {
+		agentStore.appendThought(runtime.thought || event.message, runId, itemIdentity);
 		return;
 	}
 
-	if (acp.kind === "runtimeLog" || isACPToolRuntimeLog(acp)) {
-		const toolCallId = acp.toolCallId?.trim() || event.id;
+	if (runtime.kind === "runtimeLog" || isRuntimeToolRuntimeLog(runtime)) {
+		const toolCallId = runtime.toolCallId?.trim() || event.id;
 		agentStore.recordRuntimeLog(
 			{
-				content: acpRuntimeLogText(acp) || event.message,
-				outputBlocks: acp.content,
-				outputJson: acp.rawOutput,
-				status: acp.status,
+				content: runtimeLogText(runtime) || event.message,
+				outputBlocks: runtime.content,
+				outputJson: runtime.rawOutput,
+				status: runtime.status,
 				toolCallId,
 			},
 			runId,
@@ -248,21 +253,21 @@ const handleACPAgentEvent = (event: Extract<AgentRuntimeEvent, { type: "agent.ac
 		return;
 	}
 
-	if (acp.kind === "toolCall" || acp.kind === "toolCallUpdate") {
-		const toolCallId = acp.toolCallId?.trim() || event.id;
-		const title = acp.title?.trim();
-		const displayTitle = displayACPToolTitle(title, toolCallId);
+	if (runtime.kind === "toolCall" || runtime.kind === "toolCallUpdate") {
+		const toolCallId = runtime.toolCallId?.trim() || event.id;
+		const title = runtime.title?.trim();
+		const displayTitle = displayRuntimeToolTitle(title, toolCallId);
 		agentStore.upsertToolCallMessage(
 			toolCallId,
 			{
 				title: displayTitle,
 				toolName: displayTitle,
-				acpKind: acp.toolKind || (displayTitle ? inferToolKind(displayTitle) : undefined),
-				status: acp.status,
-				inputJson: acp.rawInput,
-				outputJson: acp.rawOutput,
-				outputBlocks: acp.content,
-				locations: acp.locations,
+				runtimeKind: runtime.toolKind || (displayTitle ? inferToolKind(displayTitle) : undefined),
+				status: runtime.status,
+				inputJson: runtime.rawInput,
+				outputJson: runtime.rawOutput,
+				outputBlocks: runtime.content,
+				locations: runtime.locations,
 				content: event.message,
 			},
 			runId,
@@ -271,22 +276,22 @@ const handleACPAgentEvent = (event: Extract<AgentRuntimeEvent, { type: "agent.ac
 		return;
 	}
 
-	if (acp.kind === "plan") {
-		agentStore.setPlan(acp.plan ?? [], runId, itemIdentity);
+	if (runtime.kind === "plan") {
+		agentStore.setPlan(runtime.plan ?? [], runId, itemIdentity);
 		return;
 	}
 
-	if (acp.kind === "permissionRequest" && acp.permissionRequest) {
-		agentStore.addPermissionRequest(acp.permissionRequest);
+	if (runtime.kind === "permissionRequest" && runtime.permissionRequest) {
+		agentStore.addPermissionRequest(runtime.permissionRequest);
 		return;
 	}
 
-	if (acp.kind === "permissionResolved" || acp.kind === "permissionExpired") {
-		const requestId = acp.permissionRequest?.requestId?.trim();
+	if (runtime.kind === "permissionResolved" || runtime.kind === "permissionExpired") {
+		const requestId = runtime.permissionRequest?.requestId?.trim();
 		if (requestId) {
 			agentStore.removePermissionRequest(requestId);
 		}
-		if (acp.status === "expired") {
+		if (runtime.status === "expired") {
 			agentStore.recordActivity(
 				"runtime",
 				"权限请求超时",
@@ -297,21 +302,29 @@ const handleACPAgentEvent = (event: Extract<AgentRuntimeEvent, { type: "agent.ac
 		return;
 	}
 
-	if ((acp.kind === "mcpUnavailable" || acp.kind === "runtimeError") && acp.runtimeAlert) {
-		agentStore.addRuntimeAlert(acp.runtimeAlert, runId);
+	if (
+		(runtime.kind === "mcpUnavailable" || runtime.kind === "runtimeError") &&
+		runtime.runtimeAlert
+	) {
+		agentStore.addRuntimeAlert(runtime.runtimeAlert, runId);
 		return;
 	}
 
-	agentStore.recordActivity("runtime", "ACP", event.message || `ACP 更新：${acp.kind}`, runId);
+	agentStore.recordActivity(
+		"runtime",
+		"Runtime",
+		event.message || `Runtime 更新：${runtime.kind}`,
+		runId,
+	);
 };
 
-const displayACPToolTitle = (title: string | undefined, toolCallId: string) => {
+const displayRuntimeToolTitle = (title: string | undefined, toolCallId: string) => {
 	const trimmed = title?.trim();
 	if (
 		!trimmed ||
 		trimmed === toolCallId ||
 		trimmed === "工具调用" ||
-		trimmed === "ACP 工具调用" ||
+		trimmed === "Runtime 工具调用" ||
 		trimmed === "tool call" ||
 		trimmed === "tool_call" ||
 		/^\d{4}-\d{2}-\d{2}T\d{2}/.test(trimmed)
@@ -399,13 +412,13 @@ export const handleStreamingAgentEvent = (
 		return;
 	}
 
-	if (event.type === "agent.acp") {
-		handleACPAgentEvent(event);
+	if (event.type === "agent.runtime") {
+		handleRuntimeAgentEvent(event);
 		return;
 	}
 
 	if (event.type === "agent.activity") {
-		// Legacy/mock fallback: upgraded ACP runtimes send structured agent.acp events instead.
+		// Legacy/mock fallback: upgraded Runtime runtimes send structured agent.runtime events instead.
 		if (containsRuntimeLogMarkers(event.message)) {
 			agentStore.recordRuntimeLog(
 				{
@@ -504,7 +517,7 @@ export const handleStreamingAgentEvent = (
 
 	if (event.type === "agent.run.completed") {
 		if (context.meta?.replay || !isLifecycleEventForCurrentRun(event)) return;
-		agentStore.recordRuntimeStatus(acpRuntimeStatus);
+		agentStore.recordRuntimeStatus(runtimeStatus);
 		const completedProjectId = event.projectId ?? context.projectId ?? undefined;
 		void refreshWorkspaceStateFromBackend(completedProjectId);
 		// An agent run may have generated or finalized (定稿) assets. Synchronously
@@ -547,6 +560,6 @@ const splitActivityMessage = (message: string) => {
 };
 
 const isRuntimeActivity = (message: string) =>
-	/(^|\s)(ACP|MCP)\b|会话|运行时|停止原因|stderr|旧会话|恢复失败|载入失败|刷新\s*mediago_drama/i.test(
+	/(^|\s)(Runtime|MCP)\b|会话|运行时|停止原因|stderr|旧会话|恢复失败|载入失败|刷新\s*mediago_drama/i.test(
 		message,
 	);

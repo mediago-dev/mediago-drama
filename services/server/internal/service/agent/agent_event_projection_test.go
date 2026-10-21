@@ -14,15 +14,15 @@ func TestProjectAgentEventIgnoresTimestampToolTitle(t *testing.T) {
 		ID:        "event-1",
 		SessionID: "session-1",
 		RunID:     "run-1",
-		Type:      "agent.acp",
+		Type:      "agent.runtime",
 		Message:   "工具调用：2026-05-24T19:57:40.005581Z（失败）",
 		CreatedAt: "2026-05-24T19:57:40Z",
-		ACP: &AgentACPEvent{
+		Runtime: &AgentRuntimeEvent{
 			Kind:       "toolCallUpdate",
 			ToolCallID: "2026-05-24T19:57:40.005581Z",
 			Title:      "2026-05-24T19:57:40.005581Z",
 			Status:     "failed",
-			Content: []AgentACPContentBlock{
+			Content: []AgentRuntimeContentBlock{
 				{Type: "text", Text: "failed to run tool"},
 			},
 		},
@@ -145,17 +145,17 @@ func TestProjectAgentEventMarksFailedAndCancelledConversationsTerminal(t *testin
 	}
 }
 
-func TestProjectAgentEventInfersMCPToolKindWhenACPKindIsOther(t *testing.T) {
+func TestProjectAgentEventInfersMCPToolKindWhenRuntimeKindIsOther(t *testing.T) {
 	conversations := map[string]AgentConversationRecord{}
 	activity := []AgentChatActivityRecord{}
 	event := AgentEvent{
 		ID:        "event-1",
 		SessionID: "session-1",
 		RunID:     "run-1",
-		Type:      "agent.acp",
+		Type:      "agent.runtime",
 		Message:   "工具调用：Tool: mediago_drama/mutate_comment（完成）",
 		CreatedAt: "2026-05-24T19:57:40Z",
-		ACP: &AgentACPEvent{
+		Runtime: &AgentRuntimeEvent{
 			Kind:       "toolCall",
 			ToolCallID: "call-edit",
 			ToolKind:   "other",
@@ -170,8 +170,8 @@ func TestProjectAgentEventInfersMCPToolKindWhenACPKindIsOther(t *testing.T) {
 	if len(conversation.Messages) != 1 {
 		t.Fatalf("messages = %d, want 1", len(conversation.Messages))
 	}
-	if got := metadataString(conversation.Messages[0].Metadata, "acpKind"); got != "edit" {
-		t.Fatalf("metadata acpKind = %q, want edit", got)
+	if got := metadataString(conversation.Messages[0].Metadata, "runtimeKind"); got != "edit" {
+		t.Fatalf("metadata runtimeKind = %q, want edit", got)
 	}
 }
 
@@ -246,14 +246,14 @@ func TestProjectAgentEventProjectsRuntimeLogKind(t *testing.T) {
 		ID:        "event-runtime-log",
 		SessionID: "session-1",
 		RunID:     "run-1",
-		Type:      "agent.acp",
+		Type:      "agent.runtime",
 		Message:   logText,
 		CreatedAt: "2026-06-03T09:43:13Z",
-		ACP: &AgentACPEvent{
-			Kind:       ACPRuntimeLogKind,
+		Runtime: &AgentRuntimeEvent{
+			Kind:       RuntimeLogKind,
 			ToolCallID: "runtime-call",
 			Status:     "failed",
-			Content: []AgentACPContentBlock{
+			Content: []AgentRuntimeContentBlock{
 				{Type: "text", Text: logText},
 			},
 		},
@@ -275,7 +275,7 @@ func TestProjectAgentEventProjectsRuntimeLogKind(t *testing.T) {
 	if got := metadataString(message.Metadata, "toolCallId"); got != "runtime-call" {
 		t.Fatalf("toolCallId = %q, want runtime-call", got)
 	}
-	blocks := metadataACPContentBlocks(message.Metadata, "outputBlocks")
+	blocks := metadataRuntimeContentBlocks(message.Metadata, "outputBlocks")
 	if len(blocks) != 1 || blocks[0].Text != logText {
 		t.Fatalf("outputBlocks = %#v, want runtime log text", blocks)
 	}
@@ -289,16 +289,16 @@ func TestProjectAgentEventProjectsLegacyRuntimeLogToolUpdate(t *testing.T) {
 		ID:        "event-legacy-runtime-log",
 		SessionID: "session-1",
 		RunID:     "run-1",
-		Type:      "agent.acp",
+		Type:      "agent.runtime",
 		Message:   "工具调用：2026-06-03T09:43:13Z（失败）",
 		CreatedAt: "2026-06-03T09:43:13Z",
-		ACP: &AgentACPEvent{
+		Runtime: &AgentRuntimeEvent{
 			Kind:       "toolCallUpdate",
 			ToolCallID: "2026-06-03T09:43:13Z",
 			ToolKind:   "other",
 			Title:      "工具调用",
 			Status:     "failed",
-			Content: []AgentACPContentBlock{
+			Content: []AgentRuntimeContentBlock{
 				{Type: "text", Text: logText},
 			},
 		},
@@ -332,10 +332,10 @@ func TestProjectAgentEventPreservesTurnItemAndPhase(t *testing.T) {
 		ID:        "event-tool-start",
 		SessionID: "session-1",
 		RunID:     "run-1",
-		Type:      "agent.acp",
+		Type:      "agent.runtime",
 		Message:   "正在更新 README",
 		CreatedAt: "2026-07-14T10:00:01Z",
-		ACP: &AgentACPEvent{
+		Runtime: &AgentRuntimeEvent{
 			Kind:       "toolCall",
 			ToolCallID: "call-edit",
 			Title:      "更新 README",
@@ -346,10 +346,10 @@ func TestProjectAgentEventPreservesTurnItemAndPhase(t *testing.T) {
 		ID:        "event-tool-done",
 		SessionID: "session-1",
 		RunID:     "run-1",
-		Type:      "agent.acp",
+		Type:      "agent.runtime",
 		Message:   "README 已更新",
 		CreatedAt: "2026-07-14T10:00:02Z",
-		ACP: &AgentACPEvent{
+		Runtime: &AgentRuntimeEvent{
 			Kind:       "toolCallUpdate",
 			ToolCallID: "call-edit",
 			Title:      "更新 README",

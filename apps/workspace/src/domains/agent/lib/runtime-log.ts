@@ -1,4 +1,4 @@
-import type { AgentRuntimeACPEvent } from "@/domains/agent/api/agent";
+import type { AgentRuntimeUpdate } from "@/domains/agent/api/agent";
 import type { AgentMessage } from "@/domains/agent/stores/types";
 
 const runtimeLogMarkers = [
@@ -9,25 +9,25 @@ const runtimeLogMarkers = [
 	"error codex_core",
 ];
 
-const defaultToolTitles = new Set(["工具调用", "ACP 工具调用", "tool call", "tool_call"]);
+const defaultToolTitles = new Set(["工具调用", "Runtime 工具调用", "tool call", "tool_call"]);
 
-export const isACPToolRuntimeLog = (acp: AgentRuntimeACPEvent) => {
-	if (acp.kind !== "toolCall" && acp.kind !== "toolCallUpdate") return false;
-	const toolKind = acp.toolKind?.trim();
+export const isRuntimeToolRuntimeLog = (runtime: AgentRuntimeUpdate) => {
+	if (runtime.kind !== "toolCall" && runtime.kind !== "toolCallUpdate") return false;
+	const toolKind = runtime.toolKind?.trim();
 	if (toolKind && toolKind !== "other") return false;
-	const toolCallId = acp.toolCallId?.trim() || "";
-	if (displayACPToolTitle(acp.title, toolCallId)) return false;
-	if (acp.locations?.length) return false;
-	if (acp.rawInput !== undefined && acp.rawInput !== null) return false;
-	if (acp.content?.some((block) => block.type === "diff")) return false;
+	const toolCallId = runtime.toolCallId?.trim() || "";
+	if (displayRuntimeToolTitle(runtime.title, toolCallId)) return false;
+	if (runtime.locations?.length) return false;
+	if (runtime.rawInput !== undefined && runtime.rawInput !== null) return false;
+	if (runtime.content?.some((block) => block.type === "diff")) return false;
 
-	const text = normalizeRuntimeLogText(acpRuntimeLogText(acp));
+	const text = normalizeRuntimeLogText(runtimeLogText(runtime));
 	return isRuntimeLogText(text);
 };
 
-export const acpRuntimeLogText = (acp: AgentRuntimeACPEvent) => {
+export const runtimeLogText = (runtime: AgentRuntimeUpdate) => {
 	const blockText =
-		acp.content
+		runtime.content
 			?.map((block) =>
 				block.type === "diff"
 					? [block.oldText, block.newText].filter(Boolean).join("\n")
@@ -35,7 +35,7 @@ export const acpRuntimeLogText = (acp: AgentRuntimeACPEvent) => {
 			)
 			.filter(Boolean)
 			.join("\n") ?? "";
-	return [blockText, rawRuntimeLogText(acp.rawOutput)].filter(Boolean).join("\n");
+	return [blockText, rawRuntimeLogText(runtime.rawOutput)].filter(Boolean).join("\n");
 };
 
 export const containsRuntimeLogMarkers = (text: string) =>
@@ -70,10 +70,10 @@ export const isLegacyToolRuntimeLogMessage = (message: AgentMessage) => {
 	if ((message.kind ?? "message") !== "tool") return false;
 	const metadata = message.metadata ?? {};
 	if (metadata.runtimeLog === true) return true;
-	const acpKind = typeof metadata.acpKind === "string" ? metadata.acpKind.trim() : "";
-	if (acpKind && acpKind !== "other") return false;
+	const runtimeKind = typeof metadata.runtimeKind === "string" ? metadata.runtimeKind.trim() : "";
+	if (runtimeKind && runtimeKind !== "other") return false;
 	const toolCallId = typeof metadata.toolCallId === "string" ? metadata.toolCallId.trim() : "";
-	const title = displayACPToolTitle(
+	const title = displayRuntimeToolTitle(
 		typeof metadata.toolName === "string" ? metadata.toolName : message.title,
 		toolCallId,
 	);
@@ -98,7 +98,7 @@ export const isLegacyToolRuntimeLogMessage = (message: AgentMessage) => {
 	return isRuntimeLogText(text);
 };
 
-const displayACPToolTitle = (title: string | undefined, toolCallId: string) => {
+const displayRuntimeToolTitle = (title: string | undefined, toolCallId: string) => {
 	const trimmed = title?.trim();
 	if (
 		!trimmed ||

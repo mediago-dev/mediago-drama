@@ -143,7 +143,7 @@ func TestAgentMessageUsesFixedPromptWithoutSpawnRules(t *testing.T) {
 	}
 	select {
 	case request := <-requests:
-		prompt := buildACPPrompt(request)
+		prompt := buildRuntimePrompt(request)
 		if strings.Contains(prompt, "本次会话建议产出") ||
 			strings.Contains(prompt, mediaGoDramaMCPToolName("spawn"+"_agents")) ||
 			strings.Contains(prompt, "已安装 Skill") ||

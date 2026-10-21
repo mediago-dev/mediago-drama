@@ -11,13 +11,11 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const agent = process.argv[2]?.trim() || "opencode";
+const agent = process.argv[2]?.trim() || "codex";
 const platformArg = process.argv[3]?.trim() || "";
-const modelPlatform = process.argv[4]?.trim() || "mediago";
-const mediagoBaseURL =
-	process.argv[5]?.trim() || process.env.MEDIAGO_MODEL_PLATFORM_MEDIAGO_BASE_URL?.trim() || "";
+const modelPlatform = process.argv[4]?.trim() || "openrouter";
 const generationClis =
-	process.argv[6]?.trim() || process.env.MEDIAGO_GENERATION_CLIS?.trim() || "dreamina";
+	process.argv[5]?.trim() || process.env.MEDIAGO_GENERATION_CLIS?.trim() || "dreamina";
 const includeProtectedPackRuntime =
 	process.env.MEDIAGO_INCLUDE_PROTECTED_PACK_RUNTIME?.trim() === "1";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -49,6 +47,7 @@ const selectedToolIDs = unique([
 ]);
 
 function main(): void {
+	if (agent !== "codex") throw new Error("Only native Codex app-server is supported");
 	for (const binary of serviceBinaries) ensureExecutable(binary.path);
 	ensureFile(
 		join(agentDist, "agent.json"),
@@ -80,7 +79,7 @@ function main(): void {
 	}
 	writeFileSync(
 		join(electronResourcesDir, "model-platform.json"),
-		JSON.stringify({ agent, mediagoBaseURL, modelPlatform }, null, 2) + "\n",
+		JSON.stringify({ agent, modelPlatform }, null, 2) + "\n",
 	);
 	writeFileSync(
 		join(electronResourcesDir, "local-cli.json"),
@@ -113,7 +112,9 @@ function parseToolIDs(value: string): string[] {
 
 function canonicalToolID(value: string): string {
 	const normalized = value.trim().toLowerCase();
-	if (normalized === "xiaoyunque" || normalized === "pippit-tool-cli") return "pippit";
+	if (!["", "none", "dreamina", "libtv"].includes(normalized)) {
+		throw new Error(`Unsupported generation CLI: ${value}`);
+	}
 	return normalized;
 }
 

@@ -4,19 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 )
 
-const (
-	defaultAgentBackendID      = "codex"
-	defaultAgentBackendCommand = "codex-acp"
-	customAgentBackendID       = "custom"
-)
-
-// AgentBackend describes one configured ACP-compatible agent backend.
+// AgentBackend describes the bundled Codex runtime.
 type AgentBackend struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -25,20 +19,14 @@ type AgentBackend struct {
 	IsBuiltin   bool   `json:"isBuiltin,omitempty"`
 }
 
-// AgentBackendsPayload is returned by the configured agent backend API.
+// AgentBackendsPayload identifies the sole supported backend.
 type AgentBackendsPayload struct {
 	Backends []AgentBackend `json:"backends"`
 	ActiveID string         `json:"activeId"`
 }
 
-// AgentBackendService keeps the configured ACP backends and active backend in memory.
-type AgentBackendService struct {
-	mu       sync.RWMutex
-	backends []AgentBackend
-	activeID string
-	binDir   string
-}
-
+// AgentBackendService resolves the bundled native Codex executable.
+type AgentBackendService struct{ binDir, command string }
 type agentManifest struct {
 	ID           string   `json:"id"`
 	Bin          string   `json:"bin"`
@@ -48,277 +36,101 @@ type agentManifest struct {
 	CodexVersion string   `json:"codexVersion,omitempty"`
 }
 
-// NewAgentBackendService creates an in-memory service for the configured ACP backend.
-func NewAgentBackendService(initialCommand string) *AgentBackendService {
-	return NewAgentBackendServiceWithBinDir(initialCommand, "", "")
+// NewAgentBackendService creates the native Codex backend.
+func NewAgentBackendService(command string) *AgentBackendService {
+	return NewAgentBackendServiceWithBinDir(command, "", "")
 }
 
-// NewAgentBackendServiceWithBinDir creates a backend service with optional vendored binaries.
-func NewAgentBackendServiceWithBinDir(initialCommand string, binDir string, activeBackendID string) *AgentBackendService {
-	backends := builtinAgentBackends()
-	activeID := defaultAgentBackendID
-	command := normalizeAgentBackendCommand(initialCommand)
-	if command != "" {
-		for _, backend := range backends {
-			if normalizeAgentBackendCommand(backend.Command) == command {
-				activeID = backend.ID
-				return newAgentBackendService(backends, activeID, binDir, activeBackendID)
-			}
-		}
-
-		backends = append(backends, AgentBackend{
-			ID:          customAgentBackendID,
-			Name:        "Custom",
-			Command:     command,
-			Description: "通过 --acp-command 提供的自定义 ACP 后端。",
-			IsBuiltin:   false,
-		})
-		activeID = customAgentBackendID
-	}
-
-	return newAgentBackendService(backends, activeID, binDir, activeBackendID)
+// NewAgentBackendServiceWithBinDir resolves Codex; stale backend selections use Codex.
+func NewAgentBackendServiceWithBinDir(command, binDir, _ string) *AgentBackendService {
+	return &AgentBackendService{command: strings.TrimSpace(command), binDir: strings.TrimSpace(binDir)}
 }
 
-// ListBackends returns a snapshot of configured backends and the active id.
-func (store *AgentBackendService) ListBackends() AgentBackendsPayload {
-	if store == nil {
-		return AgentBackendsPayload{
-			Backends: builtinAgentBackends(),
-			ActiveID: defaultAgentBackendID,
-		}
-	}
-
-	store.mu.RLock()
-	defer store.mu.RUnlock()
-
-	backends := make([]AgentBackend, len(store.backends))
-	copy(backends, store.backends)
-	activeID := store.activeID
-	if activeID == "" {
-		activeID = defaultAgentBackendID
-	}
-	return AgentBackendsPayload{
-		Backends: backends,
-		ActiveID: activeID,
-	}
+// ListBackends returns the Codex backend descriptor.
+func (s *AgentBackendService) ListBackends() AgentBackendsPayload {
+	return AgentBackendsPayload{Backends: builtinAgentBackends(), ActiveID: "codex"}
+}
+func builtinAgentBackends() []AgentBackend {
+	return []AgentBackend{{ID: "codex", Name: "Codex", Command: "codex app-server", Description: "原生 Codex app-server", IsBuiltin: true}}
 }
 
-// ActiveCommand returns the command for the active backend.
-func (store *AgentBackendService) ActiveCommand() string {
-	if store == nil {
-		return defaultAgentBackendCommand
+// ActiveCommand returns the native executable path, without shell parsing.
+func (s *AgentBackendService) ActiveCommand() string {
+	path, err := s.CodexExecutable()
+	if err != nil {
+		return ""
 	}
-
-	store.mu.RLock()
-	defer store.mu.RUnlock()
-
-	return store.activeCommandLocked()
+	return path
 }
 
-// ActiveArgv returns the executable argv for the active backend.
-func (store *AgentBackendService) ActiveArgv() []string {
-	if store == nil {
-		return splitAgentBackendCommand(defaultAgentBackendCommand)
-	}
+// ActiveArgv returns the executable used by the Codex runner.
+func (s *AgentBackendService) ActiveArgv() []string { return []string{s.ActiveCommand()} }
 
-	store.mu.RLock()
-	activeID := store.activeID
-	binDir := store.binDir
-	command := store.activeCommandLocked()
-	store.mu.RUnlock()
+// ActiveEnv returns explicit executable metadata for subprocess consumers.
+func (s *AgentBackendService) ActiveEnv() map[string]string { return map[string]string{} }
 
-	if strings.TrimSpace(binDir) != "" && strings.TrimSpace(activeID) != "" {
-		if manifest, err := loadAgentManifest(binDir, activeID); err == nil {
-			if argv := manifestArgv(binDir, activeID, manifest); len(argv) > 0 {
-				return argv
-			}
-		}
+// CodexExecutable resolves the vendored binary or an explicitly selected executable.
+func (s *AgentBackendService) CodexExecutable() (string, error) {
+	if s == nil {
+		return "", fmt.Errorf("Codex backend is unavailable")
 	}
-
-	return splitAgentBackendCommand(command)
-}
-
-// ActiveEnv returns environment variables required by the active vendored backend.
-func (store *AgentBackendService) ActiveEnv() map[string]string {
-	if store == nil {
-		return map[string]string{}
+	if s.command != "" {
+		return exec.LookPath(s.command)
 	}
-
-	store.mu.RLock()
-	activeID := store.activeID
-	binDir := store.binDir
-	store.mu.RUnlock()
-	if strings.TrimSpace(binDir) == "" || strings.TrimSpace(activeID) == "" {
-		return map[string]string{}
+	if s.binDir == "" {
+		return exec.LookPath("codex")
 	}
-	manifest, err := loadAgentManifest(binDir, activeID)
-	if err != nil || manifest.CodexBin == "" {
-		return map[string]string{}
-	}
-	return map[string]string{
-		"CODEX_PATH": filepath.Join(binDir, activeID, manifest.CodexBin),
-	}
-}
-
-// CodexExecutable returns the vendored Codex executable for the built-in Codex backend.
-func (store *AgentBackendService) CodexExecutable() (string, error) {
-	if store == nil {
-		return "", fmt.Errorf("agent backend service is unavailable")
-	}
-
-	store.mu.RLock()
-	binDir := store.binDir
-	store.mu.RUnlock()
-	if strings.TrimSpace(binDir) == "" {
-		return "", fmt.Errorf("agent bin dir is empty")
-	}
-
-	manifest, err := loadAgentManifest(binDir, defaultAgentBackendID)
+	manifest, err := loadAgentManifest(s.binDir, "codex")
 	if err != nil {
 		return "", err
 	}
-	if manifest.CodexBin == "" {
-		return "", fmt.Errorf("codex executable is missing from the agent manifest")
+	name := manifest.CodexBin
+	if name == "" {
+		name = manifest.Bin
 	}
-	path := filepath.Join(binDir, defaultAgentBackendID, manifest.CodexBin)
+	name, err = cleanAgentManifestPath(name)
+	if err != nil {
+		return "", err
+	}
+	base := strings.ToLower(filepath.Base(name))
+	if base != "codex" && base != "codex.exe" {
+		return "", fmt.Errorf("manifest must reference the native Codex executable")
+	}
+	path := filepath.Join(s.binDir, "codex", name)
 	info, err := os.Stat(path)
 	if err != nil {
-		return "", fmt.Errorf("checking codex executable %s: %w", path, err)
+		return "", fmt.Errorf("checking Codex executable: %w", err)
 	}
 	if info.IsDir() || (runtime.GOOS != "windows" && info.Mode()&0o111 == 0) {
-		return "", fmt.Errorf("codex executable %s is not executable", path)
+		return "", fmt.Errorf("Codex path is not executable")
 	}
 	return path, nil
 }
-
-func (store *AgentBackendService) activeCommandLocked() string {
-	for _, backend := range store.backends {
-		if backend.ID == store.activeID {
-			command := strings.TrimSpace(backend.Command)
-			if command != "" {
-				return command
-			}
-			break
-		}
-	}
-	return defaultAgentBackendCommand
-}
-
-func builtinAgentBackends() []AgentBackend {
-	return []AgentBackend{
-		{
-			ID:          defaultAgentBackendID,
-			Name:        "Codex",
-			Command:     defaultAgentBackendCommand,
-			Description: "默认 Codex ACP 后端。",
-			IsBuiltin:   true,
-		},
-		{
-			ID:          "opencode",
-			Name:        "OpenCode",
-			Command:     "opencode acp",
-			Description: "OpenCode ACP 后端。",
-			IsBuiltin:   true,
-		},
-	}
-}
-
-func newAgentBackendService(backends []AgentBackend, activeID string, binDir string, requestedActiveID string) *AgentBackendService {
-	requestedActiveID = strings.TrimSpace(requestedActiveID)
-	if requestedActiveID != "" {
-		for _, backend := range backends {
-			if backend.ID == requestedActiveID {
-				activeID = requestedActiveID
-				break
-			}
-		}
-	}
-
-	return &AgentBackendService{
-		backends: backends,
-		activeID: activeID,
-		binDir:   strings.TrimSpace(binDir),
-	}
-}
-
-func loadAgentManifest(binDir string, id string) (agentManifest, error) {
-	binDir = strings.TrimSpace(binDir)
-	id = strings.TrimSpace(id)
-	if binDir == "" {
-		return agentManifest{}, fmt.Errorf("agent bin dir is empty")
-	}
-	if id == "" {
-		return agentManifest{}, fmt.Errorf("agent id is empty")
-	}
-
-	path := filepath.Join(binDir, id, "agent.json")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return agentManifest{}, fmt.Errorf("reading agent manifest %s: %w", path, err)
-	}
-
+func loadAgentManifest(binDir, id string) (agentManifest, error) {
 	var manifest agentManifest
-	if err := json.Unmarshal(raw, &manifest); err != nil {
-		return agentManifest{}, fmt.Errorf("parsing agent manifest %s: %w", path, err)
+	if id != "codex" {
+		return manifest, fmt.Errorf("only Codex is supported")
 	}
-	manifest.ID = strings.TrimSpace(manifest.ID)
-	manifest.Bin = strings.TrimSpace(manifest.Bin)
-	manifest.Version = strings.TrimSpace(manifest.Version)
-	manifest.CodexBin = strings.TrimSpace(manifest.CodexBin)
-	manifest.CodexVersion = strings.TrimSpace(manifest.CodexVersion)
-	for index := range manifest.Args {
-		manifest.Args[index] = strings.TrimSpace(manifest.Args[index])
-	}
-	if manifest.ID != "" && manifest.ID != id {
-		return agentManifest{}, fmt.Errorf("agent manifest %s has id %q, want %q", path, manifest.ID, id)
-	}
-	if manifest.Bin == "" {
-		return agentManifest{}, fmt.Errorf("agent manifest %s has empty bin", path)
-	}
-	manifest.Bin, err = cleanAgentManifestPath(manifest.Bin)
+	raw, err := os.ReadFile(filepath.Join(binDir, id, "agent.json"))
 	if err != nil {
-		return agentManifest{}, fmt.Errorf("agent manifest %s bin: %w", path, err)
+		return manifest, fmt.Errorf("reading Codex manifest: %w", err)
 	}
-	if manifest.CodexBin != "" {
-		manifest.CodexBin, err = cleanAgentManifestPath(manifest.CodexBin)
-		if err != nil {
-			return agentManifest{}, fmt.Errorf("agent manifest %s codexBin: %w", path, err)
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return manifest, fmt.Errorf("decoding Codex manifest: %w", err)
+	}
+	for _, value := range []string{manifest.Bin, manifest.CodexBin} {
+		if value != "" {
+			if _, err := cleanAgentManifestPath(value); err != nil {
+				return manifest, err
+			}
 		}
 	}
 	return manifest, nil
 }
-
 func cleanAgentManifestPath(value string) (string, error) {
-	cleaned := filepath.Clean(strings.TrimSpace(value))
-	if cleaned == "" || cleaned == "." || filepath.IsAbs(cleaned) || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("must be a relative path inside the agent directory")
+	value = filepath.Clean(strings.ReplaceAll(strings.TrimSpace(value), "\\", string(filepath.Separator)))
+	if value == "." || strings.HasPrefix(value, string(filepath.Separator)) || filepath.IsAbs(value) || value == ".." || strings.HasPrefix(value, ".."+string(filepath.Separator)) || strings.Contains(value, ":") {
+		return "", fmt.Errorf("invalid Codex manifest path")
 	}
-	return cleaned, nil
-}
-
-func manifestArgv(binDir string, id string, manifest agentManifest) []string {
-	bin := strings.TrimSpace(manifest.Bin)
-	if bin == "" {
-		return nil
-	}
-
-	argv := []string{filepath.Join(binDir, id, bin)}
-	for _, arg := range manifest.Args {
-		if arg != "" {
-			argv = append(argv, arg)
-		}
-	}
-	return argv
-}
-
-func normalizeAgentBackendCommand(command string) string {
-	return strings.Join(strings.Fields(command), " ")
-}
-
-func splitAgentBackendCommand(command string) []string {
-	parts := strings.Fields(command)
-	if len(parts) == 0 {
-		return []string{defaultAgentBackendCommand}
-	}
-	return parts
+	return value, nil
 }

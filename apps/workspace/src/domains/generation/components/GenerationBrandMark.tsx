@@ -17,7 +17,6 @@ import doubaoIcon from "@lobehub/icons-static-svg/icons/doubao-color.svg";
 import geminiIcon from "@lobehub/icons-static-svg/icons/gemini-color.svg";
 import jimengIcon from "@lobehub/icons-static-svg/icons/jimeng-color.svg";
 import minimaxIcon from "@lobehub/icons-static-svg/icons/minimax-color.svg";
-import openCodeIcon from "@lobehub/icons-static-svg/icons/opencode.svg";
 import openAIIcon from "@lobehub/icons-static-svg/icons/openai.svg";
 import openRouterIcon from "@lobehub/icons-static-svg/icons/openrouter.svg";
 import qwenIcon from "@lobehub/icons-static-svg/icons/qwen-color.svg";
@@ -38,7 +37,6 @@ export type GenerationBrandKey =
 	| "mediago"
 	| "minimax"
 	| "model"
-	| "opencode"
 	| "openai"
 	| "openrouter"
 	| "qwen"
@@ -64,7 +62,6 @@ const brandSpecs: Record<GenerationBrandKey, BrandSpec> = {
 	mediago: { icon: mediagoIcon, label: "MediaGo" },
 	minimax: { icon: minimaxIcon, label: "MiniMax 国内" },
 	model: { label: "模型" },
-	opencode: { icon: openCodeIcon, label: "OpenCode" },
 	openai: { icon: openAIIcon, label: "OpenAI" },
 	openrouter: {
 		icon: openRouterIcon,
@@ -140,9 +137,6 @@ export const generationProviderBrand = (provider: string): GenerationBrandKey =>
 		case "github copilot":
 		case "copilot":
 			return "copilot";
-		case "opencode":
-		case "opencode zen":
-			return "opencode";
 		case "jimeng":
 			return "jimeng";
 		case "libtv":
@@ -226,7 +220,6 @@ const generationBrandFromTokens = (tokens: Array<string | undefined>): Generatio
 	if (normalized === "text" || normalized.includes("gpt text")) return "gpt";
 	if (normalized.includes("volc") || normalized.includes("火山")) return "volcengine";
 	if (normalized.includes("github copilot") || normalized.includes("copilot")) return "copilot";
-	if (normalized.includes("opencode")) return "opencode";
 	if (normalized.includes("mediago")) return "mediago";
 	if (normalized.includes("dmx")) return "dmx";
 	if (normalized.includes("openrouter")) return "openrouter";

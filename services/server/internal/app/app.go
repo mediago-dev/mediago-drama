@@ -28,17 +28,17 @@ var errAgentRuntimeConfigInspectionUnsupported = errors.New("agent runner does n
 
 // Config controls local server persistence and runtime behavior.
 type Config struct {
-	Host                       string
-	Port                       int
-	SettingsDBPath             string
-	MediaDir                   string
-	WorkspaceDir               string
-	ACPCommand                 string
-	AgentID                    string
-	AgentBinDir                string
-	ModelPlatforms             []string
-	GenerationCLIs             []string
-	MediagoBaseURL             string
+	Host           string
+	Port           int
+	SettingsDBPath string
+	MediaDir       string
+	WorkspaceDir   string
+	CodexPath      string
+	AgentID        string
+	AgentBinDir    string
+	ModelPlatforms []string
+	GenerationCLIs []string
+
 	SidecarToken               string
 	ProtectedPackImporterPath  string
 	AllowUnprotectedPackImport bool
@@ -49,23 +49,22 @@ type Config struct {
 	LibTVBinPath               string
 	LibTVBinDir                string
 	LibTVProjectID             string
-	PippitBinPath              string
-	PippitBinDir               string
-	DocumentMCPConfigPath      string
-	AgentBridgeURL             string
-	AgentBridgeToken           string
-	AgentRunTimeout            time.Duration
-	PromptMaxSectionChars      int
-	PromptDelivery             string
-	DisableGenerationWorker    bool
-	GenerationWorkerInterval   time.Duration
-	GenerationWorkerLimit      int
-	DisableWorkspaceWatcher    bool
-	WorkspaceWatcherInterval   time.Duration
-	BillingPrices              corepricing.Table
-	RuntimeExtensions          []RuntimeExtension
-	agentRunner                agentRunner
-	documentOperationRunner    documentOperationRunner
+
+	DocumentMCPConfigPath    string
+	AgentBridgeURL           string
+	AgentBridgeToken         string
+	AgentRunTimeout          time.Duration
+	PromptMaxSectionChars    int
+	PromptDelivery           string
+	DisableGenerationWorker  bool
+	GenerationWorkerInterval time.Duration
+	GenerationWorkerLimit    int
+	DisableWorkspaceWatcher  bool
+	WorkspaceWatcherInterval time.Duration
+	BillingPrices            corepricing.Table
+	RuntimeExtensions        []RuntimeExtension
+	agentRunner              agentRunner
+	documentOperationRunner  documentOperationRunner
 }
 
 // NewHandler returns an HTTP handler for a client-side rendered SPA.

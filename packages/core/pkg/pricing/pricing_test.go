@@ -164,9 +164,9 @@ func TestEstimateCost(t *testing.T) {
 
 func TestDefaultTableCoversCatalogRoutesAndReturnsCopies(t *testing.T) {
 	table := Default()
-	price, ok := table.Find(coregeneration.RouteDMXGPT41MiniText)
+	price, ok := table.Find(coregeneration.RouteOfficialGPT41MiniText)
 	if !ok {
-		t.Fatalf("default price table misses %q", coregeneration.RouteDMXGPT41MiniText)
+		t.Fatalf("default price table misses %q", coregeneration.RouteOfficialGPT41MiniText)
 	}
 	if price.Unit != UnitPerMillionTokens {
 		t.Fatalf("text route unit = %q, want %q", price.Unit, UnitPerMillionTokens)

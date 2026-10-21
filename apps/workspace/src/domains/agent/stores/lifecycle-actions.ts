@@ -1,4 +1,4 @@
-import type { AgentRuntimeACPPermissionRequest } from "@/domains/agent/api/agent";
+import type { AgentRuntimePermissionRequest } from "@/domains/agent/api/agent";
 import type { AgentActionContext, AgentActions } from "./action-types";
 import { pendingRootRunId } from "./constants";
 import {
@@ -331,12 +331,17 @@ export const createAgentLifecycleActions = ({
 				resolveTargetRunId(state),
 				"runtime",
 				"已连接",
-				"已连接到本地 ACP 事件流。",
+				"已连接到本地 Runtime 事件流。",
 			);
 			return {
 				isConnected: true,
 				conversations,
-				activity: prependActivity(state.activity, "runtime", "已连接", "已连接到本地 ACP 事件流。"),
+				activity: prependActivity(
+					state.activity,
+					"runtime",
+					"已连接",
+					"已连接到本地 Runtime 事件流。",
+				),
 			};
 		});
 	},
@@ -658,10 +663,10 @@ const createPendingRootConversation = (
 };
 
 const normalizePermissionRequests = (
-	requests: AgentRuntimeACPPermissionRequest[],
-): AgentRuntimeACPPermissionRequest[] => {
+	requests: AgentRuntimePermissionRequest[],
+): AgentRuntimePermissionRequest[] => {
 	const seen = new Set<string>();
-	const normalized: AgentRuntimeACPPermissionRequest[] = [];
+	const normalized: AgentRuntimePermissionRequest[] = [];
 	for (const request of requests) {
 		const requestId = request.requestId.trim();
 		if (!requestId || seen.has(requestId)) continue;

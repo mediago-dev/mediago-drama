@@ -330,12 +330,7 @@ func generationModelForReferences(
 	requestedModel string,
 	referenceURLs []string,
 ) string {
-	if route.ID == coregeneration.RouteMediagoHappyHorse11 {
-		if len(CompactStrings(referenceURLs)) > 0 {
-			return coregeneration.ModelHappyHorse11R2V
-		}
-		return coregeneration.ModelHappyHorse11T2V
-	}
+
 	if model := strings.TrimSpace(requestedModel); model != "" {
 		return model
 	}

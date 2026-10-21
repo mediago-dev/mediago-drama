@@ -59,7 +59,10 @@ describe("generation workspace helpers", () => {
 
 	it("resolves local API asset URLs for packaged desktop previews", () => {
 		vi.stubEnv("DEV", false);
-		window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
+		window.mediagoDesktop = {
+			isElectron: true,
+			serverOrigin: "http://127.0.0.1:49157",
+		} as typeof window.mediagoDesktop;
 
 		const asset = {
 			kind: "image" as const,
@@ -67,10 +70,10 @@ describe("generation workspace helpers", () => {
 		};
 
 		expect(generationAssetSource(asset)).toBe(
-			"http://127.0.0.1:48273/api/v1/media-assets/generated/content",
+			"http://127.0.0.1:49157/api/v1/media-assets/generated/content",
 		);
 		expect(generationAssetSelectionKey(asset)).toBe(
-			"image:http://127.0.0.1:48273/api/v1/media-assets/generated/content",
+			"image:http://127.0.0.1:49157/api/v1/media-assets/generated/content",
 		);
 	});
 
@@ -88,7 +91,7 @@ describe("generation workspace helpers", () => {
 			generatedAssetsIncludeMediaAssets([
 				{
 					kind: "image",
-					url: "http://127.0.0.1:48273/api/v1/media-assets/generated/content",
+					url: "http://127.0.0.1:49157/api/v1/media-assets/generated/content",
 				},
 			]),
 		).toBe(true);

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestBuildACPPromptSnapshots(t *testing.T) {
+func TestBuildRuntimePromptSnapshots(t *testing.T) {
 	tests := []struct {
 		name    string
 		request AgentRunRequest
@@ -52,7 +52,7 @@ func TestBuildACPPromptSnapshots(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			assertPromptSnapshot(t, test.name, BuildACPPrompt(test.request, PromptBuildOptions{}))
+			assertPromptSnapshot(t, test.name, BuildRuntimePrompt(test.request, PromptBuildOptions{}))
 		})
 	}
 }

@@ -121,7 +121,7 @@ func TestResolveGenerationReferencesCompressesImageAssets(t *testing.T) {
 	mediaAssets := media.NewMediaAssets(filepath.Join(t.TempDir(), "settings.db"), t.TempDir())
 	asset := savePNGReferenceAsset(t, mediaAssets, 1800, 900)
 	workflow := NewGenerationService(nil, nil, mediaAssets)
-	route, ok := coregeneration.FindRoute(coregeneration.RouteDMXGPTImage2)
+	route, ok := coregeneration.FindRoute(coregeneration.RouteLibTVGPTImage2)
 	if !ok {
 		t.Fatal("dmx gpt image route is missing")
 	}
@@ -426,7 +426,7 @@ func TestSanitizedGenerationRequestOmitsReferenceBase64(t *testing.T) {
 	encoded := base64.StdEncoding.EncodeToString([]byte("secret-reference-bytes"))
 	logValue := sanitizedGenerationRequest(coregeneration.Request{
 		Kind:          coregeneration.KindImage,
-		RouteID:       coregeneration.RouteDMXGPTImage2,
+		RouteID:       coregeneration.RouteLibTVGPTImage2,
 		Model:         "gpt-image-2-ssvip",
 		Prompt:        "make an image",
 		ReferenceURLs: []string{"data:image/png;base64," + encoded},
@@ -448,7 +448,7 @@ func TestSanitizedGenerationRequestOmitsReferenceBase64(t *testing.T) {
 }
 
 func TestResponseFormatForRouteUsesURLForDMXResponsesImages(t *testing.T) {
-	route, ok := coregeneration.FindRoute(coregeneration.RouteDMXSeedream5Lite)
+	route, ok := coregeneration.FindRoute(coregeneration.RouteOfficialSeedream5Lite)
 	if !ok {
 		t.Fatal("dmx seedream route is missing")
 	}
@@ -456,7 +456,7 @@ func TestResponseFormatForRouteUsesURLForDMXResponsesImages(t *testing.T) {
 		t.Fatalf("responseFormatForRoute() = %q, want url", got)
 	}
 
-	route, ok = coregeneration.FindRoute(coregeneration.RouteDMXGPTImage2)
+	route, ok = coregeneration.FindRoute(coregeneration.RouteLibTVGPTImage2)
 	if !ok {
 		t.Fatal("dmx gpt image route is missing")
 	}
@@ -466,7 +466,7 @@ func TestResponseFormatForRouteUsesURLForDMXResponsesImages(t *testing.T) {
 }
 
 func TestShouldPersistGenerationTaskIncludesImages(t *testing.T) {
-	route, ok := coregeneration.FindRoute(coregeneration.RouteDMXSeedream5Lite)
+	route, ok := coregeneration.FindRoute(coregeneration.RouteOfficialSeedream5Lite)
 	if !ok {
 		t.Fatal("dmx seedream route is missing")
 	}
@@ -476,7 +476,7 @@ func TestShouldPersistGenerationTaskIncludesImages(t *testing.T) {
 }
 
 func TestGenerationTaskFromMessageRecordsFailureReason(t *testing.T) {
-	route, ok := coregeneration.FindRoute(coregeneration.RouteDMXGPTImage2)
+	route, ok := coregeneration.FindRoute(coregeneration.RouteLibTVGPTImage2)
 	if !ok {
 		t.Fatal("dmx gpt image route is missing")
 	}
@@ -537,7 +537,7 @@ func TestFailedGenerationResponseMapsProviderFailure(t *testing.T) {
 }
 
 func TestGenerationTaskFromMessagePreservesExplicitCapabilityID(t *testing.T) {
-	route, ok := coregeneration.FindRoute(coregeneration.RouteDMXGPT41MiniText)
+	route, ok := coregeneration.FindRoute(coregeneration.RouteOfficialGPT41MiniText)
 	if !ok {
 		t.Fatal("dmx text route is missing")
 	}
@@ -645,10 +645,10 @@ func TestListGenerationTasksUsesScopeDefaultConversation(t *testing.T) {
 			ID:             "generation-section-a",
 			ConversationID: DefaultGenerationConversationID("section-a", kind),
 			Kind:           kind,
-			RouteID:        coregeneration.RouteDMXSeedream5Lite,
+			RouteID:        coregeneration.RouteOfficialSeedream5Lite,
 			FamilyID:       coregeneration.FamilySeedream,
 			VersionID:      coregeneration.VersionSeedream5Lite,
-			Provider:       coregeneration.ProviderDMX,
+			Provider:       coregeneration.ProviderVolcengine,
 			Model:          "seedream-5.0-lite",
 			Prompt:         "section a prompt",
 			Status:         "completed",
@@ -658,10 +658,10 @@ func TestListGenerationTasksUsesScopeDefaultConversation(t *testing.T) {
 			ID:             "generation-section-b",
 			ConversationID: DefaultGenerationConversationID("section-b", kind),
 			Kind:           kind,
-			RouteID:        coregeneration.RouteDMXSeedream5Lite,
+			RouteID:        coregeneration.RouteOfficialSeedream5Lite,
 			FamilyID:       coregeneration.FamilySeedream,
 			VersionID:      coregeneration.VersionSeedream5Lite,
-			Provider:       coregeneration.ProviderDMX,
+			Provider:       coregeneration.ProviderVolcengine,
 			Model:          "seedream-5.0-lite",
 			Prompt:         "section b prompt",
 			Status:         "completed",
@@ -712,10 +712,10 @@ func TestListGenerationTasksTreatsUnknownSessionAsScope(t *testing.T) {
 			ID:             "generation-section-a",
 			ConversationID: DefaultGenerationConversationID("section-a", kind),
 			Kind:           kind,
-			RouteID:        coregeneration.RouteDMXSeedream5Lite,
+			RouteID:        coregeneration.RouteOfficialSeedream5Lite,
 			FamilyID:       coregeneration.FamilySeedream,
 			VersionID:      coregeneration.VersionSeedream5Lite,
-			Provider:       coregeneration.ProviderDMX,
+			Provider:       coregeneration.ProviderVolcengine,
 			Model:          "seedream-5.0-lite",
 			Prompt:         "section a prompt",
 			Status:         "completed",
@@ -725,10 +725,10 @@ func TestListGenerationTasksTreatsUnknownSessionAsScope(t *testing.T) {
 			ID:             "generation-section-b",
 			ConversationID: DefaultGenerationConversationID("section-b", kind),
 			Kind:           kind,
-			RouteID:        coregeneration.RouteDMXSeedream5Lite,
+			RouteID:        coregeneration.RouteOfficialSeedream5Lite,
 			FamilyID:       coregeneration.FamilySeedream,
 			VersionID:      coregeneration.VersionSeedream5Lite,
-			Provider:       coregeneration.ProviderDMX,
+			Provider:       coregeneration.ProviderVolcengine,
 			Model:          "seedream-5.0-lite",
 			Prompt:         "section b prompt",
 			Status:         "completed",
@@ -761,17 +761,17 @@ func TestCreateVideoGenerationSubmitsProviderTaskInBackground(t *testing.T) {
 	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
 	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
 		values: map[string]string{
-			coregeneration.ProviderDMX: "sk-video",
+			coregeneration.ProviderVolcengine: "sk-video",
 		},
 	})
 	provider := &blockingVideoGenerateProvider{
 		started:  make(chan struct{}),
 		release:  make(chan struct{}),
-		response: coregeneration.Response{ID: "dmx.seedance-2.0-fast:cgt-background", Status: "submitted"},
+		response: coregeneration.Response{ID: "official.seedance-2.0-fast:cgt-background", Status: "submitted"},
 	}
 	workflow := NewGenerationService(settingsSvc, store, nil)
 	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
-		if route.ID != coregeneration.RouteDMXSeedance20Fast {
+		if route.ID != coregeneration.RouteOfficialSeedance20Fast {
 			t.Fatalf("route = %q, want seedance video route", route.ID)
 		}
 		return provider, nil
@@ -781,7 +781,7 @@ func TestCreateVideoGenerationSubmitsProviderTaskInBackground(t *testing.T) {
 	cancel()
 	response, status, err := workflow.CreateGenerationMessage(requestCtx, GenerationMessageRequest{
 		Kind:    string(coregeneration.KindVideo),
-		RouteID: coregeneration.RouteDMXSeedance20Fast,
+		RouteID: coregeneration.RouteOfficialSeedance20Fast,
 		ModelID: coregeneration.ModelJimengSeedance2Fast,
 		Model:   "doubao-seedance-2-0-fast-260128",
 		Prompt:  "make a short flower field video",
@@ -816,7 +816,7 @@ func TestCreateVideoGenerationSubmitsProviderTaskInBackground(t *testing.T) {
 
 	close(provider.release)
 	task = waitForGenerationTask(t, store, response.ID, func(task GenerationTaskRecord) bool {
-		return task.ProviderTaskID == "dmx.seedance-2.0-fast:cgt-background"
+		return task.ProviderTaskID == "official.seedance-2.0-fast:cgt-background"
 	})
 	if task.Status != "submitted" {
 		t.Fatalf("task status = %q, want submitted", task.Status)
@@ -966,7 +966,7 @@ func TestCreateImageGenerationRejectsReferenceURLsBeyondRouteLimitBeforeTask(t *
 	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
 	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
 		values: map[string]string{
-			coregeneration.ProviderDMX: "sk-image",
+			coregeneration.ProviderLibTV: "sk-image",
 		},
 	})
 	workflow := NewGenerationService(settingsSvc, store, nil)
@@ -981,7 +981,7 @@ func TestCreateImageGenerationRejectsReferenceURLsBeyondRouteLimitBeforeTask(t *
 
 	_, status, err := workflow.CreateGenerationMessage(context.Background(), GenerationMessageRequest{
 		Kind:    string(coregeneration.KindImage),
-		RouteID: coregeneration.RouteDMXGPTImage2,
+		RouteID: coregeneration.RouteLibTVGPTImage2,
 		ModelID: coregeneration.ModelGPTImage2,
 		Model:   "gpt-image-2-ssvip",
 		Prompt:  "make an image with too many references",
@@ -991,6 +991,12 @@ func TestCreateImageGenerationRejectsReferenceURLsBeyondRouteLimitBeforeTask(t *
 			"https://example.test/reference-3.png",
 			"https://example.test/reference-4.png",
 			"https://example.test/reference-5.png",
+			"https://example.test/reference-6.png",
+			"https://example.test/reference-7.png",
+			"https://example.test/reference-8.png",
+			"https://example.test/reference-9.png",
+			"https://example.test/reference-10.png",
+			"https://example.test/reference-11.png",
 		},
 		Params: map[string]any{
 			"aspectRatio": "1:1",
@@ -1000,7 +1006,7 @@ func TestCreateImageGenerationRejectsReferenceURLsBeyondRouteLimitBeforeTask(t *
 	if err == nil || status != http.StatusBadRequest {
 		t.Fatalf("CreateGenerationMessage() status = %d error = %v, want bad request", status, err)
 	}
-	if !strings.Contains(err.Error(), "supports at most 4 reference URLs") {
+	if !strings.Contains(err.Error(), "supports at most 10 reference URLs") {
 		t.Fatalf("error = %q, want reference limit error", err)
 	}
 	if providerFactoryCalled {
@@ -1190,7 +1196,7 @@ func TestCreatePromptOptimizedGenerationMessageRecordsOptimizationAndImageTasks(
 	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
 	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
 		values: map[string]string{
-			coregeneration.ProviderDMX: "sk-test",
+			coregeneration.ProviderOpenAI: "sk-test", coregeneration.ProviderLibTV: "sk-test",
 		},
 	})
 	imageProvider := &blockingMultiAssetImageGenerateProvider{
@@ -1201,7 +1207,7 @@ func TestCreatePromptOptimizedGenerationMessageRecordsOptimizationAndImageTasks(
 	var textRequest coregeneration.Request
 	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
 		switch route.ID {
-		case coregeneration.RouteDMXGPT41MiniText:
+		case coregeneration.RouteOfficialGPT41MiniText:
 			return fakeTextStreamProvider{
 				request: &textRequest,
 				events: []coregeneration.TextStreamEvent{
@@ -1210,7 +1216,7 @@ func TestCreatePromptOptimizedGenerationMessageRecordsOptimizationAndImageTasks(
 					{Done: true},
 				},
 			}, nil
-		case coregeneration.RouteDMXGPTImage2:
+		case coregeneration.RouteLibTVGPTImage2:
 			return imageProvider, nil
 		default:
 			t.Fatalf("route = %q, want prompt optimization text or image route", route.ID)
@@ -1218,7 +1224,7 @@ func TestCreatePromptOptimizedGenerationMessageRecordsOptimizationAndImageTasks(
 		}
 	}
 
-	imageRoute, ok := coregeneration.FindRoute(coregeneration.RouteDMXGPTImage2)
+	imageRoute, ok := coregeneration.FindRoute(coregeneration.RouteLibTVGPTImage2)
 	if !ok {
 		t.Fatal("dmx gpt image route is missing")
 	}
@@ -1234,7 +1240,7 @@ func TestCreatePromptOptimizedGenerationMessageRecordsOptimizationAndImageTasks(
 		}},
 		PromptOptimization: &GenerationPromptOptimizationRequest{
 			ConversationID:  "prompt-optimize-session",
-			RouteID:         coregeneration.RouteDMXGPT41MiniText,
+			RouteID:         coregeneration.RouteOfficialGPT41MiniText,
 			Model:           "text-model",
 			ReferenceName:   "电影质感",
 			ReferencePrompt: "cinematic lighting, detailed composition",
@@ -1322,7 +1328,7 @@ func TestCreatePromptOptimizedGenerationMessageUsesCodexWithoutTextRoute(t *test
 	}
 	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
 	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
-		values: map[string]string{coregeneration.ProviderDMX: "sk-test"},
+		values: map[string]string{coregeneration.ProviderLibTV: "sk-test"},
 	})
 	imageProvider := &blockingMultiAssetImageGenerateProvider{
 		started: make(chan coregeneration.Request, 1),
@@ -1330,7 +1336,7 @@ func TestCreatePromptOptimizedGenerationMessageUsesCodexWithoutTextRoute(t *test
 	}
 	workflow := NewGenerationService(settingsSvc, store, media.NewMediaAssets(dbPath, t.TempDir()))
 	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
-		if route.ID != coregeneration.RouteDMXGPTImage2 {
+		if route.ID != coregeneration.RouteLibTVGPTImage2 {
 			t.Fatalf("route = %q, want image route only", route.ID)
 		}
 		return imageProvider, nil
@@ -1348,7 +1354,7 @@ func TestCreatePromptOptimizedGenerationMessageUsesCodexWithoutTextRoute(t *test
 		func(context.Context, textcompletion.Request) bool { return true },
 	)
 
-	imageRoute, ok := coregeneration.FindRoute(coregeneration.RouteDMXGPTImage2)
+	imageRoute, ok := coregeneration.FindRoute(coregeneration.RouteLibTVGPTImage2)
 	if !ok {
 		t.Fatal("dmx gpt image route is missing")
 	}
@@ -1595,12 +1601,12 @@ func TestGetGenerationVideoPollsProviderTaskID(t *testing.T) {
 	store := NewGenerationTaskServiceFromRepository(repo, nil, nil)
 	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
 		values: map[string]string{
-			coregeneration.ProviderDMX: "sk-video",
+			coregeneration.ProviderVolcengine: "sk-video",
 		},
 	})
 	provider := &recordingVideoProvider{
 		response: coregeneration.Response{
-			ID:     "dmx.seedance-2.0-fast:cgt-provider",
+			ID:     "official.seedance-2.0-fast:cgt-provider",
 			Status: "completed",
 			Assets: []coregeneration.Asset{{
 				Kind: coregeneration.KindVideo,
@@ -1610,7 +1616,7 @@ func TestGetGenerationVideoPollsProviderTaskID(t *testing.T) {
 	}
 	workflow := NewGenerationService(settingsSvc, store, nil)
 	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
-		if route.ID != coregeneration.RouteDMXSeedance20Fast {
+		if route.ID != coregeneration.RouteOfficialSeedance20Fast {
 			t.Fatalf("route = %q, want seedance video route", route.ID)
 		}
 		return provider, nil
@@ -1618,12 +1624,12 @@ func TestGetGenerationVideoPollsProviderTaskID(t *testing.T) {
 
 	if err := store.Upsert(GenerationTaskRecord{
 		ID:             "generation-local",
-		ProviderTaskID: "dmx.seedance-2.0-fast:cgt-provider",
+		ProviderTaskID: "official.seedance-2.0-fast:cgt-provider",
 		Kind:           string(coregeneration.KindVideo),
-		RouteID:        coregeneration.RouteDMXSeedance20Fast,
+		RouteID:        coregeneration.RouteOfficialSeedance20Fast,
 		FamilyID:       coregeneration.FamilySeedance,
 		VersionID:      coregeneration.VersionSeedance20Fast,
-		Provider:       coregeneration.ProviderDMX,
+		Provider:       coregeneration.ProviderVolcengine,
 		ModelID:        coregeneration.ModelJimengSeedance2Fast,
 		Model:          "doubao-seedance-2-0-fast-260128",
 		Prompt:         "make a video",
@@ -1637,7 +1643,7 @@ func TestGetGenerationVideoPollsProviderTaskID(t *testing.T) {
 	if err != nil || status != 200 {
 		t.Fatalf("GetGenerationVideo() status = %d error = %v", status, err)
 	}
-	if provider.getID != "dmx.seedance-2.0-fast:cgt-provider" {
+	if provider.getID != "official.seedance-2.0-fast:cgt-provider" {
 		t.Fatalf("provider get id = %q, want provider task id", provider.getID)
 	}
 	if response.ID != "generation-local" || response.Status != "completed" {
@@ -1647,7 +1653,7 @@ func TestGetGenerationVideoPollsProviderTaskID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
-	if !ok || task.Status != "completed" || task.ProviderTaskID != "dmx.seedance-2.0-fast:cgt-provider" {
+	if !ok || task.Status != "completed" || task.ProviderTaskID != "official.seedance-2.0-fast:cgt-provider" {
 		t.Fatalf("task = %+v, want completed local task with provider id", task)
 	}
 }
@@ -1713,7 +1719,7 @@ func TestGetGenerationVideoCachesRemoteAssetWithTaskAssetTitle(t *testing.T) {
 	mediaAssets := media.NewMediaAssetsFromRepository(mediaRepo, filepath.Join(workspaceRoot, "library"), workspaceRoot, nil, nil)
 	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
 		values: map[string]string{
-			coregeneration.ProviderDMX: "sk-video",
+			coregeneration.ProviderVolcengine: "sk-video",
 		},
 	})
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -1741,7 +1747,7 @@ func TestGetGenerationVideoCachesRemoteAssetWithTaskAssetTitle(t *testing.T) {
 	}
 	provider := &recordingVideoProvider{
 		response: coregeneration.Response{
-			ID:     "dmx.seedance-2.0-fast:cgt-provider",
+			ID:     "official.seedance-2.0-fast:cgt-provider",
 			Status: "completed",
 			Assets: []coregeneration.Asset{{
 				Kind: coregeneration.KindVideo,
@@ -1757,16 +1763,16 @@ func TestGetGenerationVideoCachesRemoteAssetWithTaskAssetTitle(t *testing.T) {
 	const blockTitle = "顾南衣·状态A 落魄寻食少女（十年前·第一幕）"
 	if err := store.Upsert(GenerationTaskRecord{
 		ID:             "generation-local",
-		ProviderTaskID: "dmx.seedance-2.0-fast:cgt-provider",
+		ProviderTaskID: "official.seedance-2.0-fast:cgt-provider",
 		ConversationID: "project-alpha-video",
 		ProjectID:      "project-alpha",
 		DocumentID:     "story-doc",
 		SectionID:      "section_reel_01",
 		Kind:           string(coregeneration.KindVideo),
-		RouteID:        coregeneration.RouteDMXSeedance20Fast,
+		RouteID:        coregeneration.RouteOfficialSeedance20Fast,
 		FamilyID:       coregeneration.FamilySeedance,
 		VersionID:      coregeneration.VersionSeedance20Fast,
-		Provider:       coregeneration.ProviderDMX,
+		Provider:       coregeneration.ProviderVolcengine,
 		ModelID:        coregeneration.ModelJimengSeedance2Fast,
 		Model:          "doubao-seedance-2-0-fast-260128",
 		Prompt:         "make a video",
@@ -1886,12 +1892,12 @@ func TestStreamGenerationTextPersistsFinalText(t *testing.T) {
 	})
 	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
 		values: map[string]string{
-			coregeneration.ProviderDMX: "sk-test",
+			coregeneration.ProviderOpenAI: "sk-test",
 		},
 	})
 	workflow := NewGenerationService(settingsSvc, store, nil)
 	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
-		if route.ID != coregeneration.RouteDMXGPT41MiniText {
+		if route.ID != coregeneration.RouteOfficialGPT41MiniText {
 			t.Fatalf("route = %q, want text route", route.ID)
 		}
 		return fakeTextStreamProvider{
@@ -1912,7 +1918,7 @@ func TestStreamGenerationTextPersistsFinalText(t *testing.T) {
 	events := []GenerationTextStreamEvent{}
 	status, err := workflow.StreamGenerationText(context.Background(), GenerationMessageRequest{
 		Kind:    string(coregeneration.KindText),
-		RouteID: coregeneration.RouteDMXGPT41MiniText,
+		RouteID: coregeneration.RouteOfficialGPT41MiniText,
 		Prompt:  "write",
 		SourceRefs: []ContentSourceRef{{
 			PackageID: "marketplace.style-pack",
@@ -1960,7 +1966,7 @@ func TestStreamGenerationTextCanUseMultimodalRuntimeFactory(t *testing.T) {
 	})
 	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
 		values: map[string]string{
-			coregeneration.ProviderDMX: "sk-multimodal",
+			coregeneration.ProviderOpenAI: "sk-multimodal",
 		},
 	})
 	workflow := NewGenerationService(settingsSvc, store, nil)
@@ -1970,7 +1976,7 @@ func TestStreamGenerationTextCanUseMultimodalRuntimeFactory(t *testing.T) {
 		route coregeneration.ModelRoute,
 		credentials runtime.RouteCredentials,
 	) (multimodal.Provider, error) {
-		if route.ID != coregeneration.RouteDMXGPT41MiniText {
+		if route.ID != coregeneration.RouteOfficialGPT41MiniText {
 			t.Fatalf("route = %q, want text route", route.ID)
 		}
 		factoryCredentials = credentials
@@ -1986,7 +1992,7 @@ func TestStreamGenerationTextCanUseMultimodalRuntimeFactory(t *testing.T) {
 	events := []GenerationTextStreamEvent{}
 	status, err := workflow.StreamGenerationText(context.Background(), GenerationMessageRequest{
 		Kind:    string(coregeneration.KindText),
-		RouteID: coregeneration.RouteDMXGPT41MiniText,
+		RouteID: coregeneration.RouteOfficialGPT41MiniText,
 		Prompt:  "write",
 	}, func(event GenerationTextStreamEvent) error {
 		events = append(events, event)
@@ -1995,7 +2001,7 @@ func TestStreamGenerationTextCanUseMultimodalRuntimeFactory(t *testing.T) {
 	if err != nil || status != 200 {
 		t.Fatalf("StreamGenerationText() status = %d error = %v", status, err)
 	}
-	if got := factoryCredentials[coregeneration.ProviderDMX]; got != "sk-multimodal" {
+	if got := factoryCredentials[coregeneration.ProviderOpenAI]; got != "sk-multimodal" {
 		t.Fatalf("factory credential = %q, want sk-multimodal", got)
 	}
 	if len(events) != 4 || events[3].Message == nil || events[3].Message.Text != "multimodal" {
@@ -2013,12 +2019,12 @@ func TestStreamGenerationTextFallsBackToNonStreamingProvider(t *testing.T) {
 	})
 	settingsSvc := settings.NewSettings(&generationTestAPIKeyStore{
 		values: map[string]string{
-			coregeneration.ProviderDMX: "sk-fallback",
+			coregeneration.ProviderOpenAI: "sk-fallback",
 		},
 	})
 	workflow := NewGenerationService(settingsSvc, store, nil)
 	workflow.generationProviderFactory = func(route coregeneration.ModelRoute) (coregeneration.Provider, error) {
-		if route.ID != coregeneration.RouteDMXGPT41MiniText {
+		if route.ID != coregeneration.RouteOfficialGPT41MiniText {
 			t.Fatalf("route = %q, want text route", route.ID)
 		}
 		return fakeUnsupportedTextStreamProvider{
@@ -2036,7 +2042,7 @@ func TestStreamGenerationTextFallsBackToNonStreamingProvider(t *testing.T) {
 	events := []GenerationTextStreamEvent{}
 	status, err := workflow.StreamGenerationText(context.Background(), GenerationMessageRequest{
 		Kind:    string(coregeneration.KindText),
-		RouteID: coregeneration.RouteDMXGPT41MiniText,
+		RouteID: coregeneration.RouteOfficialGPT41MiniText,
 		Prompt:  "write",
 	}, func(event GenerationTextStreamEvent) error {
 		events = append(events, event)
@@ -2240,22 +2246,6 @@ func TestCompleteTextDoesNotRetryConfiguredRouteFailureThroughCodex(t *testing.T
 	_, err := workflow.CompleteText(context.Background(), TextCompletionRequest{Prompt: "extract"})
 	if err == nil || !strings.Contains(err.Error(), "route failed") || codexCalls != 0 {
 		t.Fatalf("CompleteText() error = %v, codex calls = %d", err, codexCalls)
-	}
-}
-
-func TestTextRouteForAgentRuntimeModel(t *testing.T) {
-	routeID, model, ok := TextRouteForAgentRuntimeModel("mediago/deepseek-v4-flash")
-	if !ok || routeID != coregeneration.RouteMediagoDeepSeekV4FlashText || model != "deepseek-v4-flash" {
-		t.Fatalf("MediaGo DeepSeek route = %q, %q, %v", routeID, model, ok)
-	}
-
-	routeID, model, ok = TextRouteForAgentRuntimeModel("dmxapi/deepseek-v4-flash")
-	if !ok || routeID != coregeneration.RouteDMXDeepSeekV4FlashText || model != "deepseek-v4-flash" {
-		t.Fatalf("DMXAPI DeepSeek route = %q, %q, %v", routeID, model, ok)
-	}
-
-	if routeID, model, ok = TextRouteForAgentRuntimeModel("mediago/not-in-catalog"); ok {
-		t.Fatalf("unknown route = %q, %q, %v, want no fallback", routeID, model, ok)
 	}
 }
 
@@ -2826,4 +2816,16 @@ func slicesContainsTaskID(tasks []GenerationTaskRecord, id string) bool {
 		}
 	}
 	return false
+}
+
+func TestTextRouteForAgentRuntimeModel(t *testing.T) {
+	routeID, model, ok := TextRouteForAgentRuntimeModel("deepseek/deepseek-v4-flash")
+	if !ok || routeID != coregeneration.RouteOfficialDeepSeekV4FlashText || model != "deepseek-v4-flash" {
+		t.Fatalf("supported route = %q %q %v", routeID, model, ok)
+	}
+	for _, id := range []string{"mediago/deepseek-v4-flash", "dmxapi/deepseek-v4-flash", "mediago/not-in-catalog"} {
+		if _, _, ok := TextRouteForAgentRuntimeModel(id); ok {
+			t.Errorf("removed channel %q was accepted", id)
+		}
+	}
 }

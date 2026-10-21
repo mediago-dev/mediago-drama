@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 
 import { isMainModule, run } from "./workflow-script-utils.ts";
 
-const defaultAppPath = "apps/workspace/release/mac-arm64/MediaGo Drama.app";
+const defaultAppPath = "apps/workspace/release/mac-arm64/MediaGo Drama OSS.app";
 
 export function resolveMacAppPath(appPath: string, repositoryRoot = process.cwd()): string {
   return resolve(repositoryRoot, appPath);

@@ -443,7 +443,10 @@ describe("EpisodeTimelineEditor", () => {
 
 	it("renders clip strip poster URLs against the packaged desktop server", () => {
 		vi.stubEnv("DEV", false);
-		window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
+		window.mediagoDesktop = {
+			isElectron: true,
+			serverOrigin: "http://127.0.0.1:49157",
+		} as typeof window.mediagoDesktop;
 
 		render(
 			<EpisodeTimelineEditor
@@ -470,7 +473,7 @@ describe("EpisodeTimelineEditor", () => {
 		const firstCard = screen.getByTestId("clip-strip-card-clip-cold-open");
 		expect(firstCard.querySelector("img")).toHaveAttribute(
 			"src",
-			"http://127.0.0.1:48273/api/v1/media-assets/asset-a/poster",
+			"http://127.0.0.1:49157/api/v1/media-assets/asset-a/poster",
 		);
 	});
 });

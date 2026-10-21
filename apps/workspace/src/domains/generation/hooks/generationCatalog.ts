@@ -33,7 +33,7 @@ export const isConfiguredRoute = (route: GenerationRoute) =>
 
 export const referenceKindsForRoute = (route: GenerationRoute) => {
 	if (!route.supportsReferenceUrls) return new Set<MediaAsset["kind"]>();
-	if (route.adapter === "libtv.cli.video" || route.adapter === "pippit.cli.video") {
+	if (route.adapter === "libtv.cli.video") {
 		return new Set<MediaAsset["kind"]>(["image", "video", "audio"]);
 	}
 	if (route.adapter === "openrouter.video") {

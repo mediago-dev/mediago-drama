@@ -14,7 +14,7 @@ port: 19090
 log_path: " /tmp/mediago-server.log "
 log_level: " debug "
 workspace_dir: " /tmp/media-workspace "
-acp_command: " codex-acp --model test "
+codex_path: " codex-runtime --model test "
 generation_clis:
   - " libtv "
   - " pippit "
@@ -61,7 +61,7 @@ document_mcp:
 		config.LogPath != "/tmp/mediago-server.log" ||
 		config.LogLevel != "debug" ||
 		config.WorkspaceDir != "/tmp/media-workspace" ||
-		config.ACPCommand != "codex-acp --model test" ||
+		config.CodexPath != "codex-runtime --model test" ||
 		len(config.GenerationCLIs) != 2 ||
 		config.GenerationCLIs[0] != "libtv" ||
 		config.GenerationCLIs[1] != "pippit" ||
@@ -72,8 +72,6 @@ document_mcp:
 		config.LibTV.Path != "/opt/libtv" ||
 		config.LibTV.BinDir != "/opt/vendor/libtv" ||
 		config.LibTV.ProjectID != "libtv-project-123" ||
-		config.Pippit.Path != "/opt/pippit-tool-cli" ||
-		config.Pippit.BinDir != "/opt/vendor/pippit" ||
 		config.Billing.PriceOverlayPath != "./pricing.json" ||
 		config.Prompt.MaxSectionChars != 9000 ||
 		config.Prompt.InstructionDelivery != "inline" ||

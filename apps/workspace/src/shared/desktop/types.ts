@@ -32,6 +32,7 @@ import type {
 } from "../../../electron/src/ipc-contract";
 
 export interface MediagoDesktopAPI {
+	serverOrigin?: string;
 	platform: NodeJS.Platform;
 	isElectron: true;
 	openExternal(url: string): Promise<void>;

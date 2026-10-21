@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// AgentModelProfileRepository persists global ACP model profiles.
+// AgentModelProfileRepository persists global Runtime model profiles.
 type AgentModelProfileRepository struct {
 	db *gorm.DB
 }
@@ -28,7 +28,7 @@ func NewAgentModelProfileRepositoryFromDB(db *gorm.DB) *AgentModelProfileReposit
 	return &AgentModelProfileRepository{db: db}
 }
 
-// ListAgentModelProfiles returns all global ACP model profiles.
+// ListAgentModelProfiles returns all global Runtime model profiles.
 func (repo *AgentModelProfileRepository) ListAgentModelProfiles() ([]domain.AgentModelProfileModel, error) {
 	models := []domain.AgentModelProfileModel{}
 	if err := repo.db.Order("is_default DESC, name ASC, id ASC").Find(&models).Error; err != nil {
@@ -37,7 +37,7 @@ func (repo *AgentModelProfileRepository) ListAgentModelProfiles() ([]domain.Agen
 	return models, nil
 }
 
-// GetAgentModelProfile returns one global ACP model profile by id.
+// GetAgentModelProfile returns one global Runtime model profile by id.
 func (repo *AgentModelProfileRepository) GetAgentModelProfile(id string) (domain.AgentModelProfileModel, error) {
 	var model domain.AgentModelProfileModel
 	err := repo.db.First(&model, "id = ?", strings.TrimSpace(id)).Error
@@ -50,7 +50,7 @@ func (repo *AgentModelProfileRepository) GetAgentModelProfile(id string) (domain
 	return model, nil
 }
 
-// UpsertAgentModelProfile inserts or updates one global ACP model profile.
+// UpsertAgentModelProfile inserts or updates one global Runtime model profile.
 func (repo *AgentModelProfileRepository) UpsertAgentModelProfile(model domain.AgentModelProfileModel) error {
 	err := repo.db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "id"}},
@@ -78,7 +78,7 @@ func (repo *AgentModelProfileRepository) UpsertAgentModelProfile(model domain.Ag
 	return nil
 }
 
-// DeleteAgentModelProfile removes one global ACP model profile.
+// DeleteAgentModelProfile removes one global Runtime model profile.
 func (repo *AgentModelProfileRepository) DeleteAgentModelProfile(id string) (bool, error) {
 	result := repo.db.Delete(&domain.AgentModelProfileModel{}, "id = ?", strings.TrimSpace(id))
 	if result.Error != nil {

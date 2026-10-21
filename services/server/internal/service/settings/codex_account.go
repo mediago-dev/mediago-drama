@@ -19,7 +19,7 @@ const (
 	codexAccountLoginTimeout   = 10 * time.Minute
 )
 
-// CodexAccountStatus is the redacted global Codex account state.
+// CodexAccountStatus is the redacted isolated Codex account state.
 type CodexAccountStatus struct {
 	Status    string `json:"status"`
 	Email     string `json:"email,omitempty"`
@@ -36,10 +36,11 @@ type CodexLoginAttempt struct {
 	Error   string `json:"error,omitempty"`
 }
 
-// CodexAccountManager manages global Codex account operations through app-server.
+// CodexAccountManager manages isolated Codex account operations through app-server.
 type CodexAccountManager struct {
 	mu         sync.Mutex
 	binPath    string
+	home       string
 	attempts   map[string]CodexLoginAttempt
 	pending    *codexPendingLogin
 	newSession func(context.Context, string) (codexapp.Client, error)
@@ -53,16 +54,21 @@ type codexPendingLogin struct {
 
 // NewCodexAccountManager creates an account manager for a bundled Codex executable.
 func NewCodexAccountManager(binPath string) *CodexAccountManager {
-	return &CodexAccountManager{
+	manager := &CodexAccountManager{
 		binPath:  strings.TrimSpace(binPath),
 		attempts: make(map[string]CodexLoginAttempt),
-		newSession: func(ctx context.Context, binPath string) (codexapp.Client, error) {
-			return codexapp.Start(ctx, binPath)
-		},
 	}
+	manager.home = effectiveCodexHome()
+	manager.newSession = func(ctx context.Context, path string) (codexapp.Client, error) {
+		if err := os.MkdirAll(manager.home, 0700); err != nil {
+			return nil, fmt.Errorf("creating isolated Codex home: %w", err)
+		}
+		return codexapp.StartWithOptions(ctx, path, codexapp.Options{Env: map[string]string{"CODEX_HOME": manager.home}})
+	}
+	return manager
 }
 
-// GetCodexAccount returns the global Codex account without exposing credentials.
+// GetCodexAccount returns the isolated Codex account without exposing credentials.
 func (service *Settings) GetCodexAccount(ctx context.Context) (CodexAccountStatus, error) {
 	if service.codexAccount == nil {
 		return codexUnavailableStatus(), ErrCodexAccountUnavailable
@@ -94,7 +100,7 @@ func (service *Settings) CancelCodexLogin(ctx context.Context, loginID string) (
 	return service.codexAccount.CancelLogin(ctx, loginID)
 }
 
-// LogoutCodexAccount clears the shared global Codex login state.
+// LogoutCodexAccount clears the shared isolated Codex login state.
 func (service *Settings) LogoutCodexAccount(ctx context.Context) (CodexAccountStatus, error) {
 	if service.codexAccount == nil {
 		return codexUnavailableStatus(), ErrCodexAccountUnavailable
@@ -109,9 +115,12 @@ func (service *Settings) LogoutCodexAccount(ctx context.Context) (CodexAccountSt
 	return status, nil
 }
 
-// Account reads the global Codex account through a short-lived app-server session.
+// Account reads the isolated Codex account through a short-lived app-server session.
 func (manager *CodexAccountManager) Account(ctx context.Context) (CodexAccountStatus, error) {
 	status := codexUnavailableStatus()
+	if manager != nil {
+		status.CodexHome = manager.home
+	}
 	if manager == nil || manager.binPath == "" {
 		return status, ErrCodexAccountUnavailable
 	}
@@ -216,7 +225,7 @@ func (manager *CodexAccountManager) CancelLogin(ctx context.Context, loginID str
 	return manager.Login(loginID)
 }
 
-// Logout signs out of the shared global Codex account.
+// Logout signs out of the shared isolated Codex account.
 func (manager *CodexAccountManager) Logout(ctx context.Context) error {
 	if manager == nil || manager.binPath == "" {
 		return ErrCodexAccountUnavailable
@@ -285,7 +294,7 @@ func (manager *CodexAccountManager) finishLogin(pending *codexPendingLogin, stat
 }
 
 func codexUnavailableStatus() CodexAccountStatus {
-	return CodexAccountStatus{Status: "unavailable", CodexHome: effectiveCodexHome(), Shared: true}
+	return CodexAccountStatus{Status: "unavailable", CodexHome: effectiveCodexHome(), Shared: false}
 }
 
 func effectiveCodexHome() string {

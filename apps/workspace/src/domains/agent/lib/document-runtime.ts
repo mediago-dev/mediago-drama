@@ -27,7 +27,7 @@ export interface DocumentAgentResult {
 }
 
 export interface DocumentAgentRuntimeMetadata {
-	runtime: "acp" | "mock" | "frontend-mock";
+	runtime: "runtime" | "mock" | "frontend-mock";
 	fallback: boolean;
 	validated: boolean;
 	diagnostic?: string;

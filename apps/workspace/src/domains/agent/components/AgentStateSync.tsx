@@ -260,7 +260,7 @@ export const AgentStateSync: React.FC<AgentStateSyncProps> = ({
 						status.lastStatus === "paused" ? "上次运行已暂停" : "上次运行中断",
 						status.lastMessage
 							? `上次有未完成的 run，已在重启后标记为非运行状态。${status.lastMessage}`
-							: "上次有未完成的 run，已在重启后标记为非运行状态；不会自动重启 ACP，可重新发起或忽略。",
+							: "上次有未完成的 run，已在重启后标记为非运行状态；不会自动重启 Runtime，可重新发起或忽略。",
 					);
 				}
 			})

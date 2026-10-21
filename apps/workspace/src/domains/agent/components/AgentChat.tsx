@@ -3,12 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import useSWR, { mutate as mutateSWR } from "swr";
 import {
-	agentBackendsKey,
 	agentRuntimeConfigKey,
-	getAgentBackends,
 	getAgentRuntimeConfig,
 	type AgentReference,
-	type AgentRuntimeConfigPayload,
 } from "@/domains/agent/api/agent";
 import { uploadProjectAsset, type ProjectAsset } from "@/domains/workspace/api/project-assets";
 import { getWorkspaceDocuments, workspaceDocumentsKey } from "@/domains/workspace/api/workspace";
@@ -113,9 +110,6 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 		revalidateOnFocus: false,
 		shouldRetryOnError: false,
 	});
-	const { data: agentBackends } = useSWR(agentBackendsKey, getAgentBackends, {
-		revalidateOnFocus: false,
-	});
 	const isAgentPersistenceHydrated = useAgentPersistenceHydrated();
 	const resolvedRuntimeConfig = isAgentPersistenceHydrated ? runtimeConfig : undefined;
 	const {
@@ -129,10 +123,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 		resolvedRuntimeConfig?.model,
 		persistedRuntimeConfig?.model ?? persistedRuntimeConfigDefaults.model ?? "",
 	);
-	const runtimeConfigForSelectedModel = runtimeConfigFilteredForSelectedModel(
-		resolvedRuntimeConfig,
-		selectedModel,
-	);
+	const runtimeConfigForSelectedModel = resolvedRuntimeConfig;
 	const selectedReasoning = normalizeRuntimeConfigValue(
 		runtimeConfigForSelectedModel?.reasoning,
 		persistedRuntimeConfig?.reasoning ?? persistedRuntimeConfigDefaults.reasoning ?? "",
@@ -310,7 +301,7 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 	};
 
 	const openRuntimeSettings = () => {
-		setSettingsTab((agentBackends?.activeId ?? "codex") === "codex" ? "codex-access" : "api-keys");
+		setSettingsTab("codex-access");
 		navigate("/settings");
 	};
 
@@ -389,41 +380,6 @@ export const AgentChat: React.FC<AgentChatProps> = ({ projectId: routeProjectId 
 };
 
 type RuntimeConfigSelection = ReturnType<typeof buildRuntimeConfigSelection>;
-
-const OPENCODE_THINKING_FALLBACK_SOURCE = "opencodeThinkingFallback";
-
-const runtimeConfigFilteredForSelectedModel = (
-	config: AgentRuntimeConfigPayload | undefined,
-	modelValue: string,
-): AgentRuntimeConfigPayload | undefined => {
-	if (!config?.reasoning || config.reasoning.source !== OPENCODE_THINKING_FALLBACK_SOURCE) {
-		return config;
-	}
-	if (agentRuntimeModelSupportsOpenCodeThinking(modelValue)) return config;
-	return {
-		...config,
-		reasoning: undefined,
-	};
-};
-
-const agentRuntimeModelSupportsOpenCodeThinking = (value: string) => {
-	const trimmed = value.trim();
-	const separator = trimmed.indexOf("/");
-	if (separator <= 0 || separator >= trimmed.length - 1) return false;
-	const provider = trimmed.slice(0, separator).trim().toLowerCase();
-	const model = trimmed
-		.slice(separator + 1)
-		.trim()
-		.toLowerCase();
-	switch (provider) {
-		case "minimax-cn":
-			return model.includes("minimax-m3");
-		case "mediago":
-			return model.includes("minimax-m3") || model.includes("minimax m3");
-		default:
-			return false;
-	}
-};
 
 const useAgentPersistenceHydrated = () => {
 	const [isHydrated, setIsHydrated] = useState(() =>

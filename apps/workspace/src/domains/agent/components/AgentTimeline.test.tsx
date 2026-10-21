@@ -367,7 +367,7 @@ describe("AgentTimeline", () => {
 						kind: "tool",
 						title: "读取章节脚本",
 						metadata: {
-							acpKind: "read",
+							runtimeKind: "read",
 							durationMs: 1800,
 							filePath: "drama/第二章/script.md",
 							status: "completed",
@@ -379,7 +379,7 @@ describe("AgentTimeline", () => {
 						kind: "tool",
 						title: "生成分镜文档",
 						metadata: {
-							acpKind: "edit",
+							runtimeKind: "edit",
 							filePath: "docs/第二章·分镜.md",
 							status: "in_progress",
 							toolCallId: "call-edit",
@@ -406,7 +406,7 @@ describe("AgentTimeline", () => {
 						kind: "tool",
 						title: "rg --files -g '*.md'",
 						metadata: {
-							acpKind: "execute",
+							runtimeKind: "execute",
 							inputJson: { command: "rg --files -g '*.md'" },
 							outputBlocks: [{ type: "terminal", text: "exec-123", terminalId: "exec-123" }],
 							outputJson: {
@@ -704,7 +704,7 @@ describe("AgentTimeline", () => {
 						phase: "commentary",
 						kind: "tool",
 						title: "读取剧本",
-						metadata: { acpKind: "read", status: "completed", toolCallId: "call-one" },
+						metadata: { runtimeKind: "read", status: "completed", toolCallId: "call-one" },
 					}),
 					assistantMessage({
 						id: "tool-two",
@@ -713,7 +713,7 @@ describe("AgentTimeline", () => {
 						phase: "commentary",
 						kind: "tool",
 						title: "写入分镜",
-						metadata: { acpKind: "edit", status: "completed", toolCallId: "call-two" },
+						metadata: { runtimeKind: "edit", status: "completed", toolCallId: "call-two" },
 					}),
 				]}
 			/>,

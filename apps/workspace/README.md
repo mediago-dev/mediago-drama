@@ -54,7 +54,7 @@ pnpm dev
 
 默认开发地址：`http://localhost:5173`
 
-桌面端开发会固定使用 `http://127.0.0.1:31420` 作为 Vite dev server，避免桌面壳连接到 Vite 自动切换后的端口：
+桌面开发优先使用端口 `31420`，占用时自动选择可用端口。启动脚本把本次 Vite 的实际地址传给 Electron，并在退出或启动失败时关闭该 Vite 实例；控制台会显示 `[desktop] renderer: ...`。根目录的 `one dev` 还会让 Electron 启动后端并自动分配端口，就绪后通过桌面桥传给页面，退出时关闭后端；单独运行以下命令时需另行启动后端：
 
 ```bash
 pnpm electron:dev

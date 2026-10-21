@@ -51,17 +51,18 @@ describe("api-base", () => {
 	it("uses the packaged server origin inside desktop production", () => {
 		vi.stubEnv("DEV", false);
 		enableDesktopRuntime();
+		window.mediagoDesktop!.serverOrigin = "http://127.0.0.1:49157";
 
-		expect(apiOrigin()).toBe("http://127.0.0.1:48273");
-		expect(apiBaseURL()).toBe("http://127.0.0.1:48273/api/v1");
+		expect(apiOrigin()).toBe("http://127.0.0.1:49157");
+		expect(apiBaseURL()).toBe("http://127.0.0.1:49157/api/v1");
 		expect(apiResourceURL("/api/media/assets/image-1/content")).toBe(
-			"http://127.0.0.1:48273/api/v1/media-assets/image-1/content",
+			"http://127.0.0.1:49157/api/v1/media-assets/image-1/content",
 		);
 		expect(apiResourceURL("/api/v1/media-assets/image-1/content")).toBe(
-			"http://127.0.0.1:48273/api/v1/media-assets/image-1/content",
+			"http://127.0.0.1:49157/api/v1/media-assets/image-1/content",
 		);
 		expect(apiResourceURL("api/v1/projects/project-1/assets/asset-1/content")).toBe(
-			"http://127.0.0.1:48273/api/v1/projects/project-1/assets/asset-1/content",
+			"http://127.0.0.1:49157/api/v1/projects/project-1/assets/asset-1/content",
 		);
 		expect(apiResourceURL("https://example.test/image.png")).toBe("https://example.test/image.png");
 		expect(apiResourceURL("data:image/png;base64,YWJj")).toBe("data:image/png;base64,YWJj");
@@ -73,5 +74,12 @@ describe("api-base", () => {
 
 		expect(apiOrigin()).toBe("http://127.0.0.1:49152");
 		expect(apiBaseURL()).toBe("http://127.0.0.1:49152/api/v1");
+	});
+	it("requires the owned sidecar origin in packaged desktop", () => {
+		vi.stubEnv("DEV", false);
+		enableDesktopRuntime();
+		expect(() => apiOrigin()).toThrow("尚未就绪");
+		window.mediagoDesktop!.serverOrigin = "https://untrusted.example";
+		expect(() => apiOrigin()).toThrow("尚未就绪");
 	});
 });

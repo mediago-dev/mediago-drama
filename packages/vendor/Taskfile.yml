@@ -2,18 +2,18 @@ version: "3"
 
 tasks:
   prepare:
-    desc: Prepare one ACP agent (AGENT=codex|opencode, PLATFORM=darwin-arm64|windows-x64)
+    desc: Prepare native Codex app-server (PLATFORM=darwin-arm64|windows-x64)
     vars:
       AGENT: '{{.AGENT | default "codex"}}'
       PLATFORM: '{{.PLATFORM | default ""}}'
     preconditions:
-      - sh: 'case "{{.AGENT}}" in codex|opencode) ;; *) exit 1 ;; esac'
-        msg: "AGENT must be one of: codex, opencode"
+      - sh: 'case "{{.AGENT}}" in codex) ;; *) exit 1 ;; esac'
+        msg: "Only Codex is supported"
     cmds:
       - go run ./cmd/prepare-agent --agent {{.AGENT}} {{if .PLATFORM}}--platform {{.PLATFORM}}{{end}}
 
   prepare:tool:
-    desc: Prepare one vendored tool from tools.json (TOOL=ffmpeg|ffprobe|dreamina|libtv|pippit, PLATFORM=darwin-arm64|windows-x64)
+    desc: Prepare one vendored tool from tools.json (TOOL=ffmpeg|ffprobe|dreamina|libtv, PLATFORM=darwin-arm64|windows-x64)
     vars:
       TOOL: '{{.TOOL | default "ffmpeg"}}'
       PLATFORM: '{{.PLATFORM | default ""}}'
@@ -34,7 +34,7 @@ tasks:
           PLATFORM: "{{.PLATFORM}}"
 
   prepare:generation-clis:
-    desc: Prepare selected generation CLIs (GENERATION_CLIS=dreamina,libtv,pippit|none)
+    desc: Prepare selected generation CLIs (GENERATION_CLIS=dreamina,libtv|none)
     vars:
       GENERATION_CLIS: '{{.GENERATION_CLIS | default "dreamina"}}'
       PLATFORM: '{{.PLATFORM | default ""}}'
@@ -53,9 +53,6 @@ tasks:
       - task: prepare
         vars:
           AGENT: codex
-      - task: prepare
-        vars:
-          AGENT: opencode
       - task: prepare:media-tools
       - task: prepare:generation-clis
       - task: prepare:rights

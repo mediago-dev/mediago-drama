@@ -26,7 +26,7 @@ export const runtimeEventTypes = [
 	"agent.message.accepted",
 	"agent.run.started",
 	"agent.activity",
-	"agent.acp",
+	"agent.runtime",
 	"agent.message.delta",
 	"agent.message.completed",
 	"agent.ui",

@@ -212,6 +212,10 @@ func groupForRow(groupBy string, row repository.UsageBucketRow, caps capabilityL
 			}
 			return capabilityID, label
 		}
+		// Older records keep their media kind after a provider route is retired.
+		if capabilityID := row.Kind + ".generate"; caps.labels[capabilityID] != "" {
+			return capabilityID, caps.labels[capabilityID]
+		}
 		return "unassigned", "未归类能力"
 	case "kind":
 		if row.Kind == "" {

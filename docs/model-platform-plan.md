@@ -1,5 +1,7 @@
 # 聚合平台(Model Platform)接入方案
 
+> 历史设计，智能体运行时已由 [Codex app-server 方案](adr/0003-oss-isolation-and-codex-app-server.md) 取代。
+
 > 本文为完整设计规格,供实现与审查使用,自包含、无需额外上下文。
 > 代码引用格式:`文件路径:行号`。
 

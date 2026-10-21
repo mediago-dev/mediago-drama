@@ -33,20 +33,20 @@ type AgentRunnerCloser interface {
 	Close() error
 }
 
-// AgentPermissionResolver resolves in-flight ACP tool permission requests.
+// AgentPermissionResolver resolves in-flight Runtime tool permission requests.
 type AgentPermissionResolver interface {
 	ResolvePermission(sessionID string, requestID string, optionID string, cancelled bool) error
 }
 
-// AgentPendingPermissionProvider lists active ACP permission requests for a session.
+// AgentPendingPermissionProvider lists active Runtime permission requests for a session.
 type AgentPendingPermissionProvider interface {
-	PendingPermissions(sessionID string) []AgentACPPermissionRequest
+	PendingPermissions(sessionID string) []AgentRuntimePermissionRequest
 }
 
 // AgentSessionTitleRequest describes one short display title request.
 type AgentSessionTitleRequest struct {
 	Prompt string
-	Model  AgentACPConfigSelection
+	Model  AgentRuntimeConfigSelection
 }
 
 // AgentSessionTitleGenerator produces a short display title for a session.
@@ -211,7 +211,7 @@ func (runtime *AgentRuntime) SubmitAgentMessage(payload AgentMessageRequest) (Ag
 
 	runID := shared.MustRandomID("run")
 	runCtx, cancelRun := agentRunContextWithParent(runtime.shutdownCtx, runtime.config.RunTimeout)
-	acpSessionState, ok := runtime.sessions.StartRun(
+	runtimeSessionState, ok := runtime.sessions.StartRun(
 		payload.SessionID,
 		payload.ProjectID,
 		runID,
@@ -261,7 +261,7 @@ func (runtime *AgentRuntime) SubmitAgentMessage(payload AgentMessageRequest) (Ag
 		"document_count", len(payload.Documents),
 		"project_dir", projectDir,
 		"working_dir", workingDir,
-		"has_acp_session", acpSessionState.SessionID != "",
+		"has_runtime_session", runtimeSessionState.SessionID != "",
 	)
 
 	runtime.publishEvent(AgentEvent{
@@ -291,7 +291,7 @@ func (runtime *AgentRuntime) SubmitAgentMessage(payload AgentMessageRequest) (Ag
 
 	go func() {
 		defer runtime.finishLifecycleWork()
-		runtime.runAgent(runCtx, cancelRun, payload, runID, acpSessionState, projectDir, workingDir)
+		runtime.runAgent(runCtx, cancelRun, payload, runID, runtimeSessionState, projectDir, workingDir)
 	}()
 	workTransferred = true
 
@@ -362,7 +362,7 @@ func (runtime *AgentRuntime) workingDirForRun(projectID string, projectDir strin
 	return workingDir, nil
 }
 
-func (runtime *AgentRuntime) maybeGenerateSessionTitle(sessionID string, userPrompt string, model AgentACPConfigSelection) {
+func (runtime *AgentRuntime) maybeGenerateSessionTitle(sessionID string, userPrompt string, model AgentRuntimeConfigSelection) {
 	if runtime == nil || runtime.config.SessionTitleGenerator == nil || runtime.sessions == nil {
 		return
 	}
@@ -378,7 +378,7 @@ func (runtime *AgentRuntime) maybeGenerateSessionTitle(sessionID string, userPro
 	}()
 }
 
-func (runtime *AgentRuntime) generateSessionTitle(ctx context.Context, sessionID string, userPrompt string, model AgentACPConfigSelection) {
+func (runtime *AgentRuntime) generateSessionTitle(ctx context.Context, sessionID string, userPrompt string, model AgentRuntimeConfigSelection) {
 	ctx, cancel := context.WithTimeout(ctx, runtime.config.SessionTitleTimeout)
 	defer cancel()
 
@@ -398,7 +398,12 @@ func (runtime *AgentRuntime) generateSessionTitle(ctx context.Context, sessionID
 	runtime.sessions.SetTitleIfEmpty(sessionID, title)
 }
 
-// ResolvePermission resolves an ACP per-tool permission request.
+// AgentUserInputResolver accepts structured answers to a pending request.
+type AgentUserInputResolver interface {
+	ResolveUserInput(sessionID, requestID, optionID string, answers map[string][]string, cancelled bool) error
+}
+
+// ResolvePermission resolves an Runtime per-tool permission request.
 func (runtime *AgentRuntime) ResolvePermission(payload AgentPermissionDecisionRequest) (AgentSessionStatus, int, error) {
 	if runtime == nil || runtime.sessions == nil || runtime.runner == nil {
 		return AgentSessionStatus{}, http.StatusServiceUnavailable, fmt.Errorf("agent runtime is unavailable")
@@ -419,14 +424,20 @@ func (runtime *AgentRuntime) ResolvePermission(payload AgentPermissionDecisionRe
 	if !ok {
 		return AgentSessionStatus{}, http.StatusServiceUnavailable, fmt.Errorf("agent runtime does not support permission decisions")
 	}
-	if err := resolver.ResolvePermission(payload.SessionID, payload.RequestID, payload.OptionID, payload.Cancelled); err != nil {
+	var decisionErr error
+	if inputResolver, ok := runtime.runner.(AgentUserInputResolver); ok {
+		decisionErr = inputResolver.ResolveUserInput(payload.SessionID, payload.RequestID, payload.OptionID, payload.Answers, payload.Cancelled)
+	} else {
+		decisionErr = resolver.ResolvePermission(payload.SessionID, payload.RequestID, payload.OptionID, payload.Cancelled)
+	}
+	if err := decisionErr; err != nil {
 		return AgentSessionStatus{}, http.StatusNotFound, err
 	}
 	return runtime.sessionStatus(payload.SessionID), http.StatusOK, nil
 }
 
-// PendingPermissions returns active ACP permission requests for a session.
-func (runtime *AgentRuntime) PendingPermissions(sessionID string) []AgentACPPermissionRequest {
+// PendingPermissions returns active Runtime permission requests for a session.
+func (runtime *AgentRuntime) PendingPermissions(sessionID string) []AgentRuntimePermissionRequest {
 	if runtime == nil || runtime.runner == nil {
 		return nil
 	}
@@ -451,7 +462,7 @@ func (runtime *AgentRuntime) runAgent(
 	cancel context.CancelFunc,
 	payload AgentMessageRequest,
 	runID string,
-	acpSessionState ACPSessionState,
+	runtimeSessionState CodexSessionState,
 	projectDir string,
 	workingDir string,
 ) {
@@ -507,13 +518,13 @@ func (runtime *AgentRuntime) runAgent(
 		"session_id", payload.SessionID,
 		"run_id", runID,
 		"timeout_ms", runtime.config.RunTimeout.Milliseconds(),
-		"has_acp_session", acpSessionState.SessionID != "",
+		"has_runtime_session", runtimeSessionState.SessionID != "",
 	)
 	result, err := runtime.runner.Run(ctx, AgentRunRequest{
 		SessionID:             payload.SessionID,
 		RunID:                 runID,
-		ACPSessionID:          acpSessionState.SessionID,
-		ACPInstructionHash:    acpSessionState.InstructionHash,
+		CodexThreadID:         runtimeSessionState.SessionID,
+		CodexInstructionHash:  runtimeSessionState.InstructionHash,
 		ProjectID:             payload.ProjectID,
 		Prompt:                payload.Prompt,
 		AgentTag:              agentTag,
@@ -535,6 +546,12 @@ func (runtime *AgentRuntime) runAgent(
 		Reasoning:             payload.Reasoning,
 		Permission:            payload.Permission,
 	}, publish)
+	if result.CodexThreadID != "" {
+		runtime.sessions.SetCodexSessionState(payload.SessionID, runID, CodexSessionState{
+			SessionID:       result.CodexThreadID,
+			InstructionHash: result.CodexInstructionHash,
+		})
+	}
 	if err != nil && ctx.Err() == context.Canceled {
 		_ = finishRun("cancelled", "Agent 运行已中断。")
 		slog.Info("agent run cancelled", "session_id", payload.SessionID, "run_id", runID)
@@ -545,7 +562,6 @@ func (runtime *AgentRuntime) runAgent(
 		return
 	}
 	if err != nil {
-		runtime.sessions.ClearACPSessionID(payload.SessionID)
 		_ = finishRun("failed", err.Error())
 		slog.Error("agent run failed", "session_id", payload.SessionID, "run_id", runID, "error", err)
 		publish(AgentEvent{
@@ -553,12 +569,6 @@ func (runtime *AgentRuntime) runAgent(
 			Message: err.Error(),
 		})
 		return
-	}
-	if result.ACPSessionID != "" {
-		runtime.sessions.SetACPSessionState(payload.SessionID, runID, ACPSessionState{
-			SessionID:       result.ACPSessionID,
-			InstructionHash: result.ACPInstructionHash,
-		})
 	}
 
 	if result.DocumentProposal != nil {
@@ -584,9 +594,9 @@ func (runtime *AgentRuntime) runAgent(
 	slog.Info("agent run completed", "session_id", payload.SessionID, "run_id", runID)
 	if terminal {
 		publish(AgentEvent{
-			Type:         "agent.run.completed",
-			Message:      "Agent 运行已完成。",
-			ACPSessionID: result.ACPSessionID,
+			Type:          "agent.run.completed",
+			Message:       "Agent 运行已完成。",
+			CodexThreadID: result.CodexThreadID,
 		})
 	}
 }
@@ -650,19 +660,19 @@ func (runtime *AgentRuntime) applyDocumentProposal(
 }
 
 // PublishAgentRunCompleted publishes a terminal run completion event.
-func (runtime *AgentRuntime) PublishAgentRunCompleted(sessionID string, projectID string, runID string, message string, acpSessionID string) {
+func (runtime *AgentRuntime) PublishAgentRunCompleted(sessionID string, projectID string, runID string, message string, codexThreadID string) {
 	if strings.TrimSpace(message) == "" {
 		message = "Agent 运行已完成。"
 	}
 	runtime.publishEvent(AgentEvent{
-		ID:           shared.MustRandomID("event"),
-		SessionID:    sessionID,
-		ProjectID:    projectID,
-		Type:         "agent.run.completed",
-		RunID:        runID,
-		Message:      message,
-		ACPSessionID: acpSessionID,
-		CreatedAt:    timestamp.NowRFC3339Nano(),
+		ID:            shared.MustRandomID("event"),
+		SessionID:     sessionID,
+		ProjectID:     projectID,
+		Type:          "agent.run.completed",
+		RunID:         runID,
+		Message:       message,
+		CodexThreadID: codexThreadID,
+		CreatedAt:     timestamp.NowRFC3339Nano(),
 	})
 }
 

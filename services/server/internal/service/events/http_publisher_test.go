@@ -36,7 +36,7 @@ func TestHTTPEventPublisherRetriesGuaranteedEvents(t *testing.T) {
 	}
 }
 
-func TestHTTPEventPublisherRetriesACPPermissionRequestEvents(t *testing.T) {
+func TestHTTPEventPublisherRetriesRuntimePermissionRequestEvents(t *testing.T) {
 	previousDelay := httpEventPublisherRetryDelay
 	httpEventPublisherRetryDelay = 0
 	defer func() {
@@ -56,8 +56,8 @@ func TestHTTPEventPublisherRetriesACPPermissionRequestEvents(t *testing.T) {
 
 	publisher := NewHTTPEventPublisher(server.URL, "token")
 	publisher.PublishEvent(AgentEvent{
-		Type: "agent.acp",
-		ACP:  &serviceagent.AgentACPEvent{Kind: "permissionRequest"},
+		Type:    "agent.runtime",
+		Runtime: &serviceagent.AgentRuntimeEvent{Kind: "permissionRequest"},
 	})
 
 	if attempts != 2 {

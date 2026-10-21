@@ -212,7 +212,7 @@ func TestSessionServicePersistsGeneratedTitle(t *testing.T) {
 	}
 }
 
-func TestSessionServicePersistsAndClearsACPInstructionState(t *testing.T) {
+func TestSessionServicePersistsAndClearsRuntimeInstructionState(t *testing.T) {
 	repo := newTestAgentSessionRepository(t)
 	store := NewSessionService(repo)
 	store.create("session-1", "project-1")
@@ -222,34 +222,34 @@ func TestSessionServicePersistsAndClearsACPInstructionState(t *testing.T) {
 		t.Fatal("starting first run failed")
 	}
 	if initial.SessionID != "" || initial.InstructionHash != "" {
-		t.Fatalf("initial ACP state = %#v, want empty", initial)
+		t.Fatalf("initial Runtime state = %#v, want empty", initial)
 	}
 
-	want := ACPSessionState{
-		SessionID:       "acp-session-1",
+	want := CodexSessionState{
+		SessionID:       "runtime-session-1",
 		InstructionHash: "instruction-v1:abc123",
 	}
-	store.SetACPSessionState("session-1", "run-1", want)
+	store.SetCodexSessionState("session-1", "run-1", want)
 	run, ok := store.Run("session-1", "run-1")
-	if !ok || run.ACPSessionID != want.SessionID || run.ACPInstructionHash != want.InstructionHash {
-		t.Fatalf("run ACP state = %#v, want %#v", run, want)
+	if !ok || run.CodexThreadID != want.SessionID || run.CodexInstructionHash != want.InstructionHash {
+		t.Fatalf("run Runtime state = %#v, want %#v", run, want)
 	}
 	store.FinishRun("session-1", "run-1", "completed", "done")
 
 	restarted := NewSessionService(repo)
 	loaded, ok := restarted.StartRun("session-1", "project-1", "run-2", func() {}, AgentRunStartOptions{})
 	if !ok || loaded != want {
-		t.Fatalf("loaded ACP state = %#v, ok=%v; want %#v", loaded, ok, want)
+		t.Fatalf("loaded Runtime state = %#v, ok=%v; want %#v", loaded, ok, want)
 	}
 	restarted.FinishRun("session-1", "run-2", "completed", "done")
-	restarted.ClearACPSessionID("session-1")
+	restarted.ClearCodexThreadID("session-1")
 
 	cleared, ok := restarted.StartRun("session-1", "project-1", "run-3", func() {}, AgentRunStartOptions{})
 	if !ok {
 		t.Fatal("starting run after clear failed")
 	}
 	if cleared.SessionID != "" || cleared.InstructionHash != "" {
-		t.Fatalf("cleared ACP state = %#v, want empty", cleared)
+		t.Fatalf("cleared Runtime state = %#v, want empty", cleared)
 	}
 }
 
@@ -259,6 +259,11 @@ func newTestAgentSessionRepository(t *testing.T) *repository.AgentSessionReposit
 	if err != nil {
 		t.Fatalf("opening workspace database: %v", err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
 	now := domain.TimeFromString("2026-06-01T00:00:00Z")
 	if err := db.Create(&domain.WorkspaceProjectModel{
 		ID:          "project-1",

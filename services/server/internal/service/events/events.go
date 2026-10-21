@@ -79,9 +79,9 @@ func IsGuaranteedAgentEvent(eventType string) bool {
 // IsGuaranteedAgentEventPayload reports whether a concrete event must be
 // delivered even when subscriber buffers are full.
 func IsGuaranteedAgentEventPayload(event AgentEvent) bool {
-	if strings.TrimSpace(event.Type) == "agent.acp" &&
-		event.ACP != nil &&
-		strings.TrimSpace(event.ACP.Kind) == "permissionRequest" {
+	if strings.TrimSpace(event.Type) == "agent.runtime" &&
+		event.Runtime != nil &&
+		strings.TrimSpace(event.Runtime.Kind) == "permissionRequest" {
 		return true
 	}
 	return IsGuaranteedAgentEvent(event.Type)

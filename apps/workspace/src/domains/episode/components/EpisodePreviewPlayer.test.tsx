@@ -33,7 +33,10 @@ describe("EpisodePreviewPlayer", () => {
 
 	it("renders preview media URLs against the packaged desktop server", () => {
 		vi.stubEnv("DEV", false);
-		window.mediagoDesktop = { isElectron: true } as typeof window.mediagoDesktop;
+		window.mediagoDesktop = {
+			isElectron: true,
+			serverOrigin: "http://127.0.0.1:49157",
+		} as typeof window.mediagoDesktop;
 
 		render(
 			<EpisodePreviewPlayer
@@ -48,15 +51,15 @@ describe("EpisodePreviewPlayer", () => {
 		const player = screen.getByTestId("video-player");
 		expect(player).toHaveAttribute(
 			"data-src",
-			"http://127.0.0.1:48273/api/v1/media-assets/asset-1/content",
+			"http://127.0.0.1:49157/api/v1/media-assets/asset-1/content",
 		);
 		expect(player).toHaveAttribute(
 			"data-poster",
-			"http://127.0.0.1:48273/api/v1/media-assets/asset-1/poster",
+			"http://127.0.0.1:49157/api/v1/media-assets/asset-1/poster",
 		);
 		expect(screen.getByTestId("episode-preview-poster").querySelector("img")).toHaveAttribute(
 			"src",
-			"http://127.0.0.1:48273/api/v1/media-assets/asset-1/poster",
+			"http://127.0.0.1:49157/api/v1/media-assets/asset-1/poster",
 		);
 	});
 

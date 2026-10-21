@@ -26,10 +26,10 @@ func NormalizeAgentEventSemantics(event AgentEvent) AgentEvent {
 }
 
 func inferredAgentEventItemID(event AgentEvent) string {
-	if event.ACP != nil {
-		switch strings.TrimSpace(event.ACP.Kind) {
-		case "toolCall", "toolCallUpdate", ACPRuntimeLogKind:
-			if toolCallID := strings.TrimSpace(event.ACP.ToolCallID); toolCallID != "" {
+	if event.Runtime != nil {
+		switch strings.TrimSpace(event.Runtime.Kind) {
+		case "toolCall", "toolCallUpdate", RuntimeLogKind:
+			if toolCallID := strings.TrimSpace(event.Runtime.ToolCallID); toolCallID != "" {
 				return toolCallID
 			}
 		case "plan":
@@ -54,7 +54,7 @@ func inferredAgentEventPhase(event AgentEvent) AgentMessagePhase {
 	case "agent.message.completed":
 		return AgentMessagePhaseFinalAnswer
 	case "agent.activity",
-		"agent.acp",
+		"agent.runtime",
 		"agent.patch.proposed",
 		"agent.document.edit.started",
 		"agent.document.edit.delta",

@@ -3,8 +3,8 @@ package app
 import (
 	mediamcp "github.com/mediago-dev/mediago-drama/packages/mcp/pkg/mcp"
 	"github.com/mediago-dev/mediago-drama/services/server/internal/http/dto"
-	serviceacp "github.com/mediago-dev/mediago-drama/services/server/internal/service/acp"
 	serviceagent "github.com/mediago-dev/mediago-drama/services/server/internal/service/agent"
+	serviceruntime "github.com/mediago-dev/mediago-drama/services/server/internal/service/codex"
 	servicedocument "github.com/mediago-dev/mediago-drama/services/server/internal/service/document"
 	servicemodel "github.com/mediago-dev/mediago-drama/services/server/internal/service/model"
 )
@@ -91,15 +91,15 @@ type agentEvent = serviceagent.AgentEvent
 
 type agentEventContext = serviceagent.AgentEventContext
 
-type agentACPEvent = serviceagent.AgentACPEvent
+type agentRuntimeEvent = serviceagent.AgentRuntimeEvent
 
-type agentACPContentBlock = serviceagent.AgentACPContentBlock
+type agentRuntimeContentBlock = serviceagent.AgentRuntimeContentBlock
 
-type agentACPLocation = serviceagent.AgentACPLocation
+type agentRuntimeLocation = serviceagent.AgentRuntimeLocation
 
-type agentACPPlanEntry = serviceagent.AgentACPPlanEntry
+type agentRuntimePlanEntry = serviceagent.AgentRuntimePlanEntry
 
-type agentACPPermissionRequest = serviceagent.AgentACPPermissionRequest
+type agentRuntimePermissionRequest = serviceagent.AgentRuntimePermissionRequest
 
 type agentDocumentEditEvent = serviceagent.AgentDocumentEditEvent
 
@@ -115,7 +115,7 @@ type messageRequest = serviceagent.AgentMessageRequest
 
 type messageResponse = serviceagent.AgentMessageResponse
 
-type agentACPConfigSelection = serviceagent.AgentACPConfigSelection
+type agentRuntimeConfigSelection = serviceagent.AgentRuntimeConfigSelection
 
 type agentDocumentContext = serviceagent.AgentDocumentContext
 
@@ -150,7 +150,7 @@ type generationTasksResponse = dto.GenerationTasksResponse
 type workspaceVersionConflictError = servicedocument.WorkspaceVersionConflictError
 
 func mediaGoDramaMCPToolName(toolName string) string {
-	return serviceacp.MediaGoDramaMCPToolName(toolName)
+	return serviceruntime.MediaGoDramaMCPToolName(toolName)
 }
 
 func mcpProjectBriefFromApp(brief ProjectBrief) mediamcp.ProjectBrief {

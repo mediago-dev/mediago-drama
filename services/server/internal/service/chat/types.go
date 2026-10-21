@@ -18,9 +18,9 @@ type AgentChatMessageRecord = agent.AgentChatMessageRecord
 type AgentChatActivityRecord = agent.AgentChatActivityRecord
 type AgentConversationRecord = agent.AgentConversationRecord
 type AgentEvent = agent.AgentEvent
-type AgentACPEvent = agent.AgentACPEvent
-type AgentACPLocation = agent.AgentACPLocation
-type AgentACPContentBlock = agent.AgentACPContentBlock
+type AgentRuntimeEvent = agent.AgentRuntimeEvent
+type AgentRuntimeLocation = agent.AgentRuntimeLocation
+type AgentRuntimeContentBlock = agent.AgentRuntimeContentBlock
 
 type agentChatStateResponse = agent.AgentChatStateResponse
 type agentChatAppendRequest = agent.AgentChatAppendRequest

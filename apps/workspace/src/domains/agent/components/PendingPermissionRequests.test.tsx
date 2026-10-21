@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	decideAgentPermission,
-	type AgentRuntimeACPPermissionRequest,
+	type AgentRuntimePermissionRequest,
 } from "@/domains/agent/api/agent";
 import { useAgentStore } from "@/domains/agent/stores";
 import { PendingPermissionRequests } from "@/domains/agent/components/PendingPermissionRequests";
@@ -12,7 +12,7 @@ vi.mock("@/domains/agent/api/agent", () => ({
 	decideAgentPermission: vi.fn(),
 }));
 
-const request: AgentRuntimeACPPermissionRequest = {
+const request: AgentRuntimePermissionRequest = {
 	requestId: "permission-1",
 	toolCall: {
 		id: "call-1",

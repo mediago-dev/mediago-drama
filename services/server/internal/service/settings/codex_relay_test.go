@@ -126,7 +126,7 @@ func TestPrepareCodexRelayRuntimeConfigWritesLocalCodexHomeWithoutSecret(t *test
 	if err != nil {
 		t.Fatalf("PrepareCodexRelayRuntimeConfig returned error: %v", err)
 	}
-	wantHome := filepath.Join(workspaceDir, ".mediago-drama", "runtime", "agents", "codex", "home")
+	wantHome := filepath.Join(workspaceDir, ".mediago-drama", "runtime", "agents", "codex", "relay-home")
 	if config.CodexHome != wantHome || config.Env["CODEX_HOME"] != wantHome {
 		t.Fatalf("config = %#v, want CODEX_HOME under workspace metadata", config)
 	}
@@ -196,13 +196,16 @@ func TestDescribeCodexRuntimeHomeIsPureAndUsesActiveRelayPredicate(t *testing.T)
 			if err != nil {
 				t.Fatalf("DescribeCodexRuntimeHome returned error: %v", err)
 			}
-			wantHome := filepath.Join(workspaceDir, ".mediago-drama", "runtime", "agents", "codex", "home")
+			wantHome := filepath.Join(workspaceDir, ".mediago-drama", "runtime", "agents", "codex", "relay-home")
 			if tt.wantActive {
 				if !descriptor.Isolated || descriptor.CodexHome != wantHome {
 					t.Fatalf("descriptor = %#v, want isolated %q", descriptor, wantHome)
 				}
-			} else if descriptor.Isolated || descriptor.CodexHome != "" {
-				t.Fatalf("descriptor = %#v, want no override", descriptor)
+			} else {
+				accountHome := filepath.Join(workspaceDir, ".mediago-drama", "runtime", "agents", "codex", "account-home")
+				if !descriptor.Isolated || descriptor.CodexHome != accountHome {
+					t.Fatalf("descriptor = %#v, want isolated account home", descriptor)
+				}
 			}
 			for _, path := range []string{wantHome, filepath.Join(wantHome, "config.toml"), filepath.Join(wantHome, "auth.json")} {
 				if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {

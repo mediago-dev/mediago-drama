@@ -11,15 +11,17 @@ import type React from "react";
 import { useState } from "react";
 import {
 	decideAgentPermission,
-	type AgentRuntimeACPPermissionRequest,
+	type AgentRuntimePermissionRequest,
 } from "@/domains/agent/api/agent";
 import { useProjectStore } from "@/domains/projects/stores";
 import { useToast } from "@/hooks/useToast";
+import { Input } from "@/shared/components/ui/input";
+import { openExternalUrl } from "@/shared/desktop/actions";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/lib/utils";
 
 interface PermissionRequestCardProps {
-	request: AgentRuntimeACPPermissionRequest;
+	request: AgentRuntimePermissionRequest;
 	sessionId: string | null;
 	onDecided: () => void;
 }
@@ -33,8 +35,9 @@ export const PermissionRequestCard: React.FC<PermissionRequestCardProps> = ({
 	const projectId = useProjectStore((state) => state.activeProjectId);
 	const [decidingOptionId, setDecidingOptionId] = useState<string | null>(null);
 	const [errorMessage, setErrorMessage] = useState("");
+	const [answers, setAnswers] = useState<Record<string, string[]>>({});
 	const disabled = !projectId || !sessionId || decidingOptionId !== null;
-	const title = request.toolCall?.title || request.toolCall?.id || "ACP 工具调用";
+	const title = request.toolCall?.title || request.toolCall?.id || "Codex 请求";
 	const kind = request.toolCall?.kind || "tool";
 	const displayTitle = getPermissionRequestTitle(kind);
 	const DetailIcon = getPermissionRequestIcon(kind);
@@ -52,6 +55,7 @@ export const PermissionRequestCard: React.FC<PermissionRequestCardProps> = ({
 				sessionId,
 				requestId: request.requestId,
 				optionId,
+				...(request.questions?.length && optionId === "accept" ? { answers } : {}),
 			});
 			onDecided();
 		} catch (err) {
@@ -98,6 +102,67 @@ export const PermissionRequestCard: React.FC<PermissionRequestCardProps> = ({
 							{title}
 						</pre>
 					</div>
+					{request.url ? (
+						<Button
+							variant="outline"
+							size="sm"
+							className="mt-2"
+							onClick={() => void openExternalUrl(request.url!)}
+						>
+							打开确认页面
+						</Button>
+					) : null}
+					{request.questions?.map((q) => (
+						<fieldset key={q.id} className="mt-3 space-y-1.5" disabled={disabled}>
+							<legend className="font-medium">
+								{q.header || q.question}
+								{q.required ? " *" : ""}
+							</legend>
+							{q.header ? <p className="text-muted-foreground">{q.question}</p> : null}
+							{q.options?.map((option) => (
+								<label key={option.label} className="flex items-start gap-2">
+									<input
+										type={q.type === "array" ? "checkbox" : "radio"}
+										name={`${request.requestId}-${q.id}`}
+										checked={answers[q.id]?.includes(option.label) ?? false}
+										onChange={() =>
+											setAnswers((current) => ({
+												...current,
+												[q.id]:
+													q.type === "array"
+														? current[q.id]?.includes(option.label)
+															? current[q.id].filter((v) => v !== option.label)
+															: [...(current[q.id] ?? []), option.label]
+														: [option.label],
+											}))
+										}
+									/>
+									<span>
+										{option.label}
+										{option.description ? (
+											<span className="block text-muted-foreground">{option.description}</span>
+										) : null}
+									</span>
+								</label>
+							))}
+							{!q.type || !q.options?.length ? (
+								<Input
+									aria-label={q.question}
+									type={
+										q.secret
+											? "password"
+											: q.type === "integer" || q.type === "number"
+												? "number"
+												: "text"
+									}
+									value={answers[q.id]?.[0] ?? ""}
+									onChange={(e) =>
+										setAnswers((current) => ({ ...current, [q.id]: [e.target.value] }))
+									}
+								/>
+							) : null}
+						</fieldset>
+					))}
 					<div className="agent-permission-actions mt-2 flex flex-wrap justify-end gap-1.5 border-t border-warning-border/70 pt-2">
 						{request.options.map((option) => (
 							<Button
@@ -111,7 +176,13 @@ export const PermissionRequestCard: React.FC<PermissionRequestCardProps> = ({
 										? "agent-permission-action-primary"
 										: "agent-permission-action-secondary",
 								)}
-								disabled={disabled}
+								disabled={
+									disabled ||
+									(option.optionId === "accept" &&
+										Boolean(
+											request.questions?.some((q) => q.required && !answers[q.id]?.[0]?.trim()),
+										))
+								}
 								onClick={() => void decide(option.optionId)}
 							>
 								{decidingOptionId === option.optionId ? (
